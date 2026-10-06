@@ -365,6 +365,37 @@ func TestMergeMovesEmptyPinnedToAccent(t *testing.T) {
 	}
 }
 
+func TestMergeMovesDisplayFilterAndRepo(t *testing.T) {
+	updated, _, err := Merge(`workspace = "1"
+[display]
+symbols = "nerd"
+reduced_motion = false
+[list]
+filter = "is:open project:Work"
+fields = ["section", "Branch Name", "due"]
+[repo]
+root = ""
+command = "sesh list -z"
+branch_field = "Branch Name"
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := loadString(t, updated)
+	if cfg.Symbols != "nerd" || cfg.ReducedMotion == nil || *cfg.ReducedMotion || cfg.DefaultFilter != "is:open project:Work" || cfg.RepoSource.Root != "" || cfg.RepoSource.Command != "sesh list -z" || cfg.BranchField != "Branch Name" || !reflect.DeepEqual(cfg.List.Fields, []string{"section", "Branch Name", "due"}) {
+		t.Fatalf("cfg = %+v\n%s", cfg, updated)
+	}
+	for _, old := range []string{"[display]", "[repo]", "\nfilter = "} {
+		if strings.Contains(updated, old) {
+			t.Fatalf("old key %q left behind:\n%s", old, updated)
+		}
+	}
+	again, _, err := Merge(updated)
+	if err != nil || again != updated {
+		t.Fatalf("second merge changed config: err = %v", err)
+	}
+}
+
 func TestMergeKeepsStyleTables(t *testing.T) {
 	updated, _, err := Merge("workspace = \"1\"\n[colors]\naccent = { fg = \"4\", bold = false }\nauthors = [\"1\", { fg = \"2\", italic = true }]\n")
 	if err != nil {

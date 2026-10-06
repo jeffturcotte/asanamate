@@ -17,6 +17,12 @@ var Moves = []Move{
 	{"list.pinned.color", "colors.pinned"},
 	{"list.viewing.color", "colors.viewing"},
 	{"list.selection.color", "colors.selection"},
+	{"display.symbols", "symbols"},
+	{"display.reduced_motion", "reduced_motion"},
+	{"list.filter", "default_filter"},
+	{"repo.root", "repo_source.root"},
+	{"repo.command", "repo_source.command"},
+	{"repo.branch_field", "branch_field"},
 }
 
 // movedFrom returns the first move whose old key m still sets. An old key

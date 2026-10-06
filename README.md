@@ -296,7 +296,8 @@ asanamate list | fzf --delimiter '\t' --with-nth 2,4 --preview 'asanamate show {
 
 ## Upgrading to v0.2.0
 
-v0.2.0 moves the color settings. Run `asanamate config update` to rewrite
+v0.2.0 moves the color settings. The updater also migrates the earlier
+`display`, `list.filter`, and `repo` settings. Run `asanamate config update` to rewrite
 your config; it keeps your values and saves the old file as a timestamped
 `config.toml.<time>.bak`. Until then, asanamate names the first moved key and stops.
 
@@ -308,6 +309,12 @@ your config; it keeps your values and saves the old file as a timestamped
 | `list.pinned.color` | `colors.pinned` |
 | `list.viewing.color` | `colors.viewing` |
 | `list.selection.color` | `colors.selection` |
+| `display.symbols` | `symbols` |
+| `display.reduced_motion` | `reduced_motion` |
+| `list.filter` | `default_filter` |
+| `repo.root` | `repo_source.root` |
+| `repo.command` | `repo_source.command` |
+| `repo.branch_field` | `branch_field` |
 
 Default keys changed too: `enter` in the list opens the reader; `c` adds a
 comment (was `C`); `y` copies the link (was `c`); `Y` copies the targeted
