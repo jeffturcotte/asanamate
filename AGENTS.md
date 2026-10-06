@@ -33,7 +33,10 @@ When a task changes what lives in `~/.config/asanamate` (a config key or
 value, an action key, a new file, or a new layout), finish the task, then ask
 the user whether to migrate their local config to it. On yes:
 
-- Copy each file you will change to a `.bak` sibling first.
+- Copy each file you will change to a timestamped sibling first, named
+  `<file>.yyyy-mm-dd--hh-mm-ss.bak` (`date +%Y-%m-%d--%H-%M-%S`), such as
+  `config.toml.2026-10-06--14-30-05.bak`. Never overwrite or delete an
+  existing backup. `asanamate config update` names its own backups this way.
 - Bring `config.toml` and `actions/` onto the new shape, keeping every value
   the user set. `asanamate config update` handles new template keys in
   `config.toml`; everything else is a hand edit.

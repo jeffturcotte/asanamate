@@ -11,6 +11,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 
@@ -26,7 +27,7 @@ var (
 )
 
 // Update rewrites the config file from the current template, keeping every
-// value the user set. The previous file is saved next to it with a .bak suffix.
+// value the user set. The previous file is saved next to it, see backupPath.
 func Update(o Options, yes bool) error {
 	old, err := os.ReadFile(o.ConfigPath)
 	if errors.Is(err, os.ErrNotExist) {
@@ -49,7 +50,7 @@ func Update(o Options, yes bool) error {
 	if len(added) > 0 {
 		fmt.Fprintf(o.Out, "New settings with their defaults: %s\n", strings.Join(added, ", "))
 	}
-	backup := o.ConfigPath + ".bak"
+	backup := backupPath(o.ConfigPath)
 	if !yes {
 		ok, err := prompt.Confirm(o.In, o.Out, fmt.Sprintf("Rewrite %s with the current template, keeping your values (previous file saved to %s)?", o.ConfigPath, backup))
 		if err != nil {
@@ -157,6 +158,12 @@ func Merge(old string) (string, []string, error) {
 		return "", nil, errors.New("updated config would change your values; config unchanged")
 	}
 	return result, added, nil
+}
+
+// backupPath names a backup of path stamped with the current time, such as
+// config.toml.2026-10-06--14-30-05.bak, so backups don't overwrite each other.
+func backupPath(path string) string {
+	return path + "." + time.Now().Format("2006-01-02--15-04-05") + ".bak"
 }
 
 func writePrivate(path string, data []byte) error {

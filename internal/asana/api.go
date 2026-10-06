@@ -80,7 +80,7 @@ func (c *Client) Task(ctx context.Context, gid string) (Task, error) {
 
 // Comments returns a task's comment stories, oldest first.
 func (c *Client) Comments(ctx context.Context, gid string) ([]Story, error) {
-	all, err := getAll[Story](ctx, c, "/tasks/"+gid+"/stories", fields("type,created_at,created_by.name,html_text"))
+	all, err := getAll[Story](ctx, c, "/tasks/"+gid+"/stories", fields("type,created_at,created_by.name,html_text,reaction_summary.variant,reaction_summary.count,reaction_summary.reacted"))
 	if err != nil {
 		return nil, err
 	}

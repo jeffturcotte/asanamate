@@ -13,6 +13,7 @@ error = "1"
 working = "6"
 pinned = { fg = "166", bold = true }
 viewing = { fg = "5", bold = true }
+reacted = { bg = "254" }
 authors = ["4", "5", "6", "2", "3", "1"]
 
 [colors.mode]

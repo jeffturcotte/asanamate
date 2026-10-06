@@ -104,7 +104,7 @@ func OfferCodexHook(o Options) error {
 	}
 	backup := ""
 	if old != nil {
-		backup = path + ".bak"
+		backup = backupPath(path)
 		if err := writePrivate(backup, old); err != nil {
 			return err
 		}

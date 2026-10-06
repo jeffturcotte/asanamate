@@ -199,6 +199,15 @@ type Story struct {
 	CreatedAt string `json:"created_at"`
 	CreatedBy *Ref   `json:"created_by,omitempty"`
 	HTMLText  string `json:"html_text"`
+	// Reactions are the story's emoji reactions, one per emoji.
+	Reactions []Reaction `json:"reaction_summary,omitempty"`
+}
+
+// Reaction counts the reactions on a story with one emoji.
+type Reaction struct {
+	Emoji   string `json:"variant"`
+	Count   int    `json:"count"`
+	Reacted bool   `json:"reacted"` // the authenticated user reacted with Emoji
 }
 
 // Attachment is a file attached to a task.

@@ -21,6 +21,7 @@ var (
 	selectedStyle lipgloss.Style
 	loadingStyle  lipgloss.Style
 	authorStyles  []lipgloss.Style
+	reactedStyle  lipgloss.Style // pill of a comment reaction the user made
 	// Mode pills: normal (also VIEWS and loading), filter, read, and edit.
 	normalPill, filterPill, readPill, editPill lipgloss.Style
 )
@@ -39,6 +40,7 @@ func applyPalette(p config.Palette) {
 	okStyle, warnStyle, errorStyle = lipStyle(c.OK), lipStyle(c.Warn), lipStyle(c.Error)
 	workingStyle, dimStyle, selectedStyle = lipStyle(c.Working), lipStyle(c.Muted), lipStyle(c.Highlight)
 	loadingStyle = modalStyle.BorderForeground(warnStyle.GetForeground()).Padding(2, 4)
+	reactedStyle = lipStyle(c.Reacted)
 	authorStyles = authorStyles[:0]
 	for _, s := range c.Authors {
 		authorStyles = append(authorStyles, lipStyle(s))
