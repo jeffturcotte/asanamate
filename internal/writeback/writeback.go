@@ -6,7 +6,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -76,7 +78,8 @@ func (s Service) confirm(question string) error {
 }
 
 // Comment posts Markdown as a rich-text comment on the task. Each @Name matching a
-// workspace user becomes a mention that notifies them.
+// workspace user becomes a mention that notifies them. Each local image,
+// ![alt](path), is attached to the task and shown inline.
 func (s Service) Comment(ctx context.Context, gid, text string) error {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -89,7 +92,16 @@ func (s Service) Comment(ctx context.Context, gid, text string) error {
 			return fmt.Errorf("loading people to mention: %w", err)
 		}
 	}
-	html, mentioned := CommentHTML(text, users)
+	paths := LocalImages(text)
+	files := make([][]byte, len(paths))
+	for i, p := range paths {
+		data, err := readImage(p)
+		if err != nil {
+			return fmt.Errorf("comment image %s: %w", p, err)
+		}
+		files[i] = data
+	}
+	html, mentioned := CommentHTML(text, users, nil)
 	if s.Confirm != nil {
 		t, err := s.Client.Task(ctx, gid)
 		if err != nil {
@@ -103,14 +115,59 @@ func (s Service) Comment(ctx context.Context, gid, text string) error {
 			}
 			question += "Mentions: " + strings.Join(names, ", ") + "\n"
 		}
+		if len(paths) > 0 {
+			question += "Uploads: " + strings.Join(paths, ", ") + "\n"
+		}
 		if err := s.confirm(question); err != nil {
 			return err
 		}
+	}
+	if len(paths) > 0 {
+		images := make(map[string]string, len(paths))
+		for i, p := range paths {
+			a, err := s.Client.UploadAttachment(ctx, gid, filepath.Base(p), files[i])
+			if err != nil {
+				return fmt.Errorf("uploading %s: %w", p, err)
+			}
+			images[p] = a.GID
+		}
+		html, _ = CommentHTML(text, users, images)
 	}
 	if html == "<body>"+escapeHTML.Replace(text)+"</body>" {
 		return s.Client.AddComment(ctx, gid, text)
 	}
 	return s.Client.AddCommentHTML(ctx, gid, html)
+}
+
+// maxImageSize is Asana's attachment size limit.
+const maxImageSize = 100 << 20
+
+// readImage reads a comment image path; a leading ~/ is the home directory.
+// Only regular files whose content is an image qualify, so a comment cannot
+// upload other local files.
+func readImage(path string) ([]byte, error) {
+	if rest, ok := strings.CutPrefix(path, "~/"); ok {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
+		path = filepath.Join(home, rest)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() > maxImageSize {
+		return nil, errors.New("not a regular file of at most 100 MB")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if !strings.HasPrefix(http.DetectContentType(data), "image/") {
+		return nil, errors.New("not an image")
+	}
+	return data, nil
 }
 
 // Move puts the task in the named section of one of its projects.

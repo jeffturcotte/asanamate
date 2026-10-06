@@ -860,9 +860,17 @@ COMMENT
 ```
 
 Code and link text do not expand `@Full Name` mentions. Raw HTML stays literal.
-Asana comments do not support headings, images, or tables: headings become bold,
-images retain their alt text, and table syntax stays text. Lists inside quotes
-and code blocks or quotes inside lists are flattened to supported formatting.
+Asana comments do not support headings or tables: headings become bold and
+table syntax stays text. Lists inside quotes and code blocks or quotes inside
+lists are flattened to supported formatting.
+
+A local image, `![](~/Desktop/shot.png)`, is attached to the task and shown
+inline in the comment; a comment can be only an image. Paths are relative to
+the working directory, `~/` is your home directory, and a path with spaces
+needs angle brackets: `![](<~/My Shots/a.png>)`. Only image files qualify, up
+to 100 MB each. The confirmation lists the files to upload, and each upload
+also adds an "attached" entry to the task's activity. Images on the web
+(`https://...`) keep only their alt text.
 
 User mentions display their names without profile links. Other links stay intact.
 Fenced code blocks preserve whitespace but do not add syntax highlighting.

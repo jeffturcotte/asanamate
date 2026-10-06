@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -36,6 +37,14 @@ func fake(t *testing.T) (*asana.Client, *[]write) {
 			io.WriteString(w, taskJSON)
 		case r.Method == http.MethodGet && r.URL.Path == "/projects/p1/sections":
 			io.WriteString(w, `{"data":[{"gid":"s1","name":"To Do"},{"gid":"s2","name":"In Review"}]}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/attachments":
+			_, h, err := r.FormFile("file")
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			writes = append(writes, write{r.Method, r.URL.Path, map[string]any{"parent": r.FormValue("parent"), "name": h.Filename}})
+			io.WriteString(w, `{"data":{"gid":"a`+strconv.Itoa(len(writes))+`"}}`)
 		case r.Method != http.MethodGet:
 			var body struct {
 				Data map[string]any `json:"data"`
@@ -245,7 +254,7 @@ func TestCommentHTML(t *testing.T) {
 		{"ask @Sam Lee or @Bad Gid", "<body>ask @Sam Lee or @Bad Gid</body>", nil},
 	}
 	for _, c := range cases {
-		html, mentioned := CommentHTML(c.text, users)
+		html, mentioned := CommentHTML(c.text, users, nil)
 		var gids []string
 		for _, u := range mentioned {
 			gids = append(gids, u.GID)
