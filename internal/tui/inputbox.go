@@ -7,6 +7,8 @@ import (
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/sadmachine/asanamate/internal/clipboard"
 )
 
 // inputBox is a modal for free-form, multi-line text.
@@ -18,6 +20,18 @@ type inputBox struct {
 	err            string
 	onSubmit       func(string) tea.Cmd // optional handler outside ticket actions and edits
 	sanitizedPaste bool                 // tracks content changed by the textarea during paste
+	images         bool                 // paste_image inserts clipboard images as Markdown
+}
+
+// imagePasteMsg is a clipboard image saved to path for an input box, or why not.
+type imagePasteMsg struct {
+	path string
+	err  error
+}
+
+func pasteImage() tea.Msg {
+	path, err := clipboard.SaveImage()
+	return imagePasteMsg{path, err}
 }
 
 func newInputBox(title, placeholder string) *inputBox {
@@ -37,8 +51,24 @@ func (b *inputBox) update(msg tea.Msg) (res pickResult, cmd tea.Cmd) {
 			return pickResult{cancelled: true}, nil
 		case "submit":
 			return pickResult{done: true, free: strings.TrimSpace(b.area.Value())}, nil
+		case "paste_image":
+			if b.images {
+				b.err = ""
+				return pickResult{}, pasteImage
+			}
 		}
 		b.err = ""
+	} else if pasted, ok := msg.(imagePasteMsg); ok {
+		if pasted.err != nil {
+			b.err = "image paste failed: " + pasted.err.Error()
+			return pickResult{}, nil
+		}
+		dest := pasted.path
+		if strings.ContainsAny(dest, " ()<>") {
+			dest = "<" + dest + ">"
+		}
+		b.area.InsertString("![](" + dest + ")")
+		return pickResult{}, nil
 	} else if paste, ok := msg.(tea.PasteMsg); ok {
 		b.err = ""
 		// Use the widget's sanitizer rather than duplicating its conversion rules.
@@ -77,6 +107,10 @@ func (b *inputBox) view(width, height int, accent lipgloss.Style) string {
 	if !b.area.DynamicHeight {
 		b.area.SetHeight(min(available, 8))
 	}
+	pasteHint := [2]string{}
+	if b.images {
+		pasteHint = [2]string{keyLabel("input", "paste_image"), "paste image"}
+	}
 	return accent.Render(b.title) + "\n" + b.area.View() + "\n" + errorLine + help +
-		hintLine(accent, [2]string{"enter", "newline"}, [2]string{keyLabel("input", "submit"), "submit"}, [2]string{keyLabel("input", "cancel"), "cancel"})
+		hintLine(accent, [2]string{"enter", "newline"}, pasteHint, [2]string{keyLabel("input", "submit"), "submit"}, [2]string{keyLabel("input", "cancel"), "cancel"})
 }

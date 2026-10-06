@@ -90,6 +90,7 @@ func (m *Model) pickedEdit(op editOp) tea.Cmd {
 		m.input.area.MinHeight = 10
 		// Keep the viewport limit separate from the amount of text accepted.
 		m.input.area.MaxContentHeight = math.MaxInt
+		m.input.images = true
 	case editSection:
 		targets := m.sectionTargets(t.Task)
 		switch len(targets) {
