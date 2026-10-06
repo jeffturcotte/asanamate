@@ -145,6 +145,31 @@ func TestWritesWrapBodyInData(t *testing.T) {
 	}
 }
 
+func TestUploadAttachmentSendsMultipart(t *testing.T) {
+	png := []byte("\x89PNG\r\n\x1a\nrest")
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/attachments" {
+			t.Errorf("%s %s", r.Method, r.URL.Path)
+		}
+		if r.FormValue("parent") != "1" {
+			t.Errorf("parent = %q", r.FormValue("parent"))
+		}
+		f, h, err := r.FormFile("file")
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, _ := io.ReadAll(f)
+		if h.Filename != "shot.png" || h.Header.Get("Content-Type") != "image/png" || string(data) != string(png) {
+			t.Errorf("file = %q %q %q", h.Filename, h.Header.Get("Content-Type"), data)
+		}
+		io.WriteString(w, `{"data":{"gid":"7","name":"shot.png"}}`)
+	})
+	a, err := c.UploadAttachment(ctx, "1", "shot.png", png)
+	if err != nil || a.GID != "7" {
+		t.Fatalf("attachment = %+v, err = %v", a, err)
+	}
+}
+
 func TestTaskUpdatesSendFields(t *testing.T) {
 	var got map[string]map[string]any
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
