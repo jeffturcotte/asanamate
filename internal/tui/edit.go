@@ -308,6 +308,10 @@ const addProjectKey = "add_project"
 // emptyFieldsKey is the field key of the cards view's Show empty fields row.
 const emptyFieldsKey = "empty_fields"
 
+// otherAgentsKey is the field key of the cards view's Show agents on other
+// branches row.
+const otherAgentsKey = "other_agents"
+
 // fieldTargets are the keys of the rows the cards view can tab to, in the
 // order they render: editable details rows, the Show empty fields row while
 // empty fields are hidden, then the Add comment row.
@@ -349,6 +353,13 @@ func (m *Model) showEmptyFields() {
 			break
 		}
 	}
+	m.showTarget()
+}
+
+// showOtherAgents reveals the selected ticket's agents on other branches and
+// selects the Agents section.
+func (m *Model) showOtherAgents() {
+	m.showOthers, m.fieldKey = true, "section:agents"
 	m.showTarget()
 }
 

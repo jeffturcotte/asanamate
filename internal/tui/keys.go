@@ -212,7 +212,7 @@ func handlers() map[string]handler {
 }
 
 // open focuses the reader from the list. In the reader, it edits the
-// targeted row or shows the empty fields.
+// targeted row or shows the empty fields or agents on other branches.
 func (m *Model) open(tea.KeyPressMsg) tea.Cmd {
 	if !m.focusReader {
 		m.focusReaderPane()
@@ -221,6 +221,8 @@ func (m *Model) open(tea.KeyPressMsg) tea.Cmd {
 	switch {
 	case m.fieldKey == emptyFieldsKey:
 		m.showEmptyFields()
+	case m.fieldKey == otherAgentsKey:
+		m.showOtherAgents()
 	case m.fieldKey != "" && m.editableTarget():
 		return m.openField(m.fieldKey)
 	}
