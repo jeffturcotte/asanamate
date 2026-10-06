@@ -230,10 +230,43 @@ func (m *Model) comment(c asana.Story, width int, selected bool) string {
 	}
 	gutter := gutterStyle.Render("│") + " "
 	lines := strings.Split(body, "\n")
+	if r := m.reactions(c.Reactions); r != "" {
+		lines = append(lines, ansi.Truncate(r, width-2, "…"))
+	}
 	for i, l := range lines {
 		lines[i] = gutter + l
 	}
 	return head + "\n" + strings.Join(lines, "\n")
+}
+
+// reactions renders a comment's reactions as each emoji with its count, the
+// user's own as pills, or as a total count when the symbol set has no emoji;
+// "" when it has none.
+func (m *Model) reactions(rs []asana.Reaction) string {
+	var parts []string
+	total := 0
+	for _, r := range rs {
+		if r.Count <= 0 {
+			continue
+		}
+		total += r.Count
+		style := dimStyle
+		if r.Reacted {
+			style = reactedStyle
+		}
+		// One space each side pads the pill; plain reactions get the same
+		// space so they line up with it.
+		parts = append(parts, style.Render(fmt.Sprintf(" %s %d ", ticket.OneLine(r.Emoji), r.Count)))
+	}
+	switch {
+	case total == 0:
+		return ""
+	case total == 1 && !m.sym.emoji:
+		return dimStyle.Render("1 reaction")
+	case !m.sym.emoji:
+		return dimStyle.Render(fmt.Sprintf("%d reactions", total))
+	}
+	return strings.Join(parts, " ")
 }
 
 // authorStyle colors an author the same way every time, from colors.authors.

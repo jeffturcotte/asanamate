@@ -269,6 +269,8 @@ light = "light"
 # Pinned (P) and Viewing section headers.
 # pinned = { fg = "208", bold = true }
 # viewing = { fg = "5", bold = true }
+# Comment reactions you made, drawn as pills.
+# reacted = { bg = "236" }
 # Comment authors cycle through these.
 # authors = ["4", "5", "6", "2", "3", "1"]
 

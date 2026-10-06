@@ -438,6 +438,7 @@ without a background is drawn reversed.
 | `working` | working coding agents |
 | `header`, `selection` | group headers, selection marker |
 | `pinned`, `viewing` | Pinned and Viewing section headers |
+| `reacted` | comment reactions you made, drawn as pills |
 | `authors` | comment author names, cycled |
 | `mode.normal`, `mode.filter`, `mode.read`, `mode.edit` | statusline mode pills |
 | `markdown.text`, `.heading`, `.h1`, `.link`, `.code`, `.code_block`, `.quote`, `.rule` | reading pane Markdown, on top of glamour's dark or light style |

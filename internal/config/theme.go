@@ -39,6 +39,7 @@ type Colors struct {
 	Selection Style          `toml:"selection"`
 	Pinned    Style          `toml:"pinned"`
 	Viewing   Style          `toml:"viewing"`
+	Reacted   Style          `toml:"reacted"` // comment reactions the user made
 	Authors   []Style        `toml:"authors"`
 	Mode      ModeColors     `toml:"mode"`
 	Markdown  MarkdownColors `toml:"markdown"`
