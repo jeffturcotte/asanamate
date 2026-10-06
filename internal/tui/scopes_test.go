@@ -157,6 +157,12 @@ func TestEveryScopeBindingRuns(t *testing.T) {
 				res, _ := newInputBox("Comment", "").update(firstKey("input", "cancel"))
 				expect(t, res.cancelled, "cancel")
 			},
+			"paste_image": func(t *testing.T) {
+				b := newInputBox("Comment", "")
+				b.images = true
+				_, cmd := b.update(firstKey("input", "paste_image"))
+				expect(t, cmd != nil, "paste_image")
+			},
 		},
 		"builder": {
 			"save": func(t *testing.T) {

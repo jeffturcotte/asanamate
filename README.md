@@ -115,6 +115,7 @@ Browsing needs none of these. Each one affects only its own feature, and
 | Repo picker | a directory of clones | `repo_source.root` or `repo_source.command` | leave both empty | `repo_source` | type a repo path when an action asks |
 | Open in browser (`o`, `f`) | macOS `open`; Linux [xdg-utils](https://www.freedesktop.org/wiki/Software/xdg-utils/) and a desktop browser | always on | not needed | `browser` | the status line shows the error and the URL to copy |
 | Copy link or comment (`c`, `y`) | terminal OSC 52 support; in tmux, `set -g set-clipboard on` | always on | not needed | not checked | nothing is copied; asanamate cannot detect this |
+| Paste image into comment (`alt+v`) | macOS `osascript` (built in); Linux `wl-clipboard` (Wayland) or `xclip` (X11). On macOS the terminal must send Option as Alt (kitty `macos_option_as_alt`, Ghostty `macos-option-as-alt`, iTerm2 "Esc+") | always on | not needed | not checked | the comment box shows why; type the image's Markdown yourself |
 | Paste into input (`Ctrl+V`) | macOS `pbpaste`; Linux `xclip` or `xsel` (X11) or `wl-clipboard` (Wayland) | always on | not needed | not checked | the input shows why, and your terminal's paste still works |
 | Agent status | a supported agent tool; see [Agents](#agents-optional) | `[agents]` | remove `[agents]` keys | `agents`, `codex_hook` | off |
 | Time tracking | [hrvst](https://github.com/kgajera/hrvst-cli) 3.x; see [Time tracking](#time-tracking-optional) | `[time_tracking]` | remove `[time_tracking]` keys | `time_tracking` | off |
@@ -177,7 +178,7 @@ key press.
 | `A` | create or edit action files (also available in Settings) |
 | `P` | pin / unpin the selected ticket; pins persist locally per project or My Tasks, above filtered tickets |
 | `e` | edit the selected ticket: add a comment, move it to a section (of a project, or of My Tasks when it is yours), add or remove a project, set a custom field (text, number, date, single- or multi-select, people), assign it, or set its branch (saved locally, overrides `branch_field`; empty removes it) |
-| `c` | add a comment to the selected ticket, from the list or the reader |
+| `c` | add a comment to the selected ticket, from the list or the reader; in the comment box, `alt+v` pastes a clipboard image (see [Writing back to Asana](#writing-back-to-asana)) |
 | `d` / `m` / `@` | set the due date / move to a section / assign, skipping the `e` menu |
 | `.` | run the last picked action again on the selected ticket |
 | `t` | log completed time for the selected ticket (only when time tracking is configured) |
@@ -871,9 +872,18 @@ COMMENT
 ```
 
 Code and link text do not expand `@Full Name` mentions. Raw HTML stays literal.
-Asana comments do not support headings, images, or tables: headings become bold,
-images retain their alt text, and table syntax stays text. Lists inside quotes
-and code blocks or quotes inside lists are flattened to supported formatting.
+Asana comments do not support headings or tables: headings become bold and
+table syntax stays text. Lists inside quotes and code blocks or quotes inside
+lists are flattened to supported formatting.
+
+A local image, `![](~/Desktop/shot.png)`, is attached to the task and shown
+inline in the comment; a comment can be only an image. Paths are relative to
+the working directory, `~/` is your home directory, and a path with spaces
+needs angle brackets: `![](<~/My Shots/a.png>)`. Only image files qualify, up
+to 100 MB each. The confirmation lists the files to upload, and each upload
+also adds an "attached" entry to the task's activity. Images on the web
+(`https://...`) keep only their alt text. In the TUI comment box, `alt+v`
+saves the clipboard image to a temporary file and inserts its Markdown.
 
 User mentions display their names without profile links. Other links stay intact.
 Fenced code blocks preserve whitespace but do not add syntax highlighting.

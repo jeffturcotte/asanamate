@@ -1,8 +1,12 @@
 package asana
 
 import (
+	"bytes"
 	"context"
+	"mime"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"time"
 )
@@ -103,6 +107,33 @@ func (c *Client) Attachments(ctx context.Context, taskGID string) ([]Attachment,
 	q := fields(attachmentFields)
 	q.Set("parent", taskGID)
 	return getAll[Attachment](ctx, c, "/attachments", q)
+}
+
+// UploadAttachment attaches a file to a task.
+func (c *Client) UploadAttachment(ctx context.Context, taskGID, name string, data []byte) (Attachment, error) {
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+	if err := w.WriteField("parent", taskGID); err != nil {
+		return Attachment{}, err
+	}
+	part, err := w.CreatePart(textproto.MIMEHeader{
+		"Content-Disposition": {mime.FormatMediaType("form-data", map[string]string{"name": "file", "filename": name})},
+		"Content-Type":        {http.DetectContentType(data)},
+	})
+	if err != nil {
+		return Attachment{}, err
+	}
+	if _, err := part.Write(data); err != nil {
+		return Attachment{}, err
+	}
+	if err := w.Close(); err != nil {
+		return Attachment{}, err
+	}
+	var r struct {
+		Data Attachment `json:"data"`
+	}
+	err = c.send(ctx, http.MethodPost, "/attachments", nil, body.Bytes(), w.FormDataContentType(), &r)
+	return r.Data, err
 }
 
 // Attachment returns one attachment with a fresh download URL.

@@ -91,6 +91,7 @@ var catalog = []Scope{
 	{Name: "input", Doc: "Multi-line text boxes such as comments. enter adds a newline.", Bindings: []Binding{
 		{Name: "submit", Keys: []string{"ctrl+s"}, Desc: "submit", Typing: true},
 		{Name: "cancel", Keys: []string{"esc"}, Desc: "cancel", Typing: true},
+		{Name: "paste_image", Keys: []string{"alt+v"}, Desc: "comments: insert the clipboard image as Markdown", Typing: true},
 	}},
 	{Name: "builder", Doc: "Action builder (A). Its menus use [keys.picker].", Bindings: []Binding{
 		{Name: "save", Keys: []string{"ctrl+s"}, Desc: "save the action", Typing: true},

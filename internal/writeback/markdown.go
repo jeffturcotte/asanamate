@@ -3,6 +3,7 @@ package writeback
 import (
 	"html"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/sadmachine/asanamate/internal/asana"
@@ -17,9 +18,10 @@ import (
 var commentMarkdown = goldmark.New(goldmark.WithExtensions(extension.Strikethrough))
 
 // CommentHTML renders Markdown using only tags supported by Asana stories.
-// Code and links never expand mentions. Raw HTML stays literal. mentioned
-// lists the users tagged, in order.
-func CommentHTML(markdown string, users []asana.Ref) (string, []asana.Ref) {
+// Code and links never expand mentions. Raw HTML stays literal. images maps
+// image destinations to the gids of attachments shown inline; other images
+// keep only their alt text. mentioned lists the users tagged, in order.
+func CommentHTML(markdown string, users []asana.Ref, images map[string]string) (string, []asana.Ref) {
 	source := []byte(markdown)
 	doc := commentMarkdown.Parser().Parse(text.NewReader(source))
 	var b strings.Builder
@@ -127,7 +129,11 @@ func CommentHTML(markdown string, users []asana.Ref) (string, []asana.Ref) {
 				b.WriteString("</a>")
 			}
 		case *ast.Image:
-			children(n, false) // Stories do not support inline images; retain alt text.
+			if gid, ok := images[imageDestination(n)]; ok {
+				b.WriteString(`<img data-asana-gid="` + html.EscapeString(gid) + `"/>`)
+			} else {
+				children(n, false)
+			}
 		case *ast.RawHTML:
 			for i := 0; i < n.Segments.Len(); i++ {
 				segment := n.Segments.At(i)
@@ -151,6 +157,27 @@ func CommentHTML(markdown string, users []asana.Ref) (string, []asana.Ref) {
 	children(doc, true)
 	b.WriteString("</body>")
 	return b.String(), mentioned
+}
+
+// LocalImages returns the distinct local file paths of Markdown images, in
+// order. Images with a URL scheme are not local.
+func LocalImages(markdown string) []string {
+	doc := commentMarkdown.Parser().Parse(text.NewReader([]byte(markdown)))
+	var paths []string
+	ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if img, ok := n.(*ast.Image); ok && entering {
+			p := imageDestination(img)
+			if u, err := url.Parse(p); err == nil && u.Scheme == "" && p != "" && !slices.Contains(paths, p) {
+				paths = append(paths, p)
+			}
+		}
+		return ast.WalkContinue, nil
+	})
+	return paths
+}
+
+func imageDestination(n *ast.Image) string {
+	return html.UnescapeString(string(util.UnescapePunctuations(n.Destination)))
 }
 
 // commentLink opens only links with supported, safe absolute destinations.
