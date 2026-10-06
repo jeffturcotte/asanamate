@@ -51,7 +51,7 @@ const usage = `usage:
   asanamate setup hooks                            add the agent status hook to Codex
   asanamate config                                 edit the config file in $VISUAL or $EDITOR
   asanamate config update [--yes]                  refresh the config's comments and new defaults,
-                                                   keeping your values (old file saved as .bak)
+                                                   keeping your values (old file saved as .<time>.bak)
   asanamate comment [--yes] <gid> <text | ->       comment on a task ("-" reads stdin)
   asanamate move    [--yes] [--project <gid>] <gid> <section>
   asanamate field   [--yes] [--project <gid>] <gid> <field> <value>

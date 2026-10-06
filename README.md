@@ -129,7 +129,9 @@ back to `vi`) and reports any errors in it after you save.
 
 `asanamate config update` rewrites the config from the current template so it
 picks up new settings and comments, keeping every value you set. The previous
-file is saved as `config.toml.bak`; copy any comments of your own back from it.
+file is saved beside it as a timestamped backup, such as
+`config.toml.2026-10-06--14-30-05.bak`; copy any comments of your own back
+from it.
 Actions live in their own files, so updates never touch them.
 
 ## Layout
@@ -292,8 +294,8 @@ asanamate list | fzf --delimiter '\t' --with-nth 2,4 --preview 'asanamate show {
 ## Upgrading to v0.2.0
 
 v0.2.0 moves the color settings. Run `asanamate config update` to rewrite
-your config; it keeps your values and saves the old file as
-`config.toml.bak`. Until then, asanamate names the first moved key and stops.
+your config; it keeps your values and saves the old file as a timestamped
+`config.toml.<time>.bak`. Until then, asanamate names the first moved key and stops.
 
 | v0.1.0 | v0.2.0 |
 |---|---|
@@ -731,7 +733,8 @@ reported itself, when that report is newer than ccmux's:
   it as is; nothing to install.
 - **Codex** reports through a hook. `asanamate setup` offers to add
   `asanamate hook codex` to `$CODEX_HOME/hooks.json` (else
-  `~/.codex/hooks.json`), saving the old file as `hooks.json.bak`; run
+  `~/.codex/hooks.json`), saving the old file as a timestamped
+  `hooks.json.<time>.bak`; run
   `asanamate setup hooks` to add it later. Codex asks you to trust the new
   hooks on its next start, and needs hooks on (`[features] hooks = true`). The
   hook writes one file per session in `$XDG_STATE_HOME/asanamate/agents/`
@@ -742,8 +745,8 @@ reported itself, when that report is newer than ccmux's:
   The hook runs asanamate by its full path. After you move or reinstall
   asanamate somewhere else, `asanamate setup hooks` finds the old hook, and
   `doctor` reports it in its `codex_hook` row; answer yes to replace it with
-  the current path. Your other hooks stay, and the old file is saved as
-  `hooks.json.bak` again. To remove the hook, delete the entries whose command
+  the current path. Your other hooks stay, and the old file is saved as a
+  timestamped `hooks.json.<time>.bak` again. To remove the hook, delete the entries whose command
   ends in `hook codex` from `hooks.json`.
 
 Any status other than `idle` from ccmux is kept as is.

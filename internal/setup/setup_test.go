@@ -233,7 +233,7 @@ func TestOfferCodexHook(t *testing.T) {
 	}
 
 	offer("y\n")
-	if data, _ := os.ReadFile(path + ".bak"); string(data) != theirs {
+	if data := readBackup(t, path); data != theirs {
 		t.Fatalf("backup = %s", data)
 	}
 	var got struct {
@@ -291,7 +291,7 @@ func TestOfferCodexHookRepairsStaleHook(t *testing.T) {
 	if out := offer("y\n"); !strings.Contains(out, "Replaced the hook") {
 		t.Fatalf("repair output = %q", out)
 	}
-	if data, _ := os.ReadFile(path + ".bak"); string(data) != stale {
+	if data := readBackup(t, path); data != stale {
 		t.Fatalf("backup = %s", data)
 	}
 	var got struct {
@@ -476,4 +476,15 @@ func TestUpdateWritesThemeExample(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(config.ThemesDir(path), "example.toml.example")); err != nil {
 		t.Fatalf("config update must add the theme example: %v", err)
 	}
+}
+
+// readBackup returns the one timestamped backup of path.
+func readBackup(t *testing.T, path string) string {
+	t.Helper()
+	backups, _ := filepath.Glob(path + ".*.bak")
+	if len(backups) != 1 {
+		t.Fatalf("backups of %s = %v, want one", path, backups)
+	}
+	data, _ := os.ReadFile(backups[0])
+	return string(data)
 }
