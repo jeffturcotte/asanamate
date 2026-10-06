@@ -47,8 +47,28 @@ func (m *Model) renderCards(t ticket.Ticket, width int) string {
 	for _, a := range m.viewAgents(t.Task) {
 		agentLines = append(agentLines, m.agentLabel(a, stateStyles[a.State].Bold(true))+dimStyle.Render(" — "+ticket.OneLine(filepath.Base(a.Path))))
 	}
-	for _, n := range m.agentNotes(t.Task) {
+	notes, hidden := m.agentNotes(t.Task)
+	for _, n := range notes {
 		agentLines = append(agentLines, dimStyle.Render(ticket.OneLine(n)))
+	}
+	if hidden > 0 {
+		style := dimStyle.Italic(true)
+		if m.fieldKey == otherAgentsKey {
+			style = m.fieldStyle()
+		}
+		agentLines = append(agentLines, style.Render("+ Show "+otherAgents(hidden)))
+	}
+	// markOthers records the Show agents row, the Agents body's last line, for
+	// a body that starts on line and wraps at width.
+	markOthers := func(line, width int) {
+		if hidden == 0 {
+			return
+		}
+		if above := agentLines[:len(agentLines)-1]; len(above) > 0 {
+			line += lipgloss.Height(wrap(strings.Join(above, "\n"), width))
+		}
+		m.fieldLines[otherAgentsKey] = line
+		m.cardTargets = append(m.cardTargets, otherAgentsKey)
 	}
 	subtaskTitle, subtasks := m.subtasks(t)
 
@@ -76,6 +96,7 @@ func (m *Model) renderCards(t ticket.Ticket, width int) string {
 			card := m.card(m.sym.robot+"   Agents", wrap(strings.Join(agentLines, "\n"), rightW-4), rightW, m.fieldKey == key)
 			side = append(side, card)
 			m.fieldEnds[key] = sideLine + lipgloss.Height(card) - 1
+			markOthers(sideLine+1, rightW-4)
 			sideLine += lipgloss.Height(card) + 1
 		}
 		if subtasks != "" {
@@ -92,6 +113,7 @@ func (m *Model) renderCards(t ticket.Ticket, width int) string {
 	} else {
 		blocks = []string{head, m.card("Details", m.detailsBody(t, width-4, top), width, false)}
 		add("section:agents", "Agents", wrap(strings.Join(agentLines, "\n"), width))
+		markOthers(m.fieldLines["section:agents"]+1, width)
 		add("section:description", "Description", m.renderRich(t.HTMLNotes, width))
 		add("section:subtasks", subtaskTitle, wrap(subtasks, width))
 	}

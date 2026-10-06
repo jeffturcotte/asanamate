@@ -129,6 +129,7 @@ type Model struct {
 	shownAgents string         // agents section rendered for shownGID
 	fieldKey    string         // selected cards view target; "" for none
 	showEmpty   bool           // the cards view lists empty custom fields; resets per ticket
+	showOthers  bool           // Agents lists agents on other branches; resets per ticket
 	fieldLines  map[string]int // reader line of each cards view target, by key
 	fieldEnds   map[string]int // last reader line of multi-line targets, by key
 	cardTargets []string       // cards view targets in reading order
@@ -487,6 +488,10 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			m.showEmptyFields()
 			return nil
 		}
+		if m.fieldKey == otherAgentsKey {
+			m.showOtherAgents()
+			return nil
+		}
 		if m.editableTarget() {
 			return m.openField(m.fieldKey)
 		}
@@ -692,7 +697,7 @@ func (m *Model) selectionChanged() tea.Cmd {
 	if t.GID == m.shownGID {
 		return nil
 	}
-	m.fieldKey, m.showEmpty = "", false
+	m.fieldKey, m.showEmpty, m.showOthers = "", false, false
 	if _, cached := m.details[t.GID]; cached {
 		m.renderDetail(false)
 		images := m.loadInlineImages(m.details[t.GID])
