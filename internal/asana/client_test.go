@@ -236,3 +236,29 @@ func TestProjectFieldGIDs(t *testing.T) {
 		t.Fatalf("got %v, err %v", got, err)
 	}
 }
+
+func TestProjectFieldsReturnsNamesWithoutTaskValues(t *testing.T) {
+	for _, tc := range []struct {
+		name, data string
+		want       []Ref
+	}{
+		{"configured", `[{"custom_field":{"gid":"f1","name":"Priority"}},{"custom_field":{"gid":"f2","name":"Priority"}}]`, []Ref{{GID: "f1", Name: "Priority"}, {GID: "f2", Name: "Priority"}}},
+		{"no fields", `[]`, []Ref{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet || r.URL.Path != "/projects/9/custom_field_settings" {
+					t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+				}
+				if !strings.Contains(r.URL.Query().Get("opt_fields"), "custom_field.name") {
+					t.Error("metadata request lacks field names")
+				}
+				io.WriteString(w, `{"data":`+tc.data+`}`)
+			})
+			got, err := c.ProjectFields(ctx, "9")
+			if err != nil || !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("fields = %v, err = %v, want %v", got, err, tc.want)
+			}
+		})
+	}
+}

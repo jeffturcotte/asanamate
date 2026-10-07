@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -51,6 +52,35 @@ func TestSaveRoundTripAndPermissions(t *testing.T) {
 	}
 	if !slices.Equal(again.RecentSavedViews, s.RecentSavedViews) || again.CurrentSavedViews[""] != `Today's "work"` || again.CurrentSavedViews["123"] != `Today's "work"` {
 		t.Fatalf("round trip lost saved view metadata: %+v", again)
+	}
+}
+
+func TestColumnsRoundTripPreservesOrderAndEmptyOverride(t *testing.T) {
+	path := filepath.Join(t.TempDir(), FileName)
+	s, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Columns[""] = []Column{{Field: "initials"}, {Field: "due"}}
+	s.Columns["123"] = []Column{{Field: "Priority", GID: "456"}, {Field: "assignee"}}
+	s.Columns["789"] = []Column{}
+	if err := s.Save(); err != nil {
+		t.Fatal(err)
+	}
+	again, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, gid := range []string{"", "123"} {
+		if !reflect.DeepEqual(again.Columns[gid], s.Columns[gid]) {
+			t.Fatalf("project %q columns = %v, want %v", gid, again.Columns[gid], s.Columns[gid])
+		}
+	}
+	if columns, exists := again.Columns["789"]; !exists || len(columns) != 0 {
+		t.Fatalf("empty override lost: columns = %v, exists = %v", columns, exists)
+	}
+	if _, exists := again.Columns["unconfigured"]; exists {
+		t.Fatal("missing override became explicit")
 	}
 }
 

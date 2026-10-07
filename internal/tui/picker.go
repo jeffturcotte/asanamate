@@ -27,6 +27,7 @@ type pickResult struct {
 	item      *pickItem
 	items     []pickItem // checked items, in list order, for a multi picker
 	free      string
+	reset     bool // return to defaults, when the picker offers a reset
 }
 
 // picker is a modal list. It starts in browse mode, or in search mode with
@@ -34,19 +35,21 @@ type pickResult struct {
 // selects by each item's Key instead. With allowFree, the search text can be
 // returned as is. With multi, toggle checks items and choose returns them.
 type picker struct {
-	onPick    func(pickResult) tea.Cmd // runs on the returned choice
-	title     string
-	items     []pickItem
-	matches   []int
-	cursor    int
-	input     textinput.Model
-	keySelect bool
-	searching bool
-	helpIcon  string // resolved symbol set's info icon; empty uses (i)
-	allowFree bool
-	multi     bool
-	checked   map[int]bool
-	err       string
+	onPick     func(pickResult) tea.Cmd // runs on the returned choice
+	title      string
+	items      []pickItem
+	matches    []int
+	cursor     int
+	input      textinput.Model
+	keySelect  bool
+	searching  bool
+	helpIcon   string // resolved symbol set's info icon; empty uses (i)
+	allowFree  bool
+	multi      bool
+	reorder    bool // ctrl+up/down reorders items in an unfiltered multi picker
+	allowReset bool // ctrl+r returns a reset result
+	checked    map[int]bool
+	err        string
 }
 
 // newPicker returns a picker that calls onPick with the choice.
@@ -147,6 +150,19 @@ func (p *picker) freeText() (pickResult, bool) {
 }
 
 func (p *picker) update(msg tea.KeyPressMsg) (pickResult, tea.Cmd) {
+	if p.multi {
+		switch msg.String() {
+		case "ctrl+r":
+			if p.allowReset {
+				return pickResult{done: true, reset: true}, nil
+			}
+		case "ctrl+up", "ctrl+down":
+			if p.reorder {
+				p.moveItem(msg.String() == "ctrl+down")
+				return pickResult{}, nil
+			}
+		}
+	}
 	if p.keySelect {
 		for i := range p.items {
 			if p.items[i].Key == msg.String() {
@@ -213,14 +229,36 @@ func (p *picker) update(msg tea.KeyPressMsg) (pickResult, tea.Cmd) {
 	return pickResult{}, cmd
 }
 
+// moveItem keeps checks attached to their items, and the cursor on the moved
+// item. Reordering requires an unfiltered list so its order is unambiguous.
+func (p *picker) moveItem(down bool) {
+	if p.input.Value() != "" {
+		p.err = "Clear search before reordering"
+		return
+	}
+	i, j := p.cursor, p.cursor-1
+	if down {
+		j = i + 1
+	}
+	if i < 0 || i >= len(p.items) || j < 0 || j >= len(p.items) {
+		return
+	}
+	p.items[i], p.items[j] = p.items[j], p.items[i]
+	p.checked[i], p.checked[j] = p.checked[j], p.checked[i]
+	p.cursor = j
+	p.err = ""
+	p.refilter()
+}
+
 func (p *picker) view(width, height int, accent lipgloss.Style) string {
 	var b strings.Builder
-	b.WriteString(accent.Render(p.title) + "\n")
+	b.WriteString(accent.Render(ansi.Truncate(p.title, width, "…")) + "\n")
 	if !p.keySelect && p.searching {
 		styles := p.input.Styles()
 		styles.Focused.Prompt = accent
 		p.input.SetStyles(styles)
-		p.input.SetWidth(max(width-2, 1))
+		// Text input width excludes its prompt and trailing cursor cell.
+		p.input.SetWidth(max(width-ansi.StringWidth(p.input.Prompt)-1, 1))
 		b.WriteString(p.input.View() + "\n")
 	}
 	help := ""
@@ -234,7 +272,8 @@ func (p *picker) view(width, height int, accent lipgloss.Style) string {
 			break
 		}
 	}
-	rows := max(height-4-lipgloss.Height(help), 1)
+	hint := ansi.Wrap(p.controls(accent), width, "")
+	rows := max(height-3-lipgloss.Height(help)-lipgloss.Height(hint), 1)
 	start := max(p.cursor-rows+1, 0)
 	if p.rowCount() == 0 {
 		b.WriteString(dimStyle.Render("no matches") + "\n")
@@ -273,6 +312,12 @@ func (p *picker) view(width, height int, accent lipgloss.Style) string {
 	if help != "" {
 		b.WriteString(help + "\n")
 	}
+	b.WriteString(hint)
+	return b.String()
+}
+
+// controls describes the keys supported by this picker.
+func (p *picker) controls(accent lipgloss.Style) string {
 	var hints [][2]string
 	if p.searching && !p.keySelect {
 		hints = append(hints, [2]string{typedLabel("picker", "down", "up"), "move"})
@@ -291,12 +336,17 @@ func (p *picker) view(width, height int, accent lipgloss.Style) string {
 	if p.allowFree {
 		hints = append(hints, [2]string{keyLabel("picker", "use_typed"), "use typed path"})
 	}
+	if p.multi && p.reorder {
+		hints = append(hints, [2]string{"ctrl+up/down", "reorder"})
+	}
+	if p.allowReset {
+		hints = append(hints, [2]string{"ctrl+r", "defaults"})
+	}
 	cancel := "cancel"
 	if p.searching && !p.keySelect {
 		cancel = "clear search"
 	}
-	b.WriteString(hintLine(accent, append(hints, [2]string{keyLabel("picker", "cancel"), cancel})...))
-	return b.String()
+	return hintLine(accent, append(hints, [2]string{keyLabel("picker", "cancel"), cancel})...)
 }
 
 // modalHelp reserves a stable footer height while wrapping the selected

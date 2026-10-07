@@ -151,17 +151,31 @@ func (c *Client) Sections(ctx context.Context, projectGID string) ([]Ref, error)
 	return getAll[Ref](ctx, c, "/projects/"+projectGID+"/sections", fields("name"))
 }
 
-// ProjectFieldGIDs returns the gids of the custom fields attached to a project.
-func (c *Client) ProjectFieldGIDs(ctx context.Context, projectGID string) (map[string]bool, error) {
+// ProjectFields returns the custom fields attached to a project, even when
+// the project has no tasks or the fields have no values.
+func (c *Client) ProjectFields(ctx context.Context, projectGID string) ([]Ref, error) {
 	settings, err := getAll[struct {
 		CustomField Ref `json:"custom_field"`
-	}](ctx, c, "/projects/"+projectGID+"/custom_field_settings", fields("custom_field.gid"))
+	}](ctx, c, "/projects/"+projectGID+"/custom_field_settings", fields("custom_field.gid,custom_field.name"))
 	if err != nil {
 		return nil, err
 	}
-	gids := make(map[string]bool, len(settings))
+	refs := make([]Ref, 0, len(settings))
 	for _, s := range settings {
-		gids[s.CustomField.GID] = true
+		refs = append(refs, s.CustomField)
+	}
+	return refs, nil
+}
+
+// ProjectFieldGIDs returns the gids of the custom fields attached to a project.
+func (c *Client) ProjectFieldGIDs(ctx context.Context, projectGID string) (map[string]bool, error) {
+	refs, err := c.ProjectFields(ctx, projectGID)
+	if err != nil {
+		return nil, err
+	}
+	gids := make(map[string]bool, len(refs))
+	for _, f := range refs {
+		gids[f.GID] = true
 	}
 	return gids, nil
 }
