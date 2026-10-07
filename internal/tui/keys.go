@@ -162,6 +162,7 @@ func handlers() map[string]handler {
 		"due":          {run: edit(editDue)},
 		"move_section": {run: edit(editSection)},
 		"assign":       {run: edit(editAssignee)},
+		"complete":     {run: edit(editComplete)},
 		"log_time":     {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.requestMenu(m.openTime) }},
 		"attachments":  {run: menu(func(m *Model) func() { return m.openAttachments })},
 		"open_browser": {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd {

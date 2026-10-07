@@ -469,6 +469,9 @@ func (m *Model) editDone(msg editDoneMsg) tea.Cmd {
 		return nil
 	}
 	m.status = msg.what + ": done"
+	if msg.done != "" {
+		m.status = msg.done
+	}
 	// Keep the edited ticket shown even if the reload drops it from the view.
 	if t, ok := m.selected(); ok && t.GID == msg.gid {
 		m.viewing = &t
