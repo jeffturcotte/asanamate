@@ -53,10 +53,16 @@ const usage = `usage:
   asanamate config update [--yes]                  refresh the config's comments and new defaults,
                                                    keeping your values (old file saved as .<time>.bak)
   asanamate comment [--yes] <gid> <text | ->       comment on a task ("-" reads stdin)
-  asanamate move    [--yes] [--project <gid>] <gid> <section>
+  asanamate move    [--yes] [--project <gid> | --my-tasks] <gid> <section>
   asanamate field   [--yes] [--project <gid>] <gid> <field> <value>
                                                    set a custom field ("a, b" for multi-select
                                                    and people; "" clears it)
+  asanamate assign  [--yes] <gid> <name | me | "">
+                                                   assign a task ("" unassigns it)
+  asanamate due     [--yes] <gid> <YYYY-MM-DD | "">
+                                                   set a task's due date ("" clears it)
+  asanamate project add|remove [--yes] <gid> <project-gid>
+                                                   add a task to a project or remove it
   asanamate doctor [<gid>]                         check setup and optional tools; for a ticket, why agents link (or not)
   asanamate time-provider hrvst --task-id <id>     serve time tracking provider requests on stdin
   asanamate hook codex                             record a Codex hook event read on stdin
@@ -78,6 +84,8 @@ func run(args []string) int {
 	case "config":
 		err = runConfig(args[1:])
 	case "comment", "move", "field":
+		err = writeCommand(name, args[1:])
+	case "assign", "due", "project":
 		err = writeCommand(name, args[1:])
 	case "version":
 		fmt.Println(currentVersion())
@@ -160,17 +168,27 @@ func newClient() (*asana.Client, error) {
 }
 
 func writeCommand(name string, args []string) error {
+	if name == "project" {
+		if len(args) == 0 || (args[0] != "add" && args[0] != "remove") {
+			return fmt.Errorf("project: want add or remove\n%s", usage)
+		}
+		name, args = "project "+args[0], args[1:]
+	}
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	yes := fs.Bool("yes", false, "write without asking for confirmation")
 	project := new(string)
 	if name == "move" || name == "field" {
 		project = fs.String("project", os.Getenv("ASANAMATE_PROJECT_GID"), "project gid; picks the project (move) or the project's field (field) when ambiguous; defaults to $ASANAMATE_PROJECT_GID")
 	}
+	myTasks := new(bool)
+	if name == "move" {
+		myTasks = fs.Bool("my-tasks", false, "move within your My Tasks instead of a project")
+	}
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	rest := fs.Args()
-	want := map[string]int{"comment": 2, "move": 2, "field": 3}[name]
+	want := map[string]int{"comment": 2, "move": 2, "field": 3, "assign": 2, "due": 2, "project add": 2, "project remove": 2}[name]
 	if len(rest) != want {
 		return fmt.Errorf("%s: wrong number of arguments\n%s", name, usage)
 	}
@@ -178,8 +196,19 @@ func writeCommand(name string, args []string) error {
 	if !asana.ValidGID(gid) {
 		return fmt.Errorf("task gid must be numeric, got %q", gid)
 	}
+	if strings.HasPrefix(name, "project ") {
+		project = &rest[1]
+	}
 	if *project != "" && !asana.ValidGID(*project) {
 		return fmt.Errorf("project gid must be numeric, got %q", *project)
+	}
+	if *myTasks {
+		both := false
+		fs.Visit(func(f *flag.Flag) { both = both || f.Name == "project" })
+		if both {
+			return errors.New("move: pass --project or --my-tasks, not both")
+		}
+		*project = writeback.MyTasks
 	}
 	cfg, err := loadConfig()
 	if err != nil {
@@ -207,6 +236,14 @@ func writeCommand(name string, args []string) error {
 		return svc.Comment(ctx, gid, text)
 	case "move":
 		return svc.Move(ctx, gid, rest[1], *project)
+	case "assign":
+		return svc.Assign(ctx, gid, rest[1])
+	case "due":
+		return svc.SetDue(ctx, gid, rest[1])
+	case "project add":
+		return svc.AddProject(ctx, gid, *project)
+	case "project remove":
+		return svc.RemoveProject(ctx, gid, *project)
 	default:
 		return svc.SetField(ctx, gid, rest[1], rest[2], *project)
 	}
