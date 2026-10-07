@@ -22,17 +22,19 @@ macOS and Linux only.
   attachments, with images inline in kitty-graphics terminals.
 - **Edit** a ticket: comment (with images), move it to a section, assign or
   unassign it, set its due date or a custom field, and add or remove projects.
+  Mark it complete, or reopen it.
   See [Keys](#keys).
 - **Act** on a ticket: run your own commands with the ticket as context, such
   as starting a coding agent in its repo. See [Actions](#actions).
 - **Report back** from scripts and agents with every edit the TUI makes:
-  `asanamate comment`, `move`, `field`, `assign`, `due`, and `project`. See
+  `asanamate comment`, `move`, `field`, `assign`, `due`, `project`, and
+  `complete`. See
   [Writing back to Asana](#writing-back-to-asana).
 - **Optional:** show running coding agents next to their tickets
   ([Agents](#agents-optional)) and log time to Harvest
   ([Time tracking](#time-tracking-optional)).
 
-asanamate does not create tickets or mark them complete; use Asana for those.
+asanamate does not create tickets; use Asana for that.
 
 **Early release.** asanamate is pre-1.0: expect breaking changes, including to
 config keys, before 1.0. Release notes call out each one.
@@ -219,9 +221,10 @@ key press.
 | `space`, `a` | run an action on the selected ticket |
 | `A` | create or edit action files (also available in Settings) |
 | `P` | pin / unpin the selected ticket; pins persist locally per project or My Tasks, above filtered tickets |
-| `e` | edit the selected ticket: add a comment, move it to a section (of a project, or of My Tasks when it is yours), add or remove a project, set a custom field (text, number, date, single- or multi-select, people), assign it, or set its branch (saved locally, overrides `branch_field`; empty removes it) |
+| `e` | edit the selected ticket: add a comment, move it to a section (of a project, or of My Tasks when it is yours), add or remove a project, set a custom field (text, number, date, single- or multi-select, people), assign it, mark it complete or reopen it, or set its branch (saved locally, overrides `branch_field`; empty removes it) |
 | `c` | add a comment to the selected ticket, from the list or the reader; in the comment box, `alt+v` pastes a clipboard image (see [Writing back to Asana](#writing-back-to-asana)) |
 | `d` / `m` / `@` | set the due date / move to a section / assign, skipping the `e` menu |
+| `x` | mark the selected ticket complete, or reopen it when it is complete; a ticket the filter now hides stays in Viewing until you move away, so `x` again undoes it |
 | `.` | run the last picked action again on the selected ticket |
 | `t` | log completed time for the selected ticket (only when time tracking is configured) |
 | `f` | attachments: view images inline (`j`/`k` step between them) or open in the browser |
@@ -884,6 +887,7 @@ asanamate assign  [--yes] <gid> "Ann Lee"                   # or me; "" unassign
 asanamate due     [--yes] <gid> 2026-10-01                  # "" clears the date
 asanamate project add    [--yes] <gid> <project-gid>
 asanamate project remove [--yes] <gid> <project-gid>
+asanamate complete [--yes] [--reopen] <gid>                 # --reopen marks it incomplete
 ```
 
 The TUI's edits run the same code, so each one is also a command here.
