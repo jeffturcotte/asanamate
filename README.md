@@ -1,41 +1,44 @@
 # asanamate
 
-A terminal UI for reading Asana tickets and running your own commands on them.
-Browse My Tasks or any project, read a ticket with its fields, comments, and
-attachments, then press a key to start a coding agent in the ticket's repo with
-the ticket as context. Agents and scripts report back with `asanamate comment`,
-`move`, and `field`.
-
-External commands extend asanamate: actions, agent sources, repo sources, and
-time trackers. [docs/extensions.md](docs/extensions.md) documents each
-protocol.
-
-asanamate runs in any terminal and works well in tmux panes, windows, popups,
-and sidebars; see [Layout](#layout).
-macOS and Linux only.
+An Asana client for the terminal, built for the Asana work you do every day:
+read your tickets, update them, and create new ones without leaving the
+keyboard. It fits the way you already use your terminal, full screen or in a
+tmux pane, sidebar, or popup ([Layout](#layout), [tmux](#tmux)). Your own
+commands extend it, and its CLI offers every write the TUI makes, so scripts
+and coding agents can do what you can. macOS and Linux only.
 
 ## What it does
 
 - **Browse** My Tasks or any project: filter, group, sort, pin tickets, and
-  save views.
+  save views. See [Filtering](#filtering).
 - **Read** a ticket's fields, description, subtasks, comments, reactions, and
-  attachments, with images inline in kitty-graphics terminals.
+  attachments, with images inline in kitty-graphics terminals. See
+  [Layout](#layout).
 - **Edit** a ticket: comment (with images), move it to a section, assign or
-  unassign it, set its due date or a custom field, and add or remove projects.
-  Mark it complete, or reopen it.
-  See [Keys](#keys).
-- **Create** a ticket in a project or My Tasks, or a subtask, from the TUI or
-  with `asanamate create`.
+  unassign it, set its due date or a custom field, add or remove projects, and
+  mark it complete or reopen it. See [Keys](#keys).
+- **Create** a ticket in a project or My Tasks, or a subtask. See
+  [Keys](#keys).
+- **Script** every edit and create from the CLI: `asanamate comment`, `move`,
+  `field`, `assign`, `due`, `project`, `complete`, and `create`. See
+  [Writing back to Asana](#writing-back-to-asana).
 - **Act** on a ticket: run your own commands with the ticket as context, such
   as starting a coding agent in its repo. See [Actions](#actions).
-- **Report back** from scripts and agents with every edit the TUI makes:
-  `asanamate comment`, `move`, `field`, `assign`, `due`, `project`, and
-  `complete`. See
-  [Writing back to Asana](#writing-back-to-asana).
-- **Optional:** show running coding agents next to their tickets, from ccmux
-  through the bundled `asanamate-ccmux` adapter or from any tool
-  ([Agents](#agents-optional)), and log time to Harvest
-  ([Time tracking](#time-tracking-optional)).
+- **Show agents** (optional): coding agents running in ccmux or any other tool
+  appear next to their tickets. See [Agents](#agents-optional).
+- **Track time** (optional): log time to Harvest from a ticket. See
+  [Time tracking](#time-tracking-optional).
+
+**Extending asanamate.** External commands plug in at four points:
+[actions](docs/extensions.md#actions),
+[agent sources](docs/extensions.md#agent-sources),
+[time tracking providers](docs/extensions.md#time-tracking), and
+[repo sources](docs/extensions.md#repo-sources).
+[docs/extensions.md](docs/extensions.md) documents each protocol.
+
+**Left to Asana.** asanamate does not rename or delete tickets, change a
+description after creating a ticket, edit or delete comments, set tags,
+followers, or dependencies, or create or change projects and sections.
 
 **Early release.** asanamate is pre-1.0: expect breaking changes, including to
 config keys, before 1.0. Release notes call out each one.
