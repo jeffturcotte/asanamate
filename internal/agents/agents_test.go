@@ -52,6 +52,26 @@ func TestListResolvesBranchAndRepo(t *testing.T) {
 			t.Errorf("agent %d = %+v, want %+v", i, got[i], want[i])
 		}
 	}
+
+	// Branch and repo columns: both set skip git; a branch alone is kept
+	// only where git finds none.
+	cmd = "printf '%s\\tidle\\t\\t\\tfeat\\t/outer\\n%s\\tidle\\t\\t\\tother\\t\\n/nowhere\\tidle\\t\\t\\tmain\\t\\n' '" + plain + "' '" + wt + "'"
+	if got, err = List(context.Background(), cmd); err != nil {
+		t.Fatal(err)
+	}
+	want = []Agent{
+		{Path: plain, Status: "idle", Branch: "feat", Repo: "/outer"},
+		{Path: wt, Status: "idle", Branch: "fix-login", Repo: repo},
+		{Path: "/nowhere", Status: "idle", Branch: "main"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %+v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("agent %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
 }
 
 // TestCommandFixture runs testdata/agents.sh, the minimal agents source
@@ -71,6 +91,7 @@ func TestCommandFixture(t *testing.T) {
 		{Path: dir, Status: "busy", Target: "s1", Title: "Fix login", State: Working},
 		{Path: dir, Status: "permission", Target: "s2", State: Waiting},
 		{Path: dir, Status: "mystery", State: Unknown},
+		{Path: dir, Status: "idle", Target: "s3", Branch: "fix-login", Repo: dir, State: Idle},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("got %+v", got)

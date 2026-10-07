@@ -38,8 +38,8 @@ type Agent struct {
 	Path   string // working directory the agent runs in
 	Status string // raw status from the tool, e.g. "running"
 	Target string // optional id the tool uses to jump to the agent
-	Branch string // git branch checked out at Path, "" if not a repo
-	Repo   string // main repository of Path (worktrees resolve to their repo)
+	Branch string // branch to link by: the source's, else git's at Path; "" if none
+	Repo   string // main repository to link by (worktrees resolve to their repo)
 	State  State  // Status mapped to a State by Classify
 	Title  string // short description: the tool's title, else its first prompt
 }
@@ -215,8 +215,11 @@ func codexPane(pane string) (status, rest string) {
 }
 
 // List runs command with /bin/sh and parses
-// "<path>\t<status>[\t<target>[\t<title>]]" lines. Lines without a tab are skipped. Each path's branch and repository
-// come from git, so worktrees resolve to the repository they belong to.
+// "<path>\t<status>[\t<target>[\t<title>[\t<branch>\t<repo>]]]" lines.
+// Lines without a tab are skipped. A line that sets both branch and repo
+// links by them; otherwise git reads them at path, so worktrees resolve to
+// the repository they belong to, and a set branch is kept only when git finds
+// none.
 func List(ctx context.Context, command string) ([]Agent, error) {
 	out, err := exec.CommandContext(ctx, "/bin/sh", "-c", command).Output()
 	if err != nil {
@@ -235,9 +238,21 @@ func List(ctx context.Context, command string) ([]Agent, error) {
 		if len(cols) > 3 {
 			a.Title = title(cols[3])
 		}
+		if len(cols) > 5 {
+			a.Branch, a.Repo = strings.TrimSpace(cols[4]), strings.TrimSpace(cols[5])
+		}
 		agents = append(agents, a)
 	}
-	inParallel(len(agents), func(i int) { agents[i].Branch, agents[i].Repo = gitInfo(ctx, agents[i].Path) })
+	inParallel(len(agents), func(i int) {
+		a := &agents[i]
+		if a.Branch != "" && a.Repo != "" {
+			return
+		}
+		fallback := a.Branch
+		if a.Branch, a.Repo = gitInfo(ctx, a.Path); a.Branch == "" {
+			a.Branch = fallback
+		}
+	})
 	return agents, nil
 }
 
