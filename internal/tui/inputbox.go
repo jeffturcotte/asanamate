@@ -56,6 +56,19 @@ func (b *inputBox) update(msg tea.Msg) (res pickResult, cmd tea.Cmd) {
 				b.err = ""
 				return pickResult{}, pasteImage
 			}
+		case "external_editor":
+			return pickResult{}, externalEditor(b.area.Value(), func(text string, err error) {
+				if err != nil {
+					b.err = err.Error()
+					return
+				}
+				b.area.SetValue(text)
+				b.err = ""
+				if b.area.Value() != text {
+					b.sanitizedPaste = true
+					b.err = "Editor changes tabs/control characters or exceeds the input limit. Review before submitting."
+				}
+			})
 		}
 		b.err = ""
 	} else if pasted, ok := msg.(imagePasteMsg); ok {
@@ -112,5 +125,5 @@ func (b *inputBox) view(width, height int, accent lipgloss.Style) string {
 		pasteHint = [2]string{keyLabel("input", "paste_image"), "paste image"}
 	}
 	return accent.Render(b.title) + "\n" + b.area.View() + "\n" + errorLine + help +
-		hintLine(accent, [2]string{"enter", "newline"}, pasteHint, [2]string{keyLabel("input", "submit"), "submit"}, [2]string{keyLabel("input", "cancel"), "cancel"})
+		hintLine(accent, [2]string{"enter", "newline"}, pasteHint, [2]string{keyLabel("input", "submit"), "submit"}, [2]string{keyLabel("input", "external_editor"), "editor"}, [2]string{keyLabel("input", "cancel"), "cancel"})
 }

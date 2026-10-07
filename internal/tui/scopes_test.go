@@ -116,6 +116,13 @@ func TestEveryScopeBindingRuns(t *testing.T) {
 			},
 		},
 		"form": {
+			"external_editor": func(t *testing.T) {
+				t.Setenv("VISUAL", "true")
+				f := twoFields()
+				_, cmd := f.update(firstKey("form", "external_editor"))
+				runEditorTest(t, &Model{form: f}, cmd)
+				expect(t, f.editing && f.err == "", "external_editor")
+			},
 			"next": func(t *testing.T) {
 				f := twoFields()
 				f.update(firstKey("form", "next"))
@@ -138,6 +145,14 @@ func TestEveryScopeBindingRuns(t *testing.T) {
 			},
 		},
 		"form_field": {
+			"external_editor": func(t *testing.T) {
+				t.Setenv("VISUAL", "true")
+				f := twoFields()
+				f.editing = true
+				_, cmd := f.update(firstKey("form_field", "external_editor"))
+				runEditorTest(t, &Model{form: f}, cmd)
+				expect(t, f.editing && f.err == "", "external_editor")
+			},
 			"done": func(t *testing.T) {
 				f := editing("done")
 				expect(t, !f.editing && f.values["a"] == "1" && f.cursor == 0, "done")
@@ -149,6 +164,13 @@ func TestEveryScopeBindingRuns(t *testing.T) {
 			"cancel": func(t *testing.T) { f := editing("cancel"); expect(t, !f.editing && f.values["a"] == "", "cancel") },
 		},
 		"input": {
+			"external_editor": func(t *testing.T) {
+				t.Setenv("VISUAL", "true")
+				b := newInputBox("Comment", "")
+				_, cmd := b.update(firstKey("input", "external_editor"))
+				runEditorTest(t, &Model{input: b}, cmd)
+				expect(t, b.err == "", "external_editor")
+			},
 			"submit": func(t *testing.T) {
 				res, _ := newInputBox("Comment", "").update(firstKey("input", "submit"))
 				expect(t, res.done, "submit")

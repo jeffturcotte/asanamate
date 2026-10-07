@@ -402,6 +402,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.status = status
 		}
+	case editorDoneMsg:
+		msg.apply(msg.text, msg.err)
+		return m, nil
 	case timeFormMsg:
 		m.gotTimeForm(msg)
 	case timeDoneMsg:

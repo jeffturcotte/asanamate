@@ -77,6 +77,7 @@ var catalog = []Scope{
 		{Name: "cancel", Keys: []string{"esc"}, Desc: "stop searching, or close", Typing: true},
 	}},
 	{Name: "form", Doc: "Action forms and time entry.", Bindings: []Binding{
+		{Name: "external_editor", Keys: []string{"ctrl+e"}, Desc: "edit the draft in VISUAL, EDITOR, or vim", Typing: true},
 		{Name: "next", Keys: []string{"tab", "j", "down"}, Desc: "next field"},
 		{Name: "prev", Keys: []string{"shift+tab", "k", "up"}, Desc: "previous field"},
 		{Name: "edit", Keys: []string{"enter"}, Desc: "edit the field"},
@@ -84,11 +85,13 @@ var catalog = []Scope{
 		{Name: "cancel", Keys: []string{"esc"}, Desc: "cancel"},
 	}},
 	{Name: "form_field", Doc: "While editing a form text field.", Bindings: []Binding{
+		{Name: "external_editor", Keys: []string{"ctrl+e"}, Desc: "edit the draft in VISUAL, EDITOR, or vim", Typing: true},
 		{Name: "done", Keys: []string{"enter"}, Desc: "keep the value", Typing: true},
 		{Name: "next", Keys: []string{"tab"}, Desc: "keep the value and edit the next field", Typing: true},
 		{Name: "cancel", Keys: []string{"esc"}, Desc: "discard the edit", Typing: true},
 	}},
 	{Name: "input", Doc: "Multi-line text boxes such as comments. enter adds a newline.", Bindings: []Binding{
+		{Name: "external_editor", Keys: []string{"ctrl+e"}, Desc: "edit the draft in VISUAL, EDITOR, or vim", Typing: true},
 		{Name: "submit", Keys: []string{"ctrl+s"}, Desc: "submit", Typing: true},
 		{Name: "cancel", Keys: []string{"esc"}, Desc: "cancel", Typing: true},
 		{Name: "paste_image", Keys: []string{"alt+v"}, Desc: "comments: insert the clipboard image as Markdown", Typing: true},

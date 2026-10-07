@@ -66,6 +66,26 @@ func (f *formModal) update(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		return false, cmd
 	}
 	field := f.spec.Fields[f.cursor]
+	scope := "form"
+	if f.editing {
+		scope = "form_field"
+	}
+	if bound(scope, msg, f.editing) == "external_editor" && field.Type != form.Select {
+		value := f.values[field.ID]
+		if f.editing {
+			value = f.input.Value()
+		}
+		return false, externalEditor(value, func(text string, err error) {
+			if err != nil {
+				f.err = err.Error()
+				return
+			}
+			f.input.SetValue(strings.TrimSpace(text))
+			f.input.Focus()
+			f.editing = true
+			f.err = ""
+		})
+	}
 	if f.editing {
 		switch name := bound("form_field", msg, true); name {
 		case "cancel":
@@ -145,7 +165,11 @@ func (f *formModal) view(width, height int, accent lipgloss.Style) string {
 	if f.err != "" {
 		b.WriteString(errorStyle.Render(ticket.OneLine(f.err)) + "\n")
 	}
+	editorScope := "form"
+	if f.editing {
+		editorScope = "form_field"
+	}
 	b.WriteString(hintLine(accent, [2]string{keyLabel("form", "edit"), "edit"}, [2]string{keyLabel("form", "next"), "next"},
-		[2]string{keyLabel("form", "submit"), "submit"}, [2]string{keyLabel("form", "cancel"), "cancel"}))
+		[2]string{keyLabel("form", "submit"), "submit"}, [2]string{keyLabel(editorScope, "external_editor"), "editor"}, [2]string{keyLabel("form", "cancel"), "cancel"}))
 	return b.String()
 }
