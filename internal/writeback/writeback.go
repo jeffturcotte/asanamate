@@ -72,6 +72,19 @@ func (s Service) users(ctx context.Context) ([]asana.Ref, error) {
 	return s.Client.WorkspaceUsers(ctx, s.Workspace)
 }
 
+// mentionable returns the users Markdown text can @mention, loading them only
+// when the text has an @.
+func (s Service) mentionable(ctx context.Context, text string) ([]asana.Ref, error) {
+	if !strings.Contains(text, "@") {
+		return s.Users, nil
+	}
+	users, err := s.users(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("loading people to mention: %w", err)
+	}
+	return users, nil
+}
+
 func (s Service) confirm(question string) error {
 	if s.Confirm == nil {
 		return nil
@@ -94,12 +107,9 @@ func (s Service) Comment(ctx context.Context, gid, text string) error {
 	if text == "" {
 		return errors.New("comment text is empty")
 	}
-	users := s.Users
-	if strings.Contains(text, "@") {
-		var err error
-		if users, err = s.users(ctx); err != nil {
-			return fmt.Errorf("loading people to mention: %w", err)
-		}
+	users, err := s.mentionable(ctx, text)
+	if err != nil {
+		return err
 	}
 	paths := LocalImages(text)
 	files := make([][]byte, len(paths))
@@ -194,24 +204,34 @@ func (s Service) Move(ctx context.Context, gid, section, projectGID string) erro
 	if err != nil {
 		return err
 	}
-	sections, err := s.Client.Sections(ctx, list.GID)
+	sec, err := s.findSection(ctx, list, section)
 	if err != nil {
 		return err
+	}
+	if err := s.confirm(fmt.Sprintf("Move %q to %s / %s?", t.Name, ticket.Clean(list.Name), ticket.Clean(sec.Name))); err != nil {
+		return err
+	}
+	if projectGID == MyTasks {
+		return s.Client.SetMyTasksSection(ctx, gid, sec.GID)
+	}
+	return s.Client.AddToSection(ctx, sec.GID, gid)
+}
+
+// findSection finds the section of list whose gid is section, or named
+// section ignoring case and surrounding space.
+func (s Service) findSection(ctx context.Context, list asana.Ref, section string) (asana.Ref, error) {
+	sections, err := s.Client.Sections(ctx, list.GID)
+	if err != nil {
+		return asana.Ref{}, err
 	}
 	var names []string
 	for _, sec := range sections {
 		if sec.GID == section || strings.EqualFold(strings.TrimSpace(sec.Name), strings.TrimSpace(section)) {
-			if err := s.confirm(fmt.Sprintf("Move %q to %s / %s?", t.Name, ticket.Clean(list.Name), ticket.Clean(sec.Name))); err != nil {
-				return err
-			}
-			if projectGID == MyTasks {
-				return s.Client.SetMyTasksSection(ctx, gid, sec.GID)
-			}
-			return s.Client.AddToSection(ctx, sec.GID, gid)
+			return sec, nil
 		}
 		names = append(names, ticket.Clean(sec.Name))
 	}
-	return fmt.Errorf("no section %q in %s; sections: %s", section, ticket.Clean(list.Name), strings.Join(names, ", "))
+	return asana.Ref{}, fmt.Errorf("no section %q in %s; sections: %s", section, ticket.Clean(list.Name), strings.Join(names, ", "))
 }
 
 // sectionList is the list whose sections Move picks from: one of the task's
@@ -249,23 +269,13 @@ func (s Service) confirmTask(ctx context.Context, gid, question string, args ...
 // "me", the token's owner. An empty user unassigns it.
 func (s Service) Assign(ctx context.Context, gid, user string) error {
 	user = strings.TrimSpace(user)
-	switch {
-	case user == "":
+	if user == "" {
 		if err := s.confirmTask(ctx, gid, "Unassign %q?"); err != nil {
 			return err
 		}
 		return s.Client.SetAssignee(ctx, gid, "")
-	case strings.EqualFold(user, "me"):
-		if err := s.confirmTask(ctx, gid, "Assign %q to you?"); err != nil {
-			return err
-		}
-		return s.Client.SetAssignee(ctx, gid, "me")
 	}
-	users, err := s.users(ctx)
-	if err != nil {
-		return fmt.Errorf("loading people: %w", err)
-	}
-	u, err := findUser(users, user)
+	u, err := s.assignee(ctx, user)
 	if err != nil {
 		return err
 	}
@@ -273,6 +283,19 @@ func (s Service) Assign(ctx context.Context, gid, user string) error {
 		return err
 	}
 	return s.Client.SetAssignee(ctx, gid, u.GID)
+}
+
+// assignee resolves user, a full name or gid, to a workspace user, or "me"
+// to the token's owner, whose gid is "me" and name is "you".
+func (s Service) assignee(ctx context.Context, user string) (asana.Ref, error) {
+	if strings.EqualFold(user, "me") {
+		return asana.Ref{GID: "me", Name: "you"}, nil
+	}
+	users, err := s.users(ctx)
+	if err != nil {
+		return asana.Ref{}, fmt.Errorf("loading people: %w", err)
+	}
+	return findUser(users, user)
 }
 
 // SetDue sets the task's due date as YYYY-MM-DD; an empty date clears it.
@@ -339,6 +362,111 @@ func (s Service) RemoveProject(ctx context.Context, gid, projectGID string) erro
 		}
 	}
 	return s.Client.RemoveFromProject(ctx, gid, projectGID)
+}
+
+// NewTicket is a ticket for Create to make. Empty fields are left unset.
+type NewTicket struct {
+	Name     string
+	Notes    string // Markdown, as Comment reads it, without image uploads
+	Parent   string // a task gid; makes the ticket its subtask
+	Project  string // a project gid
+	Section  string // a section of Project, by name or gid
+	Assignee string // a full name, gid, or "me"
+	Due      string // YYYY-MM-DD
+}
+
+// Create makes a ticket and returns it: a subtask of Parent, a ticket in
+// Project (and Section), or else a ticket in My Tasks, assigned to the user
+// unless Assignee names someone else.
+func (s Service) Create(ctx context.Context, nt NewTicket) (asana.Task, error) {
+	task := asana.NewTask{Name: strings.TrimSpace(nt.Name), Project: nt.Project, DueOn: strings.TrimSpace(nt.Due)}
+	switch {
+	case task.Name == "":
+		return asana.Task{}, errors.New("title is empty")
+	case strings.ContainsAny(task.Name, "\r\n"):
+		return asana.Task{}, errors.New("title must be one line")
+	case nt.Parent != "" && nt.Project != "":
+		return asana.Task{}, errors.New("a subtask goes under its parent; pass a parent or a project, not both")
+	case nt.Section != "" && nt.Project == "":
+		return asana.Task{}, errors.New("a section needs a project")
+	case nt.Parent == "" && nt.Project == "" && s.Workspace == "":
+		return asana.Task{}, errors.New("no workspace to create the ticket in")
+	}
+	if task.DueOn != "" {
+		if _, err := time.Parse(time.DateOnly, task.DueOn); err != nil {
+			return asana.Task{}, fmt.Errorf("due date needs YYYY-MM-DD, got %q", task.DueOn)
+		}
+	}
+	assignee := strings.TrimSpace(nt.Assignee)
+	if assignee == "" && nt.Parent == "" && nt.Project == "" {
+		assignee = "me"
+	}
+	var details string
+	if assignee != "" {
+		u, err := s.assignee(ctx, assignee)
+		if err != nil {
+			return asana.Task{}, err
+		}
+		task.Assignee, details = u.GID, "Assignee: "+ticket.Clean(u.Name)+"\n"
+	}
+	if task.DueOn != "" {
+		details += "Due: " + task.DueOn + "\n"
+	}
+	if notes := strings.TrimSpace(nt.Notes); notes != "" {
+		users, err := s.mentionable(ctx, notes)
+		if err != nil {
+			return asana.Task{}, err
+		}
+		task.HTMLNotes, _ = CommentHTML(notes, users, nil)
+		details += "Notes:\n" + notes + "\n"
+	}
+	where, err := s.placeNew(ctx, &task, nt)
+	if err != nil {
+		return asana.Task{}, err
+	}
+	if err := s.confirm(fmt.Sprintf("Create %q %s?\n%s", task.Name, where, details)); err != nil {
+		return asana.Task{}, err
+	}
+	if nt.Parent != "" {
+		return s.Client.CreateSubtask(ctx, nt.Parent, task)
+	}
+	return s.Client.CreateTask(ctx, task)
+}
+
+// placeNew sets where task goes: its section gid in a project, or the
+// workspace of a My Tasks ticket. It returns where that is for the
+// confirmation, loading names only when there is someone to ask.
+func (s Service) placeNew(ctx context.Context, task *asana.NewTask, nt NewTicket) (string, error) {
+	switch {
+	case nt.Parent != "":
+		if s.Confirm == nil {
+			return "", nil
+		}
+		parent, err := s.Client.Task(ctx, nt.Parent)
+		return fmt.Sprintf("as a subtask of %q", parent.Name), err
+	case nt.Project == "":
+		task.Workspace = s.Workspace
+		if task.Assignee == "me" {
+			return "in My Tasks", nil
+		}
+		return "in the assignee's My Tasks", nil
+	}
+	project := asana.Ref{GID: nt.Project, Name: "project " + nt.Project}
+	if s.Confirm != nil {
+		var err error
+		if project, err = s.Client.Project(ctx, nt.Project); err != nil {
+			return "", err
+		}
+	}
+	where := "in " + ticket.Clean(project.Name)
+	if nt.Section != "" {
+		sec, err := s.findSection(ctx, project, nt.Section)
+		if err != nil {
+			return "", err
+		}
+		task.Section, where = sec.GID, where+" / "+ticket.Clean(sec.Name)
+	}
+	return where, nil
 }
 
 func pickProject(t asana.Task, projectGID string) (asana.Ref, error) {

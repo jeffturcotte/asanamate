@@ -15,7 +15,7 @@ can run in parallel, each on its own branch.
 |---|---|---|---|
 | [01-cli-parity](01-cli-parity.md) (done) | `assign`, `due`, and `project` subcommands; route TUI writes through `writeback` | none | no |
 | [02-complete-tickets](02-complete-tickets.md) (done) | Mark tickets complete or reopen them, in the TUI and the CLI | 01 | no |
-| [03-create-tickets](03-create-tickets.md) | Create tickets and subtasks, in the TUI and the CLI | 01 | no |
+| [03-create-tickets](03-create-tickets.md) (done) | Create tickets and subtasks, in the TUI and the CLI | 01 | no |
 | [04-layout-config](04-layout-config.md) (done) | `[layout]` table and a reader toggle key | none | no |
 | [05-extension-protocols](05-extension-protocols.md) (done) | Document and test the external command protocols as the extension contract | none | no |
 | [06-extract-hrvst](06-extract-hrvst.md) | Move the Harvest provider out of the main binary | 05 | yes |

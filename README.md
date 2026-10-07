@@ -24,6 +24,8 @@ macOS and Linux only.
   unassign it, set its due date or a custom field, and add or remove projects.
   Mark it complete, or reopen it.
   See [Keys](#keys).
+- **Create** a ticket in a project or My Tasks, or a subtask, from the TUI or
+  with `asanamate create`.
 - **Act** on a ticket: run your own commands with the ticket as context, such
   as starting a coding agent in its repo. See [Actions](#actions).
 - **Report back** from scripts and agents with every edit the TUI makes:
@@ -33,8 +35,6 @@ macOS and Linux only.
 - **Optional:** show running coding agents next to their tickets
   ([Agents](#agents-optional)) and log time to Harvest
   ([Time tracking](#time-tracking-optional)).
-
-asanamate does not create tickets; use Asana for that.
 
 **Early release.** asanamate is pre-1.0: expect breaking changes, including to
 config keys, before 1.0. Release notes call out each one.
@@ -225,6 +225,8 @@ key press.
 | `c` | add a comment to the selected ticket, from the list or the reader; in the comment box, `alt+v` pastes a clipboard image (see [Writing back to Asana](#writing-back-to-asana)) |
 | `d` / `m` / `@` | set the due date / move to a section / assign, skipping the `e` menu |
 | `x` | mark the selected ticket complete, or reopen it when it is complete; a ticket the filter now hides stays in Viewing until you move away, so `x` again undoes it |
+| `n` | create a ticket from a title: in the viewed project (in the selected ticket's section when the list is grouped by section), or in My Tasks assigned to you; then select it in the reader (under Viewing when the filter hides it). Set other fields with the edit keys |
+| `N` | create a subtask of the selected ticket from a title, then show the ticket in the reader |
 | `.` | run the last picked action again on the selected ticket |
 | `t` | log completed time for the selected ticket (only when time tracking is configured) |
 | `f` | attachments: view images inline (`j`/`k` step between them) or open in the browser |
@@ -888,9 +890,18 @@ asanamate due     [--yes] <gid> 2026-10-01                  # "" clears the date
 asanamate project add    [--yes] <gid> <project-gid>
 asanamate project remove [--yes] <gid> <project-gid>
 asanamate complete [--yes] [--reopen] <gid>                 # --reopen marks it incomplete
+asanamate create  [--yes] [--project <gid> [--section "To Do"] | --parent <gid>] \
+                  [--assignee "Ann Lee"] [--due 2026-10-01] [--notes <markdown | ->] "Fix login"
 ```
 
 The TUI's edits run the same code, so each one is also a command here.
+
+`asanamate create` prints only the new ticket's gid, so scripts can chain it
+(`gid=$(asanamate create --yes "Fix login")`). Without `--project` or
+`--parent`, the ticket goes to your My Tasks, assigned to you. `--parent`
+makes a subtask and cannot be combined with `--project`. `--assignee` takes a
+name or `me` like `asanamate assign`, and `--notes` takes the description in
+Markdown like a comment (`-` reads stdin), without image uploads.
 
 `asanamate assign` takes a workspace user's full name (case-insensitive), or
 `me` for yourself, and refuses a name two users share. `asanamate due` takes

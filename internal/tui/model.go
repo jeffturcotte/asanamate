@@ -282,6 +282,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.openUserPicker(msg.err)
 	case editDoneMsg:
 		return m, m.editDone(msg)
+	case createdMsg:
+		return m, m.created(msg)
 	case inlineImageMsg:
 		return m, m.inlineImageLoaded(msg)
 	case imageMsg:

@@ -33,6 +33,8 @@ var catalog = []Scope{
 		{Name: "move_section", Keys: []string{"m"}, Desc: "move to section", Group: "Ticket"},
 		{Name: "assign", Keys: []string{"@"}, Desc: "assign", Group: "Ticket"},
 		{Name: "complete", Keys: []string{"x"}, Desc: "complete / reopen", Group: "Ticket"},
+		{Name: "create", Keys: []string{"n"}, Desc: "new ticket / subtask", Group: "Ticket"},
+		{Name: "create_subtask", Keys: []string{"N"}, Desc: "new subtask", Pair: "create"},
 		{Name: "log_time", Keys: []string{"t"}, Desc: "log time", Hint: "time", Group: "Ticket"},
 		{Name: "attachments", Keys: []string{"f"}, Desc: "attachments", Group: "Ticket"},
 		{Name: "open_browser", Keys: []string{"o"}, Desc: "open in browser", Group: "Ticket"},

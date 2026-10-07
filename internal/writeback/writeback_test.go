@@ -61,7 +61,7 @@ func fake(t *testing.T) (*asana.Client, *[]write) {
 			}
 			json.NewDecoder(r.Body).Decode(&body)
 			writes = append(writes, write{r.Method, r.URL.Path, body.Data})
-			io.WriteString(w, `{"data":{}}`)
+			io.WriteString(w, `{"data":{"gid":"new"}}`)
 		default:
 			http.NotFound(w, r)
 		}
@@ -504,5 +504,67 @@ func TestCommentMentionsPostHTML(t *testing.T) {
 	}
 	if !strings.Contains(asked, "Mentions: Victoria Andersen") {
 		t.Fatalf("prompt = %q", asked)
+	}
+}
+
+func TestCreate(t *testing.T) {
+	cases := []struct {
+		name     string
+		nt       NewTicket
+		wantPath string
+		want     map[string]any
+	}{
+		{"my tasks by default", NewTicket{Name: " New "}, "/tasks",
+			map[string]any{"name": "New", "workspace": "w", "assignee": "me"}},
+		{"project and section", NewTicket{Name: "New", Project: "p1", Section: "in review", Due: "2026-01-02"}, "/tasks",
+			map[string]any{"name": "New", "projects": []any{"p1"}, "memberships": []any{map[string]any{"project": "p1", "section": "s2"}}, "due_on": "2026-01-02"}},
+		{"subtask", NewTicket{Name: "New", Parent: "1", Assignee: "amy", Notes: "**hi**"}, "/tasks/1/subtasks",
+			map[string]any{"name": "New", "assignee": "u1", "html_notes": "<body><strong>hi</strong></body>"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, writes := fake(t)
+			svc := Service{Client: c, Workspace: "w", Users: []asana.Ref{{GID: "u1", Name: "Amy"}}}
+			task, err := svc.Create(ctx, tc.nt)
+			if err != nil || task.GID != "new" {
+				t.Fatalf("task = %+v, err = %v", task, err)
+			}
+			if len(*writes) != 1 || (*writes)[0].path != tc.wantPath || !reflect.DeepEqual((*writes)[0].body, tc.want) {
+				t.Fatalf("writes = %+v", *writes)
+			}
+		})
+	}
+}
+
+func TestCreateRejects(t *testing.T) {
+	cases := []struct {
+		nt   NewTicket
+		want string
+	}{
+		{NewTicket{Name: "New", Parent: "1", Project: "p1"}, "not both"},
+		{NewTicket{Name: "New", Project: "p1", Section: "Later"}, `no section "Later" in project p1; sections: To Do, In Review`},
+		{NewTicket{Name: "New", Section: "To Do"}, "needs a project"},
+		{NewTicket{Name: " "}, "title is empty"},
+		{NewTicket{Name: "a\nb"}, "one line"},
+		{NewTicket{Name: "New", Due: "soon"}, "YYYY-MM-DD"},
+	}
+	for _, tc := range cases {
+		c, writes := fake(t)
+		_, err := (Service{Client: c, Workspace: "w"}).Create(ctx, tc.nt)
+		if err == nil || !strings.Contains(err.Error(), tc.want) || len(*writes) != 0 {
+			t.Errorf("%+v: err = %v, writes = %+v", tc.nt, err, *writes)
+		}
+	}
+}
+
+func TestCreateConfirmsPlacement(t *testing.T) {
+	c, writes := fake(t)
+	var asked string
+	svc := Service{Client: c, Confirm: func(p string) (bool, error) { asked = p; return false, nil }}
+	if _, err := svc.Create(ctx, NewTicket{Name: "New", Parent: "1", Due: "2026-01-02"}); !errors.Is(err, ErrDeclined) {
+		t.Fatalf("err = %v", err)
+	}
+	if len(*writes) != 0 || asked != "Create \"New\" as a subtask of \"Fix login\"?\nDue: 2026-01-02\n" {
+		t.Fatalf("writes = %+v, prompt = %q", *writes, asked)
 	}
 }

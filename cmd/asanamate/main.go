@@ -64,6 +64,10 @@ const usage = `usage:
   asanamate project add|remove [--yes] <gid> <project-gid>
                                                    add a task to a project or remove it
   asanamate complete [--yes] [--reopen] <gid>        mark a task complete (--reopen reopens it)
+  asanamate create  [--yes] [--project <gid> [--section <name>] | --parent <gid>]
+                    [--assignee <name | me>] [--due <YYYY-MM-DD>] [--notes <markdown | ->] <title>
+                                                   create a ticket (default: in My Tasks, assigned
+                                                   to you) or a subtask; prints its gid
   asanamate doctor [<gid>]                         check setup and optional tools; for a ticket, why agents link (or not)
   asanamate time-provider hrvst --task-id <id>     serve time tracking provider requests on stdin
   asanamate hook codex                             record a Codex hook event read on stdin
@@ -90,6 +94,8 @@ func run(args []string) int {
 		err = writeCommand(name, args[1:])
 	case "complete":
 		err = writeCommand(name, args[1:])
+	case "create":
+		err = runCreate(args[1:], os.Stdin, os.Stdout, newWriter)
 	case "version":
 		fmt.Println(currentVersion())
 		return 0
@@ -170,6 +176,24 @@ func newClient() (*asana.Client, error) {
 	return asana.New(token), nil
 }
 
+// newWriter returns the CLI's writeback service, which confirms on the
+// terminal unless yes, ASANAMATE_CONFIRM_WRITES, or the config turns it off.
+func newWriter(yes bool) (writeback.Service, error) {
+	cfg, err := loadConfig()
+	if err != nil {
+		return writeback.Service{}, err
+	}
+	client, err := newClient()
+	if err != nil {
+		return writeback.Service{}, err
+	}
+	svc := writeback.Service{Client: client, Workspace: cfg.Workspace}
+	if writeback.NeedsConfirm(yes, os.Getenv("ASANAMATE_CONFIRM_WRITES"), cfg.ConfirmWrites) {
+		svc.Confirm = writeback.TTYConfirm
+	}
+	return svc, nil
+}
+
 func writeCommand(name string, args []string) error {
 	if name == "project" {
 		if len(args) == 0 || (args[0] != "add" && args[0] != "remove") {
@@ -220,17 +244,9 @@ func writeCommand(name string, args []string) error {
 		}
 		*project = writeback.MyTasks
 	}
-	cfg, err := loadConfig()
+	svc, err := newWriter(*yes)
 	if err != nil {
 		return err
-	}
-	client, err := newClient()
-	if err != nil {
-		return err
-	}
-	svc := writeback.Service{Client: client, Workspace: cfg.Workspace}
-	if writeback.NeedsConfirm(*yes, os.Getenv("ASANAMATE_CONFIRM_WRITES"), cfg.ConfirmWrites) {
-		svc.Confirm = writeback.TTYConfirm
 	}
 	ctx := context.Background()
 	switch name {
@@ -259,6 +275,48 @@ func writeCommand(name string, args []string) error {
 	default:
 		return svc.SetField(ctx, gid, rest[1], rest[2], *project)
 	}
+}
+
+// runCreate creates a ticket and prints only its gid, so scripts can chain it.
+func runCreate(args []string, stdin io.Reader, stdout io.Writer, writer func(yes bool) (writeback.Service, error)) error {
+	fs := flag.NewFlagSet("create", flag.ContinueOnError)
+	yes := fs.Bool("yes", false, "write without asking for confirmation")
+	var nt writeback.NewTicket
+	fs.StringVar(&nt.Project, "project", "", "project gid; without it or --parent, the ticket goes to your My Tasks")
+	fs.StringVar(&nt.Section, "section", "", "section of --project, by name or gid")
+	fs.StringVar(&nt.Parent, "parent", "", "parent task gid; makes a subtask")
+	fs.StringVar(&nt.Assignee, "assignee", "", `full name or gid of the assignee, or "me"`)
+	fs.StringVar(&nt.Due, "due", "", "due date as YYYY-MM-DD")
+	fs.StringVar(&nt.Notes, "notes", "", `description in Markdown ("-" reads stdin)`)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("create: wrong number of arguments\n%s", usage)
+	}
+	nt.Name = fs.Arg(0)
+	for flagName, gid := range map[string]string{"project": nt.Project, "parent": nt.Parent} {
+		if gid != "" && !asana.ValidGID(gid) {
+			return fmt.Errorf("%s gid must be numeric, got %q", flagName, gid)
+		}
+	}
+	if nt.Notes == "-" {
+		data, err := io.ReadAll(stdin)
+		if err != nil {
+			return err
+		}
+		nt.Notes = string(data)
+	}
+	svc, err := writer(*yes)
+	if err != nil {
+		return err
+	}
+	t, err := svc.Create(context.Background(), nt)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(stdout, t.GID)
+	return err
 }
 
 func runSetup(args []string) error {

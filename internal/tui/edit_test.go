@@ -48,7 +48,9 @@ func editModel(t *testing.T) (*Model, *[]string) {
 		case r.Method != http.MethodGet:
 			b, _ := io.ReadAll(r.Body)
 			writes = append(writes, r.Method+" "+r.URL.Path+" "+string(b))
-			io.WriteString(w, `{"data":{}}`)
+			io.WriteString(w, `{"data":{"gid":"9","name":"New"}}`)
+		case r.URL.Path == "/tasks/9":
+			io.WriteString(w, `{"data":{"gid":"9","name":"New"}}`)
 		default:
 			io.WriteString(w, `{"data":[]}`)
 		}

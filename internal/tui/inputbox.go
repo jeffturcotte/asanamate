@@ -21,6 +21,7 @@ type inputBox struct {
 	onSubmit       func(string) tea.Cmd // optional handler outside ticket actions and edits
 	sanitizedPaste bool                 // tracks content changed by the textarea during paste
 	images         bool                 // paste_image inserts clipboard images as Markdown
+	oneLine        bool                 // enter adds no newline, as for a title
 }
 
 // imagePasteMsg is a clipboard image saved to path for an input box, or why not.
@@ -120,10 +121,13 @@ func (b *inputBox) view(width, height int, accent lipgloss.Style) string {
 	if !b.area.DynamicHeight {
 		b.area.SetHeight(min(available, 8))
 	}
-	pasteHint := [2]string{}
+	newlineHint, pasteHint := [2]string{"enter", "newline"}, [2]string{}
+	if b.oneLine {
+		newlineHint = [2]string{}
+	}
 	if b.images {
 		pasteHint = [2]string{keyLabel("input", "paste_image"), "paste image"}
 	}
 	return accent.Render(b.title) + "\n" + b.area.View() + "\n" + errorLine + help +
-		hintLine(accent, [2]string{"enter", "newline"}, pasteHint, [2]string{keyLabel("input", "submit"), "submit"}, [2]string{keyLabel("input", "external_editor"), "editor"}, [2]string{keyLabel("input", "cancel"), "cancel"})
+		hintLine(accent, newlineHint, pasteHint, [2]string{keyLabel("input", "submit"), "submit"}, [2]string{keyLabel("input", "external_editor"), "editor"}, [2]string{keyLabel("input", "cancel"), "cancel"})
 }

@@ -194,6 +194,8 @@ func handlers() map[string]handler {
 			}
 			return nil
 		}},
+		"create":           {run: do((*Model).openCreate)},
+		"create_subtask":   {run: do((*Model).openCreateSubtask)},
 		"reload":           {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.refreshWithImages() }},
 		"reader_view":      {splitOnly: true, run: do(func(m *Model) { m.toggleReaderView(); m.saveDisplay() })},
 		"toggle_reader":    {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.toggleReader() }},
