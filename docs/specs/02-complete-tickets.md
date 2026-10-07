@@ -1,5 +1,7 @@
 # 02: Complete and reopen tickets
 
+**Depends on 01.**
+
 ## Goal
 
 Users and agents can mark a ticket complete, or reopen a completed one, from

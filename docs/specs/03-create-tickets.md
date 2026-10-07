@@ -1,5 +1,7 @@
 # 03: Create tickets and subtasks
 
+**Depends on 01.**
+
 ## Goal
 
 Users and agents can create a ticket in the current project or My Tasks, and

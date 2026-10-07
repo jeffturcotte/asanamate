@@ -1,4 +1,4 @@
-# 06: Extension protocols
+# 05: Extension protocols
 
 ## Goal
 
@@ -36,7 +36,7 @@ separately.
 - Add protocol tests that run a small fixture script per extension point
   (under `testdata/`) through the real code path, so a format change fails a
   test.
-- Link `docs/extensions.md` from the README intro (see 01).
+- Link `docs/extensions.md` from the README intro (see 08).
 
 ## Out of scope
 

@@ -1,4 +1,6 @@
-# 01: README mission and scope
+# 08: README mission and scope
+
+**Depends on 02, 03, and 05.**
 
 ## Goal
 
@@ -23,10 +25,9 @@ work.
   feature once and link to its README section.
 - Add a short "Extending asanamate" line or list that names the extension
   points: actions, agent sources, time tracking providers, and repo sources.
-  Link to the protocol docs when 06 is done; until then, link to the existing
-  sections.
-- Keep the "does not do" line current. Today asanamate does not create or
-  complete tickets. Remove items from it as 02 and 03 land.
+  Link to `docs/extensions.md` (05).
+- Keep the "does not do" line current. 02 and 03 add completing and creating
+  tickets, so remove those from it and name what is still left to Asana.
 
 ## Out of scope
 

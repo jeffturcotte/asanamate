@@ -1,6 +1,6 @@
-# 08: Move tool-specific agent code into an adapter
+# 07: Move tool-specific agent code into an adapter
 
-**Breaking. Get the user's approval before starting. Depends on 06.**
+**Breaking. Get the user's approval before starting. Depends on 05.**
 
 ## Goal
 
@@ -40,7 +40,7 @@ hook) moves to an adapter command that prints the generic format.
   adapter's code for one release, and have `doctor` warn about it.
 - If the generic TSV cannot carry something the preset needs (such as "turn
   finished but not yet seen"), extend the format in a backward-compatible way
-  and document it in `docs/extensions.md`.
+  and document it in `docs/extensions.md` (05).
 - Docs: README Agents section, setup steps, troubleshooting, and the
   "Upgrading" section.
 - Commit as `feat!:` with a `BREAKING CHANGE:` footer naming the removed key

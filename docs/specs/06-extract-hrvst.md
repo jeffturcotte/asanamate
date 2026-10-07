@@ -1,6 +1,6 @@
-# 07: Move the Harvest provider out of the main binary
+# 06: Move the Harvest provider out of the main binary
 
-**Breaking. Get the user's approval before starting. Depends on 06.**
+**Breaking. Get the user's approval before starting. Depends on 05.**
 
 ## Goal
 
@@ -39,11 +39,11 @@ third-party provider would.
 
 ## Out of scope
 
-- Changing the time tracking protocol beyond 06.
+- Changing the time tracking protocol beyond 05.
 
 ## Acceptance
 
 - No package under `internal/` imports Harvest code.
-- `asanamate-hrvst` passes the time tracking protocol test from 06.
+- `asanamate-hrvst` passes the time tracking protocol test from 05.
 - `Merge` test: the old command is rewritten and other values are kept.
 - `go test ./...`, `go vet ./...` pass.

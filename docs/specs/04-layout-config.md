@@ -1,4 +1,4 @@
-# 05: Layout configuration
+# 04: Layout configuration
 
 ## Goal
 

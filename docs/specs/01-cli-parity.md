@@ -1,4 +1,4 @@
-# 04: CLI parity with the TUI
+# 01: CLI parity with the TUI
 
 ## Goal
 
