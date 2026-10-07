@@ -66,6 +66,22 @@ func (f *formModal) update(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		return false, cmd
 	}
 	field := f.spec.Fields[f.cursor]
+	if msg.String() == "ctrl+e" && field.Type != form.Select {
+		value := f.values[field.ID]
+		if f.editing {
+			value = f.input.Value()
+		}
+		return false, externalEditor(value, func(text string, err error) {
+			if err != nil {
+				f.err = err.Error()
+				return
+			}
+			f.input.SetValue(strings.TrimSpace(text))
+			f.input.Focus()
+			f.editing = true
+			f.err = ""
+		})
+	}
 	if f.editing {
 		switch msg.String() {
 		case "esc":
@@ -145,6 +161,6 @@ func (f *formModal) view(width, height int, accent lipgloss.Style) string {
 	if f.err != "" {
 		b.WriteString(errorStyle.Render(ticket.OneLine(f.err)) + "\n")
 	}
-	b.WriteString(accent.Render("enter") + dimStyle.Render(" edit · ") + accent.Render("tab") + dimStyle.Render(" next · ") + accent.Render("ctrl+s") + dimStyle.Render(" submit · ") + accent.Render("esc") + dimStyle.Render(" cancel"))
+	b.WriteString(accent.Render("enter") + dimStyle.Render(" edit · ") + accent.Render("tab") + dimStyle.Render(" next · ") + accent.Render("ctrl+s") + dimStyle.Render(" submit · ") + accent.Render("ctrl+e") + dimStyle.Render(" editor · ") + accent.Render("esc") + dimStyle.Render(" cancel"))
 	return b.String()
 }

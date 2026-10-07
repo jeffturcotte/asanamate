@@ -37,6 +37,19 @@ func (b *inputBox) update(msg tea.Msg) (res pickResult, cmd tea.Cmd) {
 			return pickResult{cancelled: true}, nil
 		case "ctrl+s":
 			return pickResult{done: true, free: strings.TrimSpace(b.area.Value())}, nil
+		case "ctrl+e":
+			return pickResult{}, externalEditor(b.area.Value(), func(text string, err error) {
+				if err != nil {
+					b.err = err.Error()
+					return
+				}
+				b.area.SetValue(text)
+				b.err = ""
+				if b.area.Value() != text {
+					b.sanitizedPaste = true
+					b.err = "Editor changes tabs/control characters or exceeds the input limit. Review before submitting."
+				}
+			})
 		}
 		b.err = ""
 	} else if paste, ok := msg.(tea.PasteMsg); ok {
@@ -79,5 +92,6 @@ func (b *inputBox) view(width, height int, accent lipgloss.Style) string {
 	}
 	return accent.Render(b.title) + "\n" + b.area.View() + "\n" + errorLine + help +
 		accent.Render("enter") + dimStyle.Render(" newline · ") + accent.Render("ctrl+s") +
-		dimStyle.Render(" submit · ") + accent.Render("esc") + dimStyle.Render(" cancel")
+		dimStyle.Render(" submit · ") + accent.Render("ctrl+e") + dimStyle.Render(" editor · ") +
+		accent.Render("esc") + dimStyle.Render(" cancel")
 }

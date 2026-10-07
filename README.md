@@ -196,6 +196,15 @@ key press.
 | `?` | show every key |
 | `q` | quit |
 
+In text editors (comments, field values, action input, and action builder text),
+press `ctrl+e` to edit the current draft in `$VISUAL`, then `$EDITOR`, or `vim`
+if neither is set. For example, launch with `VISUAL=nvim asanamate`.
+Editor settings may include flags, such as `VISUAL='vim -f'`.
+Save and quit (`:wq` in Vim) to return to the same draft; `ctrl+s` still submits.
+Quit without saving (`:q!`) to keep the previous draft. Editor failures also keep
+the previous draft and show an error. The private temporary buffer is deleted
+when the editor exits. Search and filter inputs keep their inline controls.
+
 Inline images are cached by attachment for the current session. Manual reload
 downloads the displayed ticket's images again; automatic reload keeps the cache.
 The attachment viewer downloads its image each time it opens.
