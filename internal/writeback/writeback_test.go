@@ -39,6 +39,12 @@ func fake(t *testing.T) (*asana.Client, *[]write) {
 			io.WriteString(w, taskJSON)
 		case r.Method == http.MethodGet && r.URL.Path == "/projects/p1/sections":
 			io.WriteString(w, `{"data":[{"gid":"s1","name":"To Do"},{"gid":"s2","name":"In Review"}]}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/tasks/2":
+			io.WriteString(w, `{"data":{"gid":"2","name":"Mine","assignee_section":{"gid":"m1","name":"Inbox"}}}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/users/me/user_task_list":
+			io.WriteString(w, `{"data":{"gid":"mt"}}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/projects/mt/sections":
+			io.WriteString(w, `{"data":[{"gid":"m1","name":"Inbox"},{"gid":"m2","name":"Later"}]}`)
 		case r.Method == http.MethodGet && r.URL.Path == "/projects/p3":
 			io.WriteString(w, `{"data":{"gid":"p3","name":"Ops"}}`)
 		case r.Method == http.MethodPost && r.URL.Path == "/attachments":
@@ -138,6 +144,36 @@ func TestMoveMatchesSectionCaseInsensitively(t *testing.T) {
 	}
 	if err := (Service{Client: c}).Move(ctx, "1", "Shipped", "p1"); err == nil || !strings.Contains(err.Error(), "To Do") {
 		t.Fatalf("err = %v, want list of sections", err)
+	}
+}
+
+func TestMoveBySectionGID(t *testing.T) {
+	c, writes := fake(t)
+	if err := (Service{Client: c}).Move(ctx, "1", "s2", "p1"); err != nil {
+		t.Fatal(err)
+	}
+	if len(*writes) != 1 || (*writes)[0].path != "/sections/s2/addTask" {
+		t.Fatalf("writes = %+v", *writes)
+	}
+}
+
+func TestMoveWithinMyTasks(t *testing.T) {
+	c, writes := fake(t)
+	svc := Service{Client: c, Workspace: "w"}
+	if err := svc.Move(ctx, "2", "later", MyTasks); err != nil {
+		t.Fatal(err)
+	}
+	if len(*writes) != 1 || (*writes)[0].path != "/tasks/2" || (*writes)[0].body["assignee_section"] != "m2" {
+		t.Fatalf("writes = %+v", *writes)
+	}
+	if err := svc.Move(ctx, "2", "Someday", MyTasks); err == nil || !strings.Contains(err.Error(), "My Tasks; sections: Inbox, Later") {
+		t.Fatalf("unknown section: err = %v", err)
+	}
+	if err := svc.Move(ctx, "1", "Inbox", MyTasks); err == nil || !strings.Contains(err.Error(), "only its assignee") {
+		t.Fatalf("someone else's task: err = %v", err)
+	}
+	if len(*writes) != 1 {
+		t.Fatalf("writes = %+v", *writes)
 	}
 }
 

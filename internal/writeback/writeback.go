@@ -179,31 +179,57 @@ func readImage(path string) ([]byte, error) {
 	return data, nil
 }
 
-// Move puts the task in the named section of one of its projects.
-func (s Service) Move(ctx context.Context, gid, sectionName, projectGID string) error {
+// MyTasks, passed to Move as the project, moves the task within My Tasks
+// instead of a project.
+const MyTasks = "my_tasks"
+
+// Move puts the task in a section, by name or gid, of one of its projects, or
+// of My Tasks when projectGID is MyTasks.
+func (s Service) Move(ctx context.Context, gid, section, projectGID string) error {
 	t, err := s.Client.Task(ctx, gid)
 	if err != nil {
 		return err
 	}
-	project, err := pickProject(t, projectGID)
+	list, err := s.sectionList(ctx, t, projectGID)
 	if err != nil {
 		return err
 	}
-	sections, err := s.Client.Sections(ctx, project.GID)
+	sections, err := s.Client.Sections(ctx, list.GID)
 	if err != nil {
 		return err
 	}
 	var names []string
 	for _, sec := range sections {
-		if strings.EqualFold(strings.TrimSpace(sec.Name), strings.TrimSpace(sectionName)) {
-			if err := s.confirm(fmt.Sprintf("Move %q to %s / %s?", t.Name, ticket.Clean(project.Name), ticket.Clean(sec.Name))); err != nil {
+		if sec.GID == section || strings.EqualFold(strings.TrimSpace(sec.Name), strings.TrimSpace(section)) {
+			if err := s.confirm(fmt.Sprintf("Move %q to %s / %s?", t.Name, ticket.Clean(list.Name), ticket.Clean(sec.Name))); err != nil {
 				return err
+			}
+			if projectGID == MyTasks {
+				return s.Client.SetMyTasksSection(ctx, gid, sec.GID)
 			}
 			return s.Client.AddToSection(ctx, sec.GID, gid)
 		}
 		names = append(names, ticket.Clean(sec.Name))
 	}
-	return fmt.Errorf("no section %q in %s; sections: %s", sectionName, ticket.Clean(project.Name), strings.Join(names, ", "))
+	return fmt.Errorf("no section %q in %s; sections: %s", section, ticket.Clean(list.Name), strings.Join(names, ", "))
+}
+
+// sectionList is the list whose sections Move picks from: one of the task's
+// projects, or the user's My Tasks for MyTasks.
+func (s Service) sectionList(ctx context.Context, t asana.Task, projectGID string) (asana.Ref, error) {
+	if projectGID != MyTasks {
+		return pickProject(t, projectGID)
+	}
+	// Asana returns a task's My Tasks section only to its assignee.
+	if t.AssigneeSection == nil {
+		return asana.Ref{}, errors.New("task is not in your My Tasks; only its assignee can move it there")
+	}
+	list, err := s.Client.MyTaskList(ctx, s.Workspace)
+	if err != nil {
+		return asana.Ref{}, err
+	}
+	list.Name = "My Tasks"
+	return list, nil
 }
 
 // confirmTask asks question, a format whose first verb is the task's name. It
