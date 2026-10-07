@@ -41,6 +41,46 @@ func TestCommandProtocol(t *testing.T) {
 	}
 }
 
+// TestProviderFixture runs every operation through testdata/provider.sh, the
+// minimal provider docs/extensions.md describes, and checks the requests it
+// received, so a protocol change fails here.
+func TestProviderFixture(t *testing.T) {
+	script, err := filepath.Abs("testdata/provider.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := filepath.Join(t.TempDir(), "requests.jsonl")
+	provider := Provider{Command: "/bin/sh '" + script + "' '" + log + "'"}
+	ctx := context.Background()
+	asana := Asana{TaskGID: "42", ProjectGID: "7", Title: "Fix login", URL: "https://app.asana.com/0/7/42"}
+
+	spec, err := provider.Form(ctx)
+	if err != nil || len(spec.Fields) != 2 || spec.Fields[0].Options[0].ID != "123" {
+		t.Fatalf("form = %+v, err = %v", spec, err)
+	}
+	if err := provider.Log(ctx, spec, map[string]string{"project_id": "123", "hours": "1.5"}, asana); err != nil {
+		t.Fatal(err)
+	}
+	summary, err := provider.Summary(ctx, Asana{TaskGID: asana.TaskGID, URL: asana.URL})
+	if err != nil || summary.TotalSeconds != 13500 {
+		t.Fatalf("summary = %+v, err = %v", summary, err)
+	}
+
+	data, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		`{"version":1,"operation":"form"}`,
+		`{"version":1,"operation":"log","values":{"hours":"1.5","project_id":"123"},"asana":{"task_gid":"42","project_gid":"7","title":"Fix login","url":"https://app.asana.com/0/7/42"}}`,
+		`{"version":1,"operation":"summary","asana":{"task_gid":"42","project_gid":"","title":"","url":"https://app.asana.com/0/7/42"}}`,
+	}
+	got := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("requests:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
 func TestProviderRejectsBadDataAndFailures(t *testing.T) {
 	for _, response := range []string{`{}`, `{"fields":[{"id":"x","label":"X","type":"select","options":[]}]}`, `bad`} {
 		provider := Provider{Command: "printf '%s' '" + response + "'"}
