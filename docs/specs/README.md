@@ -13,7 +13,7 @@ can run in parallel, each on its own branch.
 
 | Spec | Summary | Depends on | Breaking |
 |---|---|---|---|
-| [01-cli-parity](01-cli-parity.md) | `assign`, `due`, and `project` subcommands; route TUI writes through `writeback` | none | no |
+| [01-cli-parity](01-cli-parity.md) (done) | `assign`, `due`, and `project` subcommands; route TUI writes through `writeback` | none | no |
 | [02-complete-tickets](02-complete-tickets.md) | Mark tickets complete or reopen them, in the TUI and the CLI | 01 | no |
 | [03-create-tickets](03-create-tickets.md) | Create tickets and subtasks, in the TUI and the CLI | 01 | no |
 | [04-layout-config](04-layout-config.md) | `[layout]` table and a reader toggle key | none | no |
