@@ -371,8 +371,12 @@ func (m *Model) measureColumns() {
 }
 
 // fitList sizes the list pane to its widest row or group header. paneWidths
-// caps it to leave the reader readerMinW columns.
+// caps it to leave the reader readerMinW columns. A fixed layout.list_width
+// leaves it alone.
 func (m *Model) fitList() {
+	if m.fixedListW() > 0 {
+		return
+	}
 	gutter := ansi.StringWidth(m.marker())
 	w := 0
 	if m.viewingRow {

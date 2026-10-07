@@ -69,6 +69,7 @@ type Config struct {
 	Agents        Agents     `toml:"agents"`
 	// TimeTracking is disabled until both its provider ID and command are set.
 	TimeTracking TimeTracking `toml:"time_tracking"`
+	Layout       Layout       `toml:"layout"`
 	List         List         `toml:"list"`
 	Reader       Reader       `toml:"reader"`
 	Images       Images       `toml:"images"`
@@ -135,6 +136,15 @@ func (c Config) SymbolSet(getenv func(string) string) string {
 		}
 	}
 	return SymbolsASCII
+}
+
+// Layout configures the panes. Reader starts with the reading pane shown;
+// --no-preview forces it off and the toggle_reader key flips it for the
+// session. ListWidth fixes the list pane's width in columns, borders
+// included, and gives the reader the rest; 0 sizes the list automatically.
+type Layout struct {
+	Reader    bool `toml:"reader"`
+	ListWidth int  `toml:"list_width"`
 }
 
 // List configures how tickets appear in the list. The title is always shown;
@@ -232,6 +242,7 @@ func Default() Config {
 		DefaultFilter: "is:open", ConfirmWrites: true,
 		TimeTracking: TimeTracking{},
 		Actions:      nil,
+		Layout:       Layout{Reader: true},
 		List: List{
 			RefreshInterval: "30s",
 			Sort:            Sort{By: "", Direction: "asc"},
@@ -358,6 +369,9 @@ func (c Config) validate() error {
 	}
 	if r := c.RepoSource.Root; r != "" && r != "~" && !strings.HasPrefix(r, "~/") && !filepath.IsAbs(r) {
 		return fmt.Errorf("repo_source.root must be an absolute path or start with ~, got %q", r)
+	}
+	if c.Layout.ListWidth < 0 {
+		return fmt.Errorf("layout.list_width must be 0 (automatic) or more, got %d", c.Layout.ListWidth)
 	}
 	if c.Reader.MaxTextWidth < 0 {
 		return fmt.Errorf("reader.max_text_width must be 0 (no limit) or more, got %d", c.Reader.MaxTextWidth)

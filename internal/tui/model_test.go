@@ -29,6 +29,10 @@ func testModel(t *testing.T, cfg config.Config) (*Model, *state.State) {
 	if cfg.List.Selection.Style == "" {
 		cfg.List.Selection.Style = config.StyleBar
 	}
+	// A zero Layout hides the reader; tests want the default split.
+	if cfg.Layout == (config.Layout{}) {
+		cfg.Layout = config.Default().Layout
+	}
 	m := New(Deps{Config: cfg, State: st, StateDir: t.TempDir()})
 	m.now = func() time.Time { return testToday }
 	// New sets package state from cfg; restore the defaults so tests that

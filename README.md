@@ -10,7 +10,8 @@ External commands extend asanamate: actions, agent sources, repo sources, and
 time trackers. [docs/extensions.md](docs/extensions.md) documents each
 protocol.
 
-asanamate runs in any terminal and works well in tmux panes, windows, and popups.
+asanamate runs in any terminal and works well in tmux panes, windows, popups,
+and sidebars; see [Layout](#layout).
 macOS and Linux only.
 
 ## What it does
@@ -171,7 +172,24 @@ titles that no longer fit. At 160 columns
 and wider, a views panel on the left lists My Tasks, recent projects, the
 groupings, sorting, and running agents: press `0`, move with `j`/`k`, and open one
 with `enter`. In a reader at least 90 columns wide, the cards view puts the
-agents and subtasks beside the details card.
+agents and subtasks beside the details card. In narrower terminals the list
+fills the screen and `enter` opens the reader in its place.
+
+Fit asanamate to its spot with the `[layout]` table in `config.toml`:
+
+- `reader = false` starts with only the list, at full width, such as for a
+  sidebar. Press `z` to show or hide the reader for the session; hiding it
+  moves focus to the list. `--no-preview` keeps the reader off, `z` included.
+- `list_width = 60` fixes the list at 60 columns, borders included, and gives
+  the reader the rest of the width. `=` and the automatic fitting leave it
+  alone. When fewer than 30 columns would be left for the reader beside the
+  list and the views panel, the reader hides, as in narrow terminals.
+
+```toml
+[layout]
+reader = true
+list_width = 60
+```
 
 Select `+ Add project` below the ticket's project rows and press `enter` to
 add it to another project. The picker excludes projects already on the ticket.
@@ -209,8 +227,9 @@ key press.
 | `f` | attachments: view images inline (`j`/`k` step between them) or open in the browser |
 | `b` | group the list by a field (built-ins, `list.fields`, or a custom field on the loaded tickets) |
 | `B` | sort by field and direction, or restore Asana order |
-| `=` | fit the list pane to its content (also on project, grouping, sorting, and filter changes) |
+| `=` | fit the list pane to its content (also on project, grouping, sorting, and filter changes); does nothing while `layout.list_width` is set |
 | `v` | switch the reader between the cards and markdown views |
+| `z` | show or hide the reader for the session (see [Layout](#layout)); not with `--no-preview` |
 | `V` | recall or manage saved views |
 | `]` / `[` | apply the next/previous saved view, in name order |
 | `ctrl+s` | save the current filter, grouping, and sorting under a name |
@@ -306,8 +325,19 @@ work in narrow terminals and list-only mode too.
 
 ## List-only mode and scripting
 
-- `asanamate --no-preview` shows only the ticket list at full width. It is handy
-  in a small popup: pick a ticket, press `space` or `a`, and run an action.
+- `asanamate --no-preview` shows only the ticket list at full width, whatever
+  `[layout]` says, and `z` can't bring the reader back. It is handy in a small
+  popup or a tmux sidebar: pick a ticket, press `space` or `a`, and run an
+  action. To start list-only but keep `z`, set `layout.reader = false` instead
+  (see [Layout](#layout)).
+
+  ```tmux
+  # Sidebar: the list only, 50 columns down the left of the window
+  bind-key S split-window -hbf -l 50 "asanamate --no-preview"
+  # Popup: pick a ticket, run an action, and close
+  bind-key T display-popup -E -w 60% -h 60% "asanamate --no-preview --exit-on-action"
+  ```
+
 - `--exit-on-action` runs `background` actions like `exit` ones: asanamate
   quits, then runs the action, so a popup closes once the action finishes.
   `foreground` actions still return to the list.
@@ -374,6 +404,8 @@ once. Run `asanamate doctor` to check a change without starting the TUI.
 | `colors.*` | the theme's | per-role overrides on top of the theme: a color (`0`–`255`, `#rgb`, or `#rrggbb`) or a style table `{ fg, bg, bold, italic, underline, faint, reverse }`; see [Themes](#themes) |
 | `default_filter` | `"is:open"` | filter applied at startup |
 | `confirm_writes` | `true` | write-back subcommands ask before writing |
+| `layout.reader` | `true` | start with the reader beside the list; `z` shows or hides it for the session; `--no-preview` forces it off. See [Layout](#layout) |
+| `layout.list_width` | `0` | fix the list pane at this many columns (at least 30), borders included, and give the reader the rest; the reader hides when fewer than 30 columns remain for it; `0` sizes the list automatically. See [Layout](#layout) |
 | `list.layout` | `"single"` | `single` (one line per ticket) or `multi` (title, then fields on a second line) |
 | `list.refresh_interval` | `"30s"` | automatic list reload interval, at least `1s`; durations such as `"15s"` or `"1m"`; `R` or the `s` settings menu overrides it and the override persists, `ctrl+s` applies it; the statusline shows the interval, and an automatic reload marks the list border yellow instead of opening the loading modal |
 | `list.fields` | `["section", "due"]` | default values shown with the title, in aligned columns (`single` layout); `s`, then `c` overrides columns per project; due dates show relative to today and are colored by urgency |

@@ -68,7 +68,7 @@ func (m *Model) showTicket(t asana.Task) tea.Cmd {
 	}
 	m.moveTo(slices.IndexFunc(m.visible, byGID))
 	cmd := m.selectionChanged()
-	if !m.deps.NoPreview {
+	if m.readerOn() {
 		m.focusList()
 		m.focusReaderPane()
 	}
