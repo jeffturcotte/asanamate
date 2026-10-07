@@ -36,7 +36,7 @@ type tasksMsg struct {
 	tasks   []asana.Task
 	pins    []asana.Task // explicitly pinned tasks absent from the normal list
 	warning string
-	fields  map[string]bool // the project's custom field gids, when known
+	catalog []asana.Ref // the project's custom field names and gids, when known
 	err     error
 }
 
@@ -48,9 +48,11 @@ type agentsMsg struct {
 type agentTickMsg struct{}
 
 type projectFieldsMsg struct {
-	gid    string
-	fields map[string]bool
-	err    error
+	gid     string
+	fields  map[string]bool
+	catalog []asana.Ref
+	columns bool // open the columns picker after loading this project's fields
+	err     error
 }
 
 type detailTickMsg struct{ gid string }
@@ -134,19 +136,19 @@ func loadTasks(c *asana.Client, workspace string, project *asana.Ref, pins []str
 	pins = slices.Clone(pins)
 	return request(func(ctx context.Context) tea.Msg {
 		msg := tasksMsg{project: project}
-		var fields map[string]bool
+		var catalog []asana.Ref
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
 			if project != nil {
-				// Best effort: only used to pick between same-named fields.
-				fields, _ = c.ProjectFieldGIDs(ctx, project.GID)
+				// Best effort: task loading still works if metadata is unavailable.
+				catalog, _ = c.ProjectFields(ctx, project.GID)
 			}
 		}()
 		msg.tasks, msg.err = ticket.List(ctx, c, workspace, gidOf(project))
 		<-done
 		if msg.err == nil {
-			msg.fields = fields
+			msg.catalog = catalog
 			var failed []string
 			for _, gid := range pins {
 				if slices.ContainsFunc(msg.tasks, func(t asana.Task) bool { return t.GID == gid }) {
@@ -182,8 +184,8 @@ func scheduleAgents() tea.Cmd {
 
 func loadProjectFields(c *asana.Client, gid string) tea.Cmd {
 	return request(func(ctx context.Context) tea.Msg {
-		fields, err := c.ProjectFieldGIDs(ctx, gid)
-		return projectFieldsMsg{gid: gid, fields: fields, err: err}
+		catalog, err := c.ProjectFields(ctx, gid)
+		return projectFieldsMsg{gid: gid, fields: fieldGIDs(catalog), catalog: catalog, err: err}
 	})
 }
 

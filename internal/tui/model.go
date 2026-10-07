@@ -138,6 +138,7 @@ type Model struct {
 
 	projects        []asana.Project
 	projectFields   map[string]map[string]bool // project gid -> its custom field gids
+	projectCatalogs map[string][]asana.Ref     // project gid -> its custom field names and gids
 	agents          []agents.Agent
 	linked          map[string][]agents.Agent // viewAgents by ticket gid; nil when stale
 	agentsErr       string
@@ -171,26 +172,27 @@ func New(d Deps) *Model {
 	in := textinput.New()
 	in.Prompt = "/"
 	m := &Model{
-		deps:          d,
-		filterInput:   in,
-		reader:        viewport.New(),
-		readerView:    cmp.Or(d.State.Display.ReaderView, d.Config.Reader.View),
-		separator:     *cmp.Or(d.State.Display.Separator, &d.Config.List.Separator),
-		spacing:       *cmp.Or(d.State.Display.HeaderSpacing, &d.Config.List.Header.Spacing),
-		lastAction:    -1,
-		accentStyle:   colorStyle(d.Config.AccentColor),
-		headerStyle:   colorStyle(cmp.Or(d.Config.List.Header.Color, d.Config.AccentColor)),
-		pinnedStyle:   colorStyle(cmp.Or(d.Config.List.Pinned.Color, d.Config.AccentColor)),
-		viewingStyle:  colorStyle(cmp.Or(d.Config.List.Viewing.Color, d.Config.AccentColor)),
-		markerStyle:   colorStyle(cmp.Or(d.Config.List.Selection.Color, d.Config.AccentColor)),
-		renderers:     map[rendererKey]*markdownRenderer{},
-		details:       map[string]ticket.Ticket{},
-		images:        map[string]*inlineImage{},
-		imageSeq:      rand.IntN(imageIDs),
-		projectFields: map[string]map[string]bool{},
-		sym:           newSymbols(d.Symbols, d.Config.Agents.Symbols, d.ReducedMotion),
-		loading:       true,
-		now:           time.Now,
+		deps:            d,
+		filterInput:     in,
+		reader:          viewport.New(),
+		readerView:      cmp.Or(d.State.Display.ReaderView, d.Config.Reader.View),
+		separator:       *cmp.Or(d.State.Display.Separator, &d.Config.List.Separator),
+		spacing:         *cmp.Or(d.State.Display.HeaderSpacing, &d.Config.List.Header.Spacing),
+		lastAction:      -1,
+		accentStyle:     colorStyle(d.Config.AccentColor),
+		headerStyle:     colorStyle(cmp.Or(d.Config.List.Header.Color, d.Config.AccentColor)),
+		pinnedStyle:     colorStyle(cmp.Or(d.Config.List.Pinned.Color, d.Config.AccentColor)),
+		viewingStyle:    colorStyle(cmp.Or(d.Config.List.Viewing.Color, d.Config.AccentColor)),
+		markerStyle:     colorStyle(cmp.Or(d.Config.List.Selection.Color, d.Config.AccentColor)),
+		renderers:       map[rendererKey]*markdownRenderer{},
+		details:         map[string]ticket.Ticket{},
+		images:          map[string]*inlineImage{},
+		imageSeq:        rand.IntN(imageIDs),
+		projectFields:   map[string]map[string]bool{},
+		projectCatalogs: map[string][]asana.Ref{},
+		sym:             newSymbols(d.Symbols, d.Config.Agents.Symbols, d.ReducedMotion),
+		loading:         true,
+		now:             time.Now,
 	}
 	m.restoreView()
 	m.refreshInterval, _ = config.ParseRefreshInterval(cmp.Or(d.Config.List.RefreshInterval, config.Default().List.RefreshInterval))
@@ -241,8 +243,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = "loading tasks: " + msg.err.Error()
 			return m, nil
 		}
-		if msg.fields != nil {
-			m.projectFields[msg.project.GID] = msg.fields
+		if msg.catalog != nil && msg.project != nil {
+			m.cacheProjectFields(msg.project.GID, msg.catalog)
 		}
 		prev, _ := m.selected()
 		m.tasks, m.pinExtras, m.linked = msg.tasks, msg.pins, nil
@@ -354,10 +356,23 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case agentTickMsg:
 		return m, loadAgents(m.deps.Config.Agents, m.deps.StateDir)
 	case projectFieldsMsg:
+		if msg.columns && msg.gid != gidOf(m.viewProject) {
+			return m, nil
+		}
 		if msg.err != nil {
 			m.status = "loading project fields: " + msg.err.Error()
+			if msg.columns {
+				return m, nil
+			}
 		}
 		m.projectFields[msg.gid], m.linked = msg.fields, nil
+		if msg.catalog != nil {
+			m.cacheProjectFields(msg.gid, msg.catalog)
+		}
+		if msg.columns && msg.gid == gidOf(m.viewProject) {
+			m.status = ""
+			m.openColumnPicker()
+		}
 		if m.run != nil && m.run.awaitingFields {
 			m.run.awaitingFields = false
 			return m, m.execute(m.run.repo)
@@ -910,6 +925,9 @@ func (m *Model) pickedProject(ref *asana.Ref) tea.Cmd {
 	m.modal = nil
 	m.viewProject, m.linked, m.viewing = ref, nil, nil
 	m.restoreView()
+	// The previous rows remain visible while loading the new project. Their
+	// widths must already match the new project's column choices.
+	m.measureColumns()
 	if ref != nil {
 		m.deps.State.TouchProject(ref.GID)
 		if err := m.deps.State.Save(); err != nil {
@@ -1331,12 +1349,12 @@ func (m *Model) listRow(i int, cols []int) (row []string, tail string) {
 	rc, today := m.rowContext(), m.now()
 	if m.deps.Config.List.Layout == config.LayoutMulti {
 		var parts []string
-		for _, name := range m.deps.Config.List.Fields {
-			v, style := cellValue(t, name, rc, today)
+		for _, column := range m.listColumns() {
+			v, style := columnValue(t, column, rc, today)
 			if v == "" {
 				continue
 			}
-			if n := strings.TrimSpace(name); !isDue(n) && !strings.EqualFold(n, initialsField) {
+			if n := strings.TrimSpace(column.Field); column.GID != "" || (!isDue(n) && !strings.EqualFold(n, initialsField)) {
 				style = dimStyle
 			}
 			parts = append(parts, style.Render(v))
@@ -1356,11 +1374,11 @@ func (m *Model) listRow(i int, cols []int) (row []string, tail string) {
 		return s
 	}
 	var cells []string
-	for j, name := range m.deps.Config.List.Fields {
+	for j, column := range m.listColumns() {
 		if cols[j] == 0 {
 			continue
 		}
-		v, style := cellValue(t, name, rc, today)
+		v, style := columnValue(t, column, rc, today)
 		v = ansi.Truncate(v, cols[j], "…")
 		cells = append(cells, pad(style.Render(v), cols[j]))
 	}
@@ -1375,12 +1393,12 @@ func (m *Model) listRow(i int, cols []int) (row []string, tail string) {
 // from the right, then due. The agent badge always stays.
 func (m *Model) rowCols(width int) []int {
 	cols := slices.Clone(m.cols)
-	names := m.deps.Config.List.Fields
+	columns := m.listColumns()
 	// The title line also holds the check mark and the two spaces after it.
 	room := min(m.titleW, minTitleW) + ansi.StringWidth(m.sym.open) + 2
 	var order, due []int
 	for j := len(cols) - 1; j >= 0; j-- {
-		if isDue(strings.TrimSpace(names[j])) {
+		if columns[j].GID == "" && isDue(strings.TrimSpace(columns[j].Field)) {
 			due = append(due, j)
 		} else {
 			order = append(order, j)
@@ -1410,13 +1428,13 @@ func tailWidth(cols []int, badgeW int) int {
 // up to maxColW, the badge column to the widest agent badge, and titleW to
 // the widest title.
 func (m *Model) measureColumns() {
-	names := m.deps.Config.List.Fields
-	m.cols, m.badgeW, m.titleW = make([]int, len(names)), 0, 0
+	columns := m.listColumns()
+	m.cols, m.badgeW, m.titleW = make([]int, len(columns)), 0, 0
 	rc, today := m.rowContext(), m.now()
 	for _, t := range m.visible {
 		m.titleW = max(m.titleW, ansi.StringWidth(ticket.OneLine(t.Name)))
-		for j, name := range names {
-			v, _ := cellValue(t, name, rc, today)
+		for j, column := range columns {
+			v, _ := columnValue(t, column, rc, today)
 			m.cols[j] = min(max(m.cols[j], ansi.StringWidth(v)), maxColW)
 		}
 		m.badgeW = max(m.badgeW, ansi.StringWidth(m.sym.badge(m.viewAgents(t), 0, false)))

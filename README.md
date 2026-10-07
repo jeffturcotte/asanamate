@@ -187,7 +187,7 @@ key press.
 | `V` | recall or manage saved views |
 | `]` / `[` | apply the next/previous saved view, in name order |
 | `ctrl+s` | save the current filter, grouping, and sorting under a name |
-| `s` | settings: separators, header spacing, reader view, and auto-update interval; changes persist between sessions |
+| `s` | settings: separators, header spacing, reader view, auto-update interval, and project list columns; changes persist between sessions |
 | `o` | open the ticket in the browser |
 | `c` | copy the selected ticket's link to the clipboard (requires terminal OSC 52 support) |
 | `y` | copy the targeted comment as Markdown in the cards reader (requires terminal OSC 52 support); does nothing on other targets |
@@ -291,7 +291,7 @@ asanamate list | fzf --delimiter '\t' --with-nth 2,4 --preview 'asanamate show {
 | `confirm_writes` | `true` | write-back subcommands ask before writing |
 | `list.layout` | `"single"` | `single` (one line per ticket) or `multi` (title, then fields on a second line) |
 | `list.refresh_interval` | `"30s"` | automatic list reload interval, at least `1s`; durations such as `"15s"` or `"1m"`; `R` or the `s` settings menu overrides it and the override persists, `ctrl+s` applies it; the statusline shows the interval, and an automatic reload marks the list border yellow instead of opening the loading modal |
-| `list.fields` | `["section", "due"]` | values shown with the title, in aligned columns (`single` layout); due dates show relative to today and are colored by urgency |
+| `list.fields` | `["section", "due"]` | default values shown with the title, in aligned columns (`single` layout); `s`, then `c` overrides columns per project; due dates show relative to today and are colored by urgency |
 | `branch_field` | `""` | custom field holding the ticket's git branch (`$ASANAMATE_BRANCH`); empty uses the ticket's ID field, else the title slug |
 | `agents.preset` / `agents.command` | unset (off) | opt-in agent tracking; see [Agents](#agents-optional) |
 | `symbols` | `unicode` on UTF-8, else `ascii` | `unicode`, `nerd`, or `ascii` for ticket markers and agent states |
@@ -321,6 +321,21 @@ initials as a colored badge, handy in shared projects), `project`, `tags`, and
 `completed` (open/done). Any other name is matched to a custom field, ignoring
 case and surrounding spaces. A column shows only when some visible ticket has
 a value for it.
+
+Open settings with `s`, then press `c` to choose columns for the current
+project (or My Tasks). Press `enter` to toggle a column, `ctrl+up`/`ctrl+down`
+to change its order, and `ctrl+s` to save. Clear the search before reordering.
+`esc` cancels; `ctrl+r` removes the project's override and restores the
+`list.fields` defaults. The title and agent badge remain independent of these
+choices. Column choices persist across restarts and stay with the project
+when applying named views.
+
+The picker offers common fields and the custom fields attached to the project,
+including fields with no values and fields on empty projects. My Tasks offers
+custom fields from its loaded tasks. Selected custom fields are remembered by
+Asana ID, so renames and duplicate names do not change which value is shown.
+An unavailable selected field stays in the picker so it can be removed; its
+column has no value on tasks where the field is absent.
 
 `list.group_by` takes the same names and puts a `Value (count)` header above
 each group. Groups keep Asana's order (first seen), with tickets missing

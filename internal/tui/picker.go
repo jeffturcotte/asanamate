@@ -24,6 +24,7 @@ type pickResult struct {
 	item      *pickItem
 	items     []pickItem // checked items, in list order, for a multi picker
 	free      string
+	reset     bool // return to defaults, when the picker offers a reset
 }
 
 // picker is a modal list. It filters by typed words, or with keySelect it
@@ -43,6 +44,8 @@ type picker struct {
 	allowFree   bool
 	multi       bool
 	checked     map[int]bool
+	reorder     bool // ctrl+up/down reorders items in an unfiltered multi picker
+	allowReset  bool // ctrl+r returns a reset result
 	err         string
 }
 
@@ -132,6 +135,15 @@ func (p *picker) update(msg tea.KeyPressMsg) (pickResult, tea.Cmd) {
 		}
 	}
 	switch msg.String() {
+	case "ctrl+r":
+		if p.allowReset {
+			return pickResult{done: true, reset: true}, nil
+		}
+	case "ctrl+up", "ctrl+down":
+		if p.multi && p.reorder {
+			p.moveItem(msg.String() == "ctrl+down")
+			return pickResult{}, nil
+		}
 	case "esc":
 		return pickResult{cancelled: true}, nil
 	case "up", "ctrl+p":
@@ -186,14 +198,36 @@ func (p *picker) update(msg tea.KeyPressMsg) (pickResult, tea.Cmd) {
 	return pickResult{}, cmd
 }
 
+// moveItem keeps checks attached to their items, and the cursor on the moved
+// item. Reordering requires an unfiltered list so its order is unambiguous.
+func (p *picker) moveItem(down bool) {
+	if p.input.Value() != "" {
+		p.err = "Clear search before reordering"
+		return
+	}
+	i, j := p.cursor, p.cursor-1
+	if down {
+		j = i + 1
+	}
+	if i < 0 || i >= len(p.items) || j < 0 || j >= len(p.items) {
+		return
+	}
+	p.items[i], p.items[j] = p.items[j], p.items[i]
+	p.checked[i], p.checked[j] = p.checked[j], p.checked[i]
+	p.cursor = j
+	p.err = ""
+	p.refilter()
+}
+
 func (p *picker) view(width, height int, accent lipgloss.Style) string {
 	var b strings.Builder
-	b.WriteString(accent.Render(p.title) + "\n")
+	b.WriteString(accent.Render(ansi.Truncate(p.title, width, "…")) + "\n")
 	if !p.keySelect && (!p.browseFirst || p.searching) {
 		styles := p.input.Styles()
 		styles.Focused.Prompt = accent
 		p.input.SetStyles(styles)
-		p.input.SetWidth(max(width-2, 1))
+		// Text input width excludes its prompt and trailing cursor cell.
+		p.input.SetWidth(max(width-ansi.StringWidth(p.input.Prompt)-1, 1))
 		b.WriteString(p.input.View() + "\n")
 	}
 	help := ""
@@ -207,7 +241,8 @@ func (p *picker) view(width, height int, accent lipgloss.Style) string {
 			break
 		}
 	}
-	rows := max(height-4-lipgloss.Height(help), 1)
+	hint := ansi.Wrap(p.controls(accent), width, "")
+	rows := max(height-3-lipgloss.Height(help)-lipgloss.Height(hint), 1)
 	start := max(p.cursor-rows+1, 0)
 	if len(p.matches) == 0 {
 		b.WriteString(dimStyle.Render("no matches") + "\n")
@@ -241,6 +276,12 @@ func (p *picker) view(width, height int, accent lipgloss.Style) string {
 	if help != "" {
 		b.WriteString(help + "\n")
 	}
+	b.WriteString(hint)
+	return b.String()
+}
+
+// controls describes the keys supported by this picker.
+func (p *picker) controls(accent lipgloss.Style) string {
 	hint := accent.Render("enter") + dimStyle.Render(" select · ") + accent.Render("esc") + dimStyle.Render(" cancel")
 	if p.browseFirst {
 		if p.searching {
@@ -252,12 +293,17 @@ func (p *picker) view(width, height int, accent lipgloss.Style) string {
 	if p.multi {
 		hint = accent.Render("enter") + dimStyle.Render(" toggle · ") + accent.Render("ctrl+s") +
 			dimStyle.Render(" save · ") + accent.Render("esc") + dimStyle.Render(" cancel")
+		if p.reorder {
+			hint += dimStyle.Render(" · ") + accent.Render("ctrl+up/down") + dimStyle.Render(" reorder")
+		}
+		if p.allowReset {
+			hint += dimStyle.Render(" · ") + accent.Render("ctrl+r") + dimStyle.Render(" defaults")
+		}
 	}
 	if p.allowFree {
 		hint += dimStyle.Render(" · ") + accent.Render("tab") + dimStyle.Render(" use typed path")
 	}
-	b.WriteString(hint)
-	return b.String()
+	return hint
 }
 
 // modalHelp reserves a stable footer height while wrapping the selected

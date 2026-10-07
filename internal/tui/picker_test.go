@@ -109,6 +109,39 @@ func TestPickerMultiTogglesAndSaves(t *testing.T) {
 	}
 }
 
+func TestReorderablePickerPreservesChecksAndRequiresUnfilteredOrder(t *testing.T) {
+	p := newMultiPicker(nil, "Columns", items("A", "B", "C"), map[int]bool{0: true, 2: true})
+	p.reorder = true
+	p.update(tea.KeyPressMsg{Code: tea.KeyUp, Mod: tea.ModCtrl}) // already first
+	p.update(tea.KeyPressMsg{Code: tea.KeyDown, Mod: tea.ModCtrl})
+	if p.cursor != 1 || p.items[1].Label != "A" || !p.checked[1] || p.checked[0] {
+		t.Fatal("reordering detached the cursor or check from the item")
+	}
+	typeText(p, "C")
+	p.update(tea.KeyPressMsg{Code: tea.KeyUp, Mod: tea.ModCtrl})
+	if p.err != "Clear search before reordering" || p.items[2].Label != "C" {
+		t.Fatal("filtered reorder changed hidden item order")
+	}
+	res, _ := p.update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	if !res.done || len(res.items) != 2 || res.items[0].Label != "A" || res.items[1].Label != "C" {
+		t.Fatalf("saving while filtered lost checked items or order: %+v", res)
+	}
+}
+
+func TestColumnPickerControlsFitNarrowModal(t *testing.T) {
+	p := newMultiPicker(nil, strings.Repeat("Long project ", 10), items("A", "B", "C", "D", "E", "F", "G"), map[int]bool{})
+	p.reorder, p.allowReset = true, true
+	view := ansi.Strip(p.view(40, 12, lipgloss.NewStyle()))
+	if lipgloss.Height(view) > 12 || !strings.Contains(view, "ctrl+s") || !strings.Contains(view, "ctrl+r") || !strings.Contains(view, "ctrl+up/down") {
+		t.Fatalf("column controls do not fit: %q", view)
+	}
+	for _, line := range strings.Split(view, "\n") {
+		if ansi.StringWidth(line) > 40 {
+			t.Fatalf("line wider than modal: %q", line)
+		}
+	}
+}
+
 func TestPickerHelpUsesFilteredSelectionAndFitsModal(t *testing.T) {
 	p := newPicker(nil, "Settings", []pickItem{
 		{Label: "Name", Help: "Required menu name."},
