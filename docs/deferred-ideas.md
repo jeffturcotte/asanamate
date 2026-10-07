@@ -134,6 +134,22 @@ overridden by saved state.
 **Watch out for:** Writing to `config.toml` from the TUI must keep comments
 and the user's layout, which `Merge` already knows how to do.
 
+## Views panel layout
+
+**Now:** The views panel shows whenever the reader sits beside the list in a
+terminal at least 160 columns wide (`showNav` in `internal/tui/nav.go`). It
+takes 26 columns from the reader, so `layout.list_width` leaves the reader
+less room at 160 columns and up than just below.
+
+**Idea:** Add `layout.views` (bool, default `true`) to the `[layout]` table,
+and a session toggle key next to `toggle_reader`. With it off, the list and
+reader split the full width.
+
+**Watch out for:** `readerShown` in `internal/tui/model.go` subtracts the
+panel's width itself to avoid calling `showNav`, which depends on it; a new
+setting must change both. Focus must leave the panel when it hides, as
+`layout()` already does on resize.
+
 ## Known issues found during the review
 
 These were already broken before the cleanup:
