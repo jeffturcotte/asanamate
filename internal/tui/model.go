@@ -401,7 +401,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.run != nil && m.run.awaitingFields {
 			m.run.awaitingFields = false
-			return m, m.execute(m.run.repo)
+			return m, m.resumeRun()
 		}
 	case candidatesMsg:
 		m.openRepoPicker(msg)
@@ -566,10 +566,7 @@ func (m *Model) updateInput(msg tea.Msg) tea.Cmd {
 		if m.input.onSubmit != nil {
 			return tea.Batch(cmd, m.input.onSubmit(res.free))
 		}
-		if m.run == nil {
-			return tea.Batch(cmd, m.typedEdit(res.free))
-		}
-		return tea.Batch(cmd, m.typedInput(res.free))
+		return tea.Batch(cmd, m.typedEdit(res.free))
 	}
 	return cmd
 }

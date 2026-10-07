@@ -4,23 +4,6 @@ Improvements found during the 2026-09-28 code review that were left out of the
 cleanup. Each one either adds a feature or rewrites behavior, so it needs its
 own design pass. They are recorded here so they can be picked up later.
 
-## Action run steps
-
-**Now:** `pendingRun` in `internal/tui/flow.go` tracks progress with four
-flags (`projectChosen`, `awaitingFields`, `inputDone`, `formDone`) and an
-empty `branch` string.
-`continueRun` and `execute` re-enter each other until every flag is settled.
-The flow works, but each new step adds another flag and another re-entry
-point.
-
-**Idea:** Model the run as an ordered list of steps: pick agent, pick project,
-resolve repo, collect input, fill the action form, load project fields, ask
-for a branch when the branch field is empty. Each step either finishes right
-away or opens a modal and resumes when it is answered.
-
-**Watch out for:** This is the most intricate flow in the TUI. The tests in
-`flow_test.go` and `agents_test.go` cover it and should pass unchanged.
-
 ## Cheaper project list
 
 **Now:** `Client.MemberProjects` loads every unarchived project in the
