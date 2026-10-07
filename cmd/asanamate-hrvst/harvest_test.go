@@ -1,4 +1,4 @@
-package timetracking
+package main
 
 import (
 	"bytes"
@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/sadmachine/asanamate/internal/form"
+	"github.com/sadmachine/asanamate/internal/timetracking"
 )
 
 const assignmentJSON = `[{"is_active":true,"project":{"id":123,"name":"Web"},"task_assignments":[{"is_active":true,"task":{"id":456,"name":"Development"}}]},` +
@@ -48,7 +49,7 @@ func TestHarvestAdapterUsesExternalReference(t *testing.T) {
 	}
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 	var out bytes.Buffer
-	if err := RunHarvest(context.Background(), strings.NewReader(`{"operation":"form"}`), &out, "456"); err != nil {
+	if err := runHarvest(context.Background(), strings.NewReader(`{"operation":"form"}`), &out, "456", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	var spec form.Spec
@@ -107,7 +108,7 @@ func TestHarvestRejectsCreatedEntryWithoutAsanaLink(t *testing.T) {
 		w.Write([]byte(`{"id":987,"external_reference":null}`))
 	}))
 	defer server.Close()
-	err := createHarvestEntry(context.Background(), credentials, server.URL, "123", "456", 1.25, Asana{TaskGID: "1", ProjectGID: "2", URL: "https://app.asana.com/0/2/1"})
+	err := createHarvestEntry(context.Background(), credentials, server.URL, "123", "456", 1.25, timetracking.Asana{TaskGID: "1", ProjectGID: "2", URL: "https://app.asana.com/0/2/1"})
 	if err == nil || !strings.Contains(err.Error(), "without the Asana link") || !strings.Contains(err.Error(), "do not submit again") {
 		t.Fatalf("missing link error = %v", err)
 	}
@@ -203,7 +204,7 @@ func TestHarvestSummaryZeroAndUnitConversion(t *testing.T) {
 	}
 }
 
-// The built-in provider follows the protocol rule it documents: it ignores
+// The provider follows the protocol rule it documents: it ignores
 // the version and any request fields it does not know.
 func TestHarvestIgnoresVersionAndUnknownFields(t *testing.T) {
 	var out bytes.Buffer

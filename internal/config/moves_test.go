@@ -114,3 +114,26 @@ func TestLoadNamesMovedKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestApplyCommandMovesKeepsFlags(t *testing.T) {
+	for old, want := range map[string]string{
+		"asanamate time-provider hrvst --task-id 456": "asanamate-hrvst --task-id 456",
+		"asanamate time-provider hrvst":               "asanamate-hrvst",
+		"asanamate-hrvst --task-id 456":               "asanamate-hrvst --task-id 456",
+		"asanamate time-provider hrvstx":              "asanamate time-provider hrvstx",
+		"my-provider":                                 "my-provider",
+	} {
+		m := map[string]any{"time_tracking": map[string]any{"id": "hrvst", "command": old}}
+		ApplyCommandMoves(m)
+		if got, _ := getPath(m, "time_tracking.command"); got != want {
+			t.Errorf("%q became %q, want %q", old, got, want)
+		}
+	}
+}
+
+func TestLoadNamesMovedCommand(t *testing.T) {
+	_, err := Load(writeFile(t, "workspace = \"1\"\n[time_tracking]\nid = \"hrvst\"\ncommand = \"asanamate time-provider hrvst --task-id 456\"\n"))
+	if err == nil || !strings.Contains(err.Error(), "time_tracking.command: asanamate time-provider hrvst moved to asanamate-hrvst") || !strings.Contains(err.Error(), "asanamate config update") {
+		t.Fatalf("err = %v", err)
+	}
+}

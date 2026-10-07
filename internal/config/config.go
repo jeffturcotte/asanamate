@@ -270,6 +270,9 @@ func Load(path string) (Config, error) {
 		if mv, ok := movedFrom(raw); ok {
 			return cfg, fmt.Errorf("%s: %s moved to %s in v0.2.0; run `asanamate config update`", path, mv.From, mv.To)
 		}
+		if mv, _, ok := commandMovedFrom(raw); ok {
+			return cfg, fmt.Errorf("%s: %s: %s moved to %s in v0.2.0; run `asanamate config update`", path, mv.Key, mv.From, mv.To)
+		}
 	}
 	md, err := toml.Decode(string(data), &cfg)
 	if err != nil {

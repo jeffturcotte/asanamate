@@ -25,6 +25,40 @@ var Moves = []Move{
 	{"repo.branch_field", "branch_field"},
 }
 
+// CommandMove is a released command that moved: a Key value starting with
+// From now starts with To, keeping the rest, such as the command's flags.
+type CommandMove struct{ Key, From, To string }
+
+// CommandMoves lists the commands v0.2.0 moved. `asanamate config update`
+// applies them, and Load names them, like Moves.
+var CommandMoves = []CommandMove{
+	{"time_tracking.command", "asanamate time-provider hrvst", "asanamate-hrvst"},
+}
+
+// commandMovedFrom returns the first command move m still uses and the
+// key's rewritten value.
+func commandMovedFrom(m map[string]any) (CommandMove, string, bool) {
+	for _, mv := range CommandMoves {
+		v, _ := getPath(m, mv.Key)
+		s, _ := v.(string)
+		if rest, ok := strings.CutPrefix(s, mv.From); ok && (rest == "" || rest[0] == ' ') {
+			return mv, mv.To + rest, true
+		}
+	}
+	return CommandMove{}, "", false
+}
+
+// ApplyCommandMoves rewrites a decoded config's moved commands.
+func ApplyCommandMoves(m map[string]any) {
+	for {
+		mv, v, ok := commandMovedFrom(m)
+		if !ok {
+			return
+		}
+		setPath(m, mv.Key, v)
+	}
+}
+
 // movedFrom returns the first move whose old key m still sets. An old key
 // whose value is a table is the new shape (theme), not the old one.
 func movedFrom(m map[string]any) (Move, bool) {
