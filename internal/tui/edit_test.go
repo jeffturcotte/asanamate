@@ -31,6 +31,14 @@ func editModel(t *testing.T) (*Model, *[]string) {
 			io.WriteString(w, `{"data":[{"gid":"p1","name":"Web","members":[{"gid":"u1"}]},{"gid":"p2","name":"API","members":[{"gid":"u1"}]}]}`)
 		case r.URL.Path == "/workspaces/w/users":
 			io.WriteString(w, `{"data":[{"gid":"u2","name":"zed"},{"gid":"u1","name":"Amy"}]}`)
+		case r.URL.Path == "/tasks/1" && r.Method == http.MethodGet:
+			io.WriteString(w, `{"data":{"gid":"1","name":"Fix","assignee_section":{"gid":"m1","name":"Inbox"},
+				"memberships":[{"project":{"gid":"p1","name":"Web"}}],
+				"custom_fields":[
+					{"gid":"f1","name":"Branch","resource_subtype":"text"},
+					{"gid":"f2","name":"Due","resource_subtype":"date"},
+					{"gid":"f3","name":"Scope","resource_subtype":"multi_enum","enum_options":[{"gid":"o1","name":"FE"},{"gid":"o2","name":"BE"}]},
+					{"gid":"f4","name":"Reviewers","resource_subtype":"people"}]}}`)
 		case r.URL.Path == "/users/me/user_task_list":
 			io.WriteString(w, `{"data":{"gid":"mt"}}`)
 		case r.URL.Path == "/projects/mt/sections":

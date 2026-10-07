@@ -43,3 +43,13 @@ the user whether to migrate their local config to it. On yes:
 - Validate with the branch's build: `go run ./cmd/asanamate doctor` loads the
   config and actions and names the first bad file or key. Done when it runs
   clean; then report what changed and where the backups are.
+
+## Asana writes
+
+Every write to Asana goes through `writeback.Service`
+(`internal/writeback/writeback.go`), so the TUI and the CLI share one
+implementation. Add a new write there first, with tests, then expose it in
+both: a TUI edit that calls the `Service` method (with no `Confirm`), and a
+CLI subcommand in `cmd/asanamate/main.go` with `--yes`, its `usage` line, and
+the README "Writing back to Asana" section. The TUI never calls the Asana
+client's write methods directly.
