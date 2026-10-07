@@ -157,6 +157,43 @@ func TestRunBackgroundLogsOutput(t *testing.T) {
 	}
 }
 
+// TestCommandFixture runs testdata/action.sh, the minimal action
+// docs/extensions.md describes, the way a background action runs, so a change
+// to the variables, files, working directory, or exit status fails here.
+func TestCommandFixture(t *testing.T) {
+	script, err := filepath.Abs("testdata/action.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tk := ticket.Ticket{Task: asana.Task{GID: "42", Name: "Fix login"}}
+	files, err := WriteFiles(t.TempDir(), tk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := Context{Ticket: tk, Project: &asana.Ref{GID: "7", Name: "Web"}, Repo: repo, Branch: "fix-login", Files: files}
+	logPath := filepath.Join(t.TempDir(), "actions.log")
+
+	if err := RunBackground(Command(config.Action{Command: "/bin/sh '" + script + "'"}, c), logPath); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(logPath)
+	for _, want := range []string{"gid=42\n", "branch=fix-login\n", "project=7\n", "dir=" + repo + "\n", "# Fix login\n"} {
+		if !strings.Contains(string(data), want) {
+			t.Fatalf("log = %q; missing %q", data, want)
+		}
+	}
+
+	err = RunBackground(Command(config.Action{Command: "/bin/sh '" + script + "' 3"}, c), logPath)
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 3 {
+		t.Fatalf("err = %v, want exit status 3", err)
+	}
+}
+
 func TestRunBackgroundStartsNewSession(t *testing.T) {
 	// The child logs its own pid: cmd.Process belongs to RunBackground's
 	// goroutine, so reading it here would race.
