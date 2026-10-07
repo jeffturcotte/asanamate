@@ -113,8 +113,9 @@ command = '~/bin/show-ticket.sh | less'
 ## Agent sources
 
 Set `agents.command` to list running coding agents; asanamate links each one
-to the ticket whose branch it has checked out. `agents.preset` (such as
-`"ccmux"`) takes precedence and uses a built-in source instead.
+to the ticket whose branch it has checked out. asanamate has no built-in
+sources: `asanamate-ccmux` (`cmd/asanamate-ccmux`), the ccmux adapter, is an
+agents command like any other.
 
 **When it runs.** When the TUI starts, then 5 seconds after each run
 finishes, while the TUI is open. `asanamate doctor` runs it once.
@@ -124,7 +125,7 @@ finishes, while the TUI is open. `asanamate doctor` runs it once.
 **Output.** One line per agent on stdout:
 
 ```
-<path>\t<status>[\t<target>[\t<title>]]
+<path>\t<status>[\t<target>[\t<title>[\t<branch>\t<repo>]]]
 ```
 
 - `path`: the agent's working directory. asanamate asks git for its branch
@@ -138,10 +139,15 @@ finishes, while the TUI is open. `asanamate doctor` runs it once.
   as `$ASANAMATE_AGENT_TARGET`.
 - `title`: optional short description; control characters become spaces,
   spaces collapse, and it is cut to 60 characters.
+- `branch`, `repo`: optional, as a pair: the branch and main repository to
+  link the agent by, for a tool that knows them better than git does at
+  `path`. When both are set, asanamate uses them and skips git; otherwise git
+  decides, and a set `branch` is used only when git finds none.
 
 Fields are trimmed, and a trailing `\r` is dropped. Lines with no tab or an
-empty path are skipped; columns past the fourth are ignored. An empty output
-means no agents.
+empty path are skipped; columns past the sixth are ignored. An empty output
+means no agents. Leave a column empty to skip it, such as `title` before
+`branch`.
 
 **Exit status.** Non-zero fails the whole refresh: the status line shows
 `agents: agents command failed: exit status <n>`, and the previous list
@@ -156,6 +162,7 @@ that, and the run counts as failed.
 #!/bin/sh
 printf '%s\t%s\t%s\t%s\n' "$HOME/code/web" busy web-1 'Fix login'
 printf '%s\t%s\n' "$HOME/code/api" permission
+printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$HOME/code/web/vendor/lib" idle web-2 '' fix-login "$HOME/code/web"
 ```
 
 ```toml

@@ -204,7 +204,7 @@ func (m *Model) ExitCommand() *exec.Cmd { return m.exitCmd }
 func (m *Model) Init() tea.Cmd {
 	cmd := tea.Batch(loadTasks(m.deps.Client, m.deps.Config.Workspace, m.viewProject, m.pinnedTasks()), m.startSpinner(), m.scheduleRefresh())
 	if m.deps.Config.AgentsEnabled() {
-		cmd = tea.Batch(cmd, loadAgents(m.deps.Config.Agents, m.deps.StateDir))
+		cmd = tea.Batch(cmd, loadAgents(m.deps.Config.Agents))
 	}
 	return cmd
 }
@@ -252,7 +252,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.frame++
 		return m, scheduleSpinner()
 	case agentTickMsg:
-		return m, loadAgents(m.deps.Config.Agents, m.deps.StateDir)
+		return m, loadAgents(m.deps.Config.Agents)
 	case projectFieldsMsg:
 		return m, m.gotProjectFields(msg)
 	case candidatesMsg:

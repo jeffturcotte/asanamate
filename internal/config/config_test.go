@@ -301,17 +301,20 @@ name = "Production"
 	}
 }
 
-func TestAgentsPresetAndValidation(t *testing.T) {
-	cfg, err := Load(writeFile(t, "workspace = \"1\"\n[agents]\npreset = \"ccmux\"\n[agents.states]\nworking = [\"busy\"]\n[agents.symbols]\nwaiting = \"!!\"\n"))
+func TestAgentsValidation(t *testing.T) {
+	cfg, err := Load(writeFile(t, "workspace = \"1\"\n[agents]\ncommand = \"asanamate-ccmux\"\n[agents.states]\nworking = [\"busy\"]\n[agents.symbols]\nwaiting = \"!!\"\n"))
 	if err != nil || !cfg.AgentsEnabled() || cfg.Agents.States["working"][0] != "busy" || cfg.Agents.Symbols["waiting"] != "!!" {
 		t.Fatalf("cfg = %+v, err = %v", cfg.Agents, err)
 	}
+	// The removed preset names its replacement, like the moved keys.
+	_, err = Load(writeFile(t, "workspace = \"1\"\n[agents]\npreset = \"ccmux\"\n"))
+	if err == nil || !strings.Contains(err.Error(), "agents.preset was replaced by agents.command") || !strings.Contains(err.Error(), "asanamate config update") {
+		t.Fatalf("preset err = %v", err)
+	}
 	for name, body := range map[string]string{
-		"unknown preset":   "[agents]\npreset = \"tmux\"\n",
-		"preset + command": "[agents]\npreset = \"ccmux\"\ncommand = \"x\"\n",
-		"bad state":        "[agents]\ncommand = \"x\"\n[agents.states]\nsleeping = [\"z\"]\n",
-		"bad symbol":       "[agents]\ncommand = \"x\"\n[agents.symbols]\nsleeping = \"z\"\n",
-		"bad symbols set":  "symbols = \"emoji\"\n",
+		"bad state":       "[agents]\ncommand = \"x\"\n[agents.states]\nsleeping = [\"z\"]\n",
+		"bad symbol":      "[agents]\ncommand = \"x\"\n[agents.symbols]\nsleeping = \"z\"\n",
+		"bad symbols set": "symbols = \"emoji\"\n",
 	} {
 		if _, err := Load(writeFile(t, "workspace = \"1\"\n"+body)); err == nil {
 			t.Errorf("%s: expected an error", name)

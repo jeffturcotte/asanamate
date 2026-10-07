@@ -3,7 +3,6 @@ package setup
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,7 +14,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sadmachine/asanamate/internal/agents"
 	"github.com/sadmachine/asanamate/internal/asana"
 	"github.com/sadmachine/asanamate/internal/config"
 	"github.com/sadmachine/asanamate/internal/keymap"
@@ -172,13 +170,11 @@ func TestTemplateMatchesDefaults(t *testing.T) {
 }
 
 func TestTemplateOptionsStayTopLevel(t *testing.T) {
-	// Uncomment every commented setting and table, but not prose. The
-	// custom agents command is the documented alternative to the preset, so
-	// it stays commented.
+	// Uncomment every commented setting and table, but not prose.
 	setting := regexp.MustCompile(`^# (\[|[a-z_]+ +=)`)
 	var body strings.Builder
 	for _, line := range strings.Split(Render(asana.Ref{GID: "1", Name: "W"}, "/code"), "\n") {
-		if setting.MatchString(line) && !strings.HasPrefix(line, "# command = '''my-agents") {
+		if setting.MatchString(line) {
 			line = strings.TrimPrefix(line, "# ")
 		}
 		body.WriteString(line + "\n")
@@ -189,7 +185,7 @@ func TestTemplateOptionsStayTopLevel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("config with every commented option enabled does not load: %v", err)
 	}
-	if cfg.Symbols != "unicode" || cfg.ReducedMotion == nil || cfg.Agents.Preset != "ccmux" ||
+	if cfg.Symbols != "unicode" || cfg.ReducedMotion == nil || cfg.Agents.Command != "asanamate-ccmux" ||
 		!slices.Contains(cfg.Agents.States["working"], "running") || cfg.Agents.Symbols["waiting"] == "" {
 		t.Fatalf("cfg = %+v", cfg)
 	}
@@ -212,137 +208,6 @@ func TestMergeMovesHarvestProvider(t *testing.T) {
 	again, _, err := Merge(updated)
 	if err != nil || again != updated {
 		t.Fatalf("second merge changed config: err = %v", err)
-	}
-}
-
-func TestOfferCodexHook(t *testing.T) {
-	home := t.TempDir()
-	path := filepath.Join(home, "hooks.json")
-	theirs := `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"other && x"}]}]},"extra":1}`
-	os.WriteFile(path, []byte(theirs), 0o600)
-	offer := func(input string) string {
-		t.Helper()
-		out := &strings.Builder{}
-		o := Options{In: bufio.NewReader(strings.NewReader(input)), Out: out, CodexHome: home, Executable: "/bin/it's asanamate"}
-		if err := OfferCodexHook(o); err != nil {
-			t.Fatal(err)
-		}
-		return out.String()
-	}
-
-	if out := offer("n\n"); !strings.Contains(out, "inaccurate or wrong") || !strings.Contains(out, "setup hooks") {
-		t.Fatalf("decline output = %q", out)
-	}
-	if data, _ := os.ReadFile(path); string(data) != theirs {
-		t.Fatalf("declined but changed: %s", data)
-	}
-
-	offer("y\n")
-	if data := readBackup(t, path); data != theirs {
-		t.Fatalf("backup = %s", data)
-	}
-	var got struct {
-		Hooks map[string][]struct {
-			Hooks []struct{ Type, Command string }
-		}
-		Extra int
-	}
-	data, _ := os.ReadFile(path)
-	if err := json.Unmarshal(data, &got); err != nil {
-		t.Fatal(err)
-	}
-	want := `'/bin/it'\''s asanamate' hook codex`
-	stop := got.Hooks["Stop"]
-	if got.Extra != 1 || len(stop) != 2 || stop[0].Hooks[0].Command != "other && x" || stop[1].Hooks[0].Command != want {
-		t.Fatalf("hooks.json = %s", data)
-	}
-	if len(got.Hooks["UserPromptSubmit"]) != 1 || len(got.Hooks["SessionEnd"]) != 1 {
-		t.Fatalf("missing events: %s", data)
-	}
-
-	if out := offer(""); out != "" {
-		t.Fatalf("installed hook offered again: %q", out)
-	}
-}
-
-// A hook left at an old path, or missing from some events, is replaced in
-// place: other hooks, even in the same group, stay, and nothing is doubled.
-func TestOfferCodexHookRepairsStaleHook(t *testing.T) {
-	home := t.TempDir()
-	path := filepath.Join(home, "hooks.json")
-	stale := `{"hooks":{"Stop":[{"matcher":"x","hooks":[` +
-		`{"type":"command","command":"other"},{"type":"command","command":"'/old/asanamate' hook codex"}]}],` +
-		`"SessionEnd":[{"hooks":[{"type":"command","command":"'/new/asanamate' hook codex"}]}]}}`
-	os.WriteFile(path, []byte(stale), 0o600)
-	offer := func(input string) string {
-		t.Helper()
-		out := &strings.Builder{}
-		o := Options{In: bufio.NewReader(strings.NewReader(input)), Out: out, CodexHome: home, Executable: "/new/asanamate"}
-		if err := OfferCodexHook(o); err != nil {
-			t.Fatal(err)
-		}
-		return out.String()
-	}
-	if state, err := CodexHook(home, "/new/asanamate"); err != nil || state != HookStale {
-		t.Fatalf("state = %v, err = %v", state, err)
-	}
-	if out := offer("n\n"); !strings.Contains(out, "out of date") {
-		t.Fatalf("decline output = %q", out)
-	}
-	if data, _ := os.ReadFile(path); string(data) != stale {
-		t.Fatalf("declined but changed: %s", data)
-	}
-
-	if out := offer("y\n"); !strings.Contains(out, "Replaced the hook") {
-		t.Fatalf("repair output = %q", out)
-	}
-	if data := readBackup(t, path); data != stale {
-		t.Fatalf("backup = %s", data)
-	}
-	var got struct {
-		Hooks map[string][]struct {
-			Matcher string
-			Hooks   []struct{ Type, Command string }
-		}
-	}
-	data, _ := os.ReadFile(path)
-	if err := json.Unmarshal(data, &got); err != nil {
-		t.Fatal(err)
-	}
-	const want = `'/new/asanamate' hook codex`
-	stop := got.Hooks["Stop"]
-	if len(stop) != 2 || stop[0].Matcher != "x" || len(stop[0].Hooks) != 1 || stop[0].Hooks[0].Command != "other" || stop[1].Hooks[0].Command != want {
-		t.Fatalf("hooks.json = %s", data)
-	}
-	for _, event := range agents.HookEvents() {
-		ours := 0
-		for _, g := range got.Hooks[event] {
-			for _, h := range g.Hooks {
-				if h.Command == want {
-					ours++
-				}
-			}
-		}
-		if ours != 1 {
-			t.Fatalf("%s has %d asanamate hooks: %s", event, ours, data)
-		}
-	}
-	if state, _ := CodexHook(home, "/new/asanamate"); state != HookCurrent {
-		t.Fatalf("state after repair = %v", state)
-	}
-	if out := offer(""); out != "" {
-		t.Fatalf("repaired hook offered again: %q", out)
-	}
-}
-
-func TestOfferCodexHookSkipsWithoutCodex(t *testing.T) {
-	out := &strings.Builder{}
-	o := Options{Out: out, CodexHome: filepath.Join(t.TempDir(), "missing"), Executable: "asanamate"}
-	if err := OfferCodexHook(o); err != nil || out.Len() != 0 {
-		t.Fatalf("err = %v, out = %q", err, out)
-	}
-	if state, err := CodexHook(o.CodexHome, o.Executable); err != nil || state != CodexAbsent {
-		t.Fatalf("state = %v, err = %v", state, err)
 	}
 }
 
@@ -398,6 +263,34 @@ branch_field = "Branch Name"
 	again, _, err := Merge(updated)
 	if err != nil || again != updated {
 		t.Fatalf("second merge changed config: err = %v", err)
+	}
+}
+
+// The ccmux preset became the asanamate-ccmux adapter; the rest of [agents]
+// stays as set.
+func TestMergeRewritesAgentsPreset(t *testing.T) {
+	updated, _, err := Merge("workspace = \"1\"\n[agents]\npreset = \"ccmux\"\n[agents.states]\nworking = [\"busy\"]\n[agents.symbols]\nwaiting = \"!!\"\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := loadString(t, updated)
+	if cfg.Agents.Command != "asanamate-ccmux" || !reflect.DeepEqual(cfg.Agents.States, map[string][]string{"working": {"busy"}}) || cfg.Agents.Symbols["waiting"] != "!!" {
+		t.Fatalf("agents = %+v\n%s", cfg.Agents, updated)
+	}
+	if strings.Contains(updated, "preset") {
+		t.Fatalf("agents.preset left behind:\n%s", updated)
+	}
+	again, _, err := Merge(updated)
+	if err != nil || again != updated {
+		t.Fatalf("second merge changed config: err = %v", err)
+	}
+	for body, want := range map[string]string{
+		"[agents]\npreset = \"ccmux\"\ncommand = \"x\"\n": "agents.preset and agents.command are both set",
+		"[agents]\npreset = \"tmux\"\n":                   `agents.preset "tmux" has no replacement`,
+	} {
+		if _, _, err := Merge("workspace = \"1\"\n" + body); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%q: err = %v", body, err)
+		}
 	}
 }
 
@@ -512,15 +405,4 @@ func TestUpdateWritesThemeExample(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(config.ThemesDir(path), "example.toml.example")); err != nil {
 		t.Fatalf("config update must add the theme example: %v", err)
 	}
-}
-
-// readBackup returns the one timestamped backup of path.
-func readBackup(t *testing.T, path string) string {
-	t.Helper()
-	backups, _ := filepath.Glob(path + ".*.bak")
-	if len(backups) != 1 {
-		t.Fatalf("backups of %s = %v, want one", path, backups)
-	}
-	data, _ := os.ReadFile(backups[0])
-	return string(data)
 }

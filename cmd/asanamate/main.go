@@ -26,6 +26,7 @@ import (
 	"github.com/sadmachine/asanamate/internal/agents"
 	"github.com/sadmachine/asanamate/internal/asana"
 	"github.com/sadmachine/asanamate/internal/browser"
+	"github.com/sadmachine/asanamate/internal/ccmux"
 	"github.com/sadmachine/asanamate/internal/config"
 	"github.com/sadmachine/asanamate/internal/filter"
 	"github.com/sadmachine/asanamate/internal/kitty"
@@ -47,7 +48,6 @@ const usage = `usage:
                                                    print tickets (tsv: gid, section, due, title, url)
   asanamate show [--format md|json] <gid>          print one ticket
   asanamate setup                                  create the config file
-  asanamate setup hooks                            add the agent status hook to Codex
   asanamate config                                 edit the config file in $VISUAL or $EDITOR
   asanamate config update [--yes]                  refresh the config's comments and new defaults,
                                                    keeping your values (old file saved as .<time>.bak)
@@ -68,8 +68,6 @@ const usage = `usage:
                                                    create a ticket (default: in My Tasks, assigned
                                                    to you) or a subtask; prints its gid
   asanamate doctor [<gid>]                         check setup and optional tools; for a ticket, why agents link (or not)
-  asanamate hook codex                             record a Codex hook event read on stdin
-                                                   (installed by setup)
   asanamate version
 `
 
@@ -106,8 +104,8 @@ func run(args []string) int {
 		err = runShow(args[1:])
 	case "doctor":
 		err = runDoctor(args[1:])
-	case "hook":
-		runHook(args[1:])
+	case "hook": // hidden: keeps Codex hooks set up before asanamate-ccmux working; remove in v0.3.0
+		ccmux.RunHook(args[1:], os.Stdin)
 		return 0
 	default:
 		if name != "" && !strings.HasPrefix(name, "-") {
@@ -121,17 +119,6 @@ func run(args []string) int {
 		return 1
 	}
 	return 0
-}
-
-// runHook records an agent hook event. It never fails: an agent runs it on
-// every event, and a hook error must not get in the agent's way.
-func runHook(args []string) {
-	if len(args) != 1 || args[0] != "codex" {
-		return
-	}
-	if stateDir, err := config.StateDir(); err == nil {
-		_ = agents.WriteHook(os.Stdin, agents.HookDir(stateDir))
-	}
 }
 
 func currentVersion() string {
@@ -304,17 +291,11 @@ func runCreate(args []string, stdin io.Reader, stdout io.Writer, writer func(yes
 }
 
 func runSetup(args []string) error {
-	codexHome, err := setup.CodexHome()
-	if err != nil {
-		return err
+	if len(args) == 1 && args[0] == "hooks" {
+		return errors.New("asanamate setup hooks moved to `asanamate-ccmux setup`")
 	}
 	if len(args) > 0 {
-		if len(args) != 1 || args[0] != "hooks" {
-			return fmt.Errorf("usage: asanamate setup [hooks]")
-		}
-		return setup.OfferCodexHook(setup.Options{
-			In: bufio.NewReader(os.Stdin), Out: os.Stdout, CodexHome: codexHome, Executable: hookExecutable(),
-		})
+		return fmt.Errorf("usage: asanamate setup")
 	}
 	client, err := newClient()
 	if err != nil {
@@ -331,20 +312,7 @@ func runSetup(args []string) error {
 	return setup.Run(context.Background(), setup.Options{
 		In: bufio.NewReader(os.Stdin), Out: os.Stdout, Client: client,
 		ConfigPath: configPath, StatePath: filepath.Join(stateDir, state.FileName),
-		CodexHome: codexHome, Executable: hookExecutable(),
 	})
-}
-
-// hookExecutable is the asanamate path agent hooks run: the one on PATH,
-// which survives upgrades, else this binary.
-func hookExecutable() string {
-	if path, err := exec.LookPath("asanamate"); err == nil {
-		if abs, err := filepath.Abs(path); err == nil {
-			return abs
-		}
-	}
-	path, _ := os.Executable()
-	return path
 }
 
 // runConfig opens the config file in the user's editor, then checks that it
@@ -574,21 +542,18 @@ func runDoctor(args []string) error {
 	} else {
 		row(w, "branch_field", strconv.Quote(cfg.BranchField))
 	}
+	checkLegacyCodexHook(w)
 	var list []agents.Agent
 	if !cfg.AgentsEnabled() {
-		row(w, "agents", "off: set agents.preset or agents.command")
+		row(w, "agents", "off: set agents.command")
 	} else {
 		source := "command " + strconv.Quote(cfg.Agents.Command)
-		if cfg.Agents.Preset != "" {
-			source = "preset " + strconv.Quote(cfg.Agents.Preset)
-		}
-		list, err = agents.Fetch(ctx, cfg.Agents.Preset, cfg.Agents.Command, cfg.Agents.States, stateDir)
+		list, err = agents.Fetch(ctx, cfg.Agents.Command, cfg.Agents.States)
 		if err != nil {
 			row(w, "agents", fmt.Sprintf("warning: %s failed: %v", source, err))
 		} else {
 			row(w, "agents", "ok: "+source)
 		}
-		checkCodexHook(w)
 		if err == nil {
 			fmt.Fprintf(w, "\n%d running:\n", len(list))
 			for _, a := range list {
@@ -697,23 +662,18 @@ func checkFeatures(w io.Writer, cfg config.Config) {
 	}
 }
 
-// checkCodexHook reports asanamate's hook in Codex, which Codex agent
-// status needs. It says nothing when Codex is not installed.
-func checkCodexHook(w io.Writer) {
-	home, err := setup.CodexHome()
+// checkLegacyCodexHook warns while Codex's hooks still run
+// `asanamate hook codex`, which only forwards to asanamate-ccmux until
+// v0.3.0. It says nothing otherwise.
+func checkLegacyCodexHook(w io.Writer) {
+	home, err := ccmux.CodexHome()
 	if err != nil {
 		return
 	}
-	state, err := setup.CodexHook(home, hookExecutable())
-	switch {
-	case err != nil:
+	if legacy, err := ccmux.LegacyCodexHook(home); err != nil {
 		row(w, "codex_hook", "warning: "+err.Error())
-	case state == setup.HookMissing:
-		row(w, "codex_hook", "warning: missing, so Codex agent status can be wrong; run asanamate setup hooks")
-	case state == setup.HookStale:
-		row(w, "codex_hook", "warning: runs another asanamate path or misses events; run asanamate setup hooks to repair it")
-	case state == setup.HookCurrent:
-		row(w, "codex_hook", "ok: "+filepath.Join(home, "hooks.json"))
+	} else if legacy {
+		row(w, "codex_hook", "warning: runs `asanamate hook codex`, which v0.3.0 removes; run `asanamate-ccmux setup` to replace it")
 	}
 }
 

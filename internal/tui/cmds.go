@@ -170,11 +170,11 @@ func loadTasks(c *asana.Client, workspace string, project *asana.Ref, pins []str
 	})
 }
 
-func loadAgents(cfg config.Agents, stateDir string) tea.Cmd {
+func loadAgents(cfg config.Agents) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), agentRefresh*2)
 		defer cancel()
-		list, err := agents.Fetch(ctx, cfg.Preset, cfg.Command, cfg.States, stateDir)
+		list, err := agents.Fetch(ctx, cfg.Command, cfg.States)
 		return agentsMsg{list: list, err: err}
 	}
 }

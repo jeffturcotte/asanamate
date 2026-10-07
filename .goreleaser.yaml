@@ -6,7 +6,7 @@ before:
     - go mod tidy
     - go test ./...
 
-# Each archive holds both binaries.
+# Each archive holds all three binaries.
 builds:
   - id: asanamate
     main: ./cmd/asanamate
@@ -20,6 +20,16 @@ builds:
   - id: asanamate-hrvst
     main: ./cmd/asanamate-hrvst
     binary: asanamate-hrvst
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+  # The ccmux agent adapter ships in the same archive.
+  - id: asanamate-ccmux
+    main: ./cmd/asanamate-ccmux
+    binary: asanamate-ccmux
     env:
       - CGO_ENABLED=0
     goos: [darwin, linux]
@@ -48,10 +58,10 @@ homebrew_casks:
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     homepage: https://github.com/sadmachine/asanamate
     description: Terminal UI for Asana tickets with scriptable actions
-    binaries: [asanamate, asanamate-hrvst]
+    binaries: [asanamate, asanamate-hrvst, asanamate-ccmux]
     hooks:
       post:
         install: |
           if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/asanamate", "#{staged_path}/asanamate-hrvst"]
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/asanamate", "#{staged_path}/asanamate-hrvst", "#{staged_path}/asanamate-ccmux"]
           end

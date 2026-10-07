@@ -1,20 +1,23 @@
-package setup
+package ccmux
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"charm.land/lipgloss/v2"
-
-	"github.com/sadmachine/asanamate/internal/agents"
 	"github.com/sadmachine/asanamate/internal/prompt"
+	"github.com/sadmachine/asanamate/internal/setup"
 )
+
+// Name is the adapter's command name.
+const Name = "asanamate-ccmux"
 
 // CodexHome is Codex's config directory: $CODEX_HOME, else ~/.codex.
 func CodexHome() (string, error) {
@@ -28,17 +31,17 @@ func CodexHome() (string, error) {
 	return filepath.Join(home, ".codex"), nil
 }
 
-// CodexHookState is how Codex's hooks.json runs asanamate's hook.
+// CodexHookState is how Codex's hooks.json runs the adapter's hook.
 type CodexHookState int
 
 const (
 	CodexAbsent CodexHookState = iota // Codex is not installed
 	HookMissing                       // no asanamate hook
-	HookStale                         // an old path, or events without the hook
+	HookStale                         // an old path or command, or events without the hook
 	HookCurrent                       // every event runs this executable's hook
 )
 
-// CodexHook reports the state of asanamate's hook in codexHome/hooks.json
+// CodexHook reports the state of the adapter's hook in codexHome/hooks.json
 // for executable. It writes nothing.
 func CodexHook(codexHome, executable string) (CodexHookState, error) {
 	if info, err := os.Stat(codexHome); err != nil || !info.IsDir() {
@@ -51,44 +54,56 @@ func CodexHook(codexHome, executable string) (CodexHookState, error) {
 	return codexHookState(hooks, codexHookCommand(executable)), nil
 }
 
-// OfferCodexHook adds `asanamate hook codex` to Codex's hooks.json, after
-// asking, when Codex is installed and the hook is missing. When an
-// asanamate hook runs another path or misses events, it offers to replace
-// it instead. It does nothing when o.CodexHome or o.Executable is unset.
-func OfferCodexHook(o Options) error {
-	if o.CodexHome == "" || o.Executable == "" {
+// LegacyCodexHook reports whether codexHome/hooks.json still runs
+// `asanamate hook codex`, which asanamate forwards to the adapter for one
+// release only.
+func LegacyCodexHook(codexHome string) (bool, error) {
+	_, _, hooks, err := readCodexHooks(filepath.Join(codexHome, "hooks.json"))
+	if err != nil {
+		return false, err
+	}
+	legacy := false
+	eachCodexHook(hooks, func(_, cmd string) { legacy = legacy || !strings.Contains(cmd, Name) })
+	return legacy, nil
+}
+
+// OfferCodexHook adds `asanamate-ccmux hook codex` to Codex's hooks.json,
+// after asking, when Codex is installed and the hook is missing. When an
+// asanamate hook runs another path or command (such as the old
+// `asanamate hook codex`) or misses events, it offers to replace it instead.
+func OfferCodexHook(in *bufio.Reader, out io.Writer, codexHome, executable string) error {
+	if info, err := os.Stat(codexHome); err != nil || !info.IsDir() {
+		fmt.Fprintf(out, "Codex is not installed (no %s); no hook needed.\n", codexHome)
 		return nil
 	}
-	if info, err := os.Stat(o.CodexHome); err != nil || !info.IsDir() {
-		return nil
-	}
-	path := filepath.Join(o.CodexHome, "hooks.json")
+	path := filepath.Join(codexHome, "hooks.json")
 	old, file, hooks, err := readCodexHooks(path)
 	if err != nil {
 		return err
 	}
-	command := codexHookCommand(o.Executable)
-	question, done := "Add asanamate's Codex hook to "+path+"?", "Added the hook to"
+	command := codexHookCommand(executable)
+	question, done := "Add "+Name+"'s Codex hook to "+path+"?", "Added the hook to"
 	switch codexHookState(hooks, command) {
 	case HookCurrent:
+		fmt.Fprintf(out, "The Codex hook in %s is up to date.\n", path)
 		return nil
 	case HookStale:
-		lipgloss.Fprintln(o.Out, "\n"+warning.Render("Warning: asanamate's Codex hook is out of date")+"\n"+codexHookStaleWarning)
+		setup.Warn(out, "Warning: asanamate's Codex hook is out of date", codexHookStaleWarning)
 		question = "Replace asanamate's Codex hook in " + path + " with " + command + "?"
 		done = "Replaced the hook in"
 	default:
-		lipgloss.Fprintln(o.Out, "\n"+warning.Render("Warning: Codex agent status needs a hook")+"\n"+codexHookWarning)
+		setup.Warn(out, "Warning: Codex agent status needs a hook", codexHookWarning)
 	}
-	install, err := prompt.Confirm(o.In, o.Out, question)
+	install, err := prompt.Confirm(in, out, question)
 	if err != nil {
 		return err
 	}
 	if !install {
-		fmt.Fprintln(o.Out, "Skipped. Run `asanamate setup hooks` to add it later.")
+		fmt.Fprintln(out, "Skipped. Run `"+Name+" setup` to add it later.")
 		return nil
 	}
 	removeCodexHooks(hooks)
-	for _, event := range agents.HookEvents() {
+	for _, event := range HookEvents() {
 		groups, _ := hooks[event].([]any)
 		hooks[event] = append(groups, map[string]any{
 			"hooks": []any{map[string]any{"type": "command", "command": command}},
@@ -102,21 +117,15 @@ func OfferCodexHook(o Options) error {
 	if err := enc.Encode(file); err != nil {
 		return err
 	}
-	backup := ""
-	if old != nil {
-		backup = backupPath(path)
-		if err := writePrivate(backup, old); err != nil {
-			return err
-		}
-	}
-	if err := writePrivate(path, data.Bytes()); err != nil {
+	backup, err := setup.WriteWithBackup(path, old, data.Bytes())
+	if err != nil {
 		return err
 	}
-	fmt.Fprintf(o.Out, "%s %s.", done, path)
+	fmt.Fprintf(out, "%s %s.", done, path)
 	if backup != "" {
-		fmt.Fprintf(o.Out, " The previous file is saved as %s.", backup)
+		fmt.Fprintf(out, " The previous file is saved as %s.", backup)
 	}
-	fmt.Fprintln(o.Out, "\nCodex asks you to trust the new hooks the next time it starts.")
+	fmt.Fprintln(out, "\nCodex asks you to trust the new hooks the next time it starts.")
 	return nil
 }
 
@@ -148,24 +157,19 @@ func codexHookCommand(executable string) string {
 	return shellQuote(executable) + " hook codex"
 }
 
-// warning highlights the heading of a setup warning. lipgloss.Fprintln drops
-// the color when the output is not a terminal or NO_COLOR is set.
-var warning = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Yellow)
-
-const codexHookWarning = `  Without asanamate's Codex hook, Codex agent status will be
+const codexHookWarning = `  Without the Codex hook, Codex agent status will be
   inaccurate or wrong: ccmux can show a busy Codex session as idle.
   The hook records each session's real state.
 `
 
-const codexHookStaleWarning = `  An asanamate hook in Codex runs another asanamate path, or some
-  hook events lack it, as after moving or reinstalling asanamate.
-  Codex agent status stays wrong until it is replaced.
+const codexHookStaleWarning = `  An asanamate hook in Codex runs another path or the old
+  ` + "`asanamate hook codex`" + `, or some hook events lack it, as after moving
+  or reinstalling ` + Name + `. Codex agent status stays wrong until
+  it is replaced.
 `
 
-// codexHookState reports whether hooks run command for every hook event,
-// and no other asanamate hook.
-func codexHookState(hooks map[string]any, command string) CodexHookState {
-	found, current := 0, map[string]bool{}
+// eachCodexHook calls fn with the event and command of every asanamate hook.
+func eachCodexHook(hooks map[string]any, fn func(event, cmd string)) {
 	for event, groups := range hooks {
 		groups, _ := groups.([]any)
 		for _, g := range groups {
@@ -173,16 +177,25 @@ func codexHookState(hooks map[string]any, command string) CodexHookState {
 			list, _ := g["hooks"].([]any)
 			for _, h := range list {
 				if cmd, ok := codexHookOf(h); ok {
-					found++
-					current[event] = current[event] || cmd == command
+					fn(event, cmd)
 				}
 			}
 		}
 	}
+}
+
+// codexHookState reports whether hooks run command for every hook event,
+// and no other asanamate hook.
+func codexHookState(hooks map[string]any, command string) CodexHookState {
+	found, current := 0, map[string]bool{}
+	eachCodexHook(hooks, func(event, cmd string) {
+		found++
+		current[event] = current[event] || cmd == command
+	})
 	if found == 0 {
 		return HookMissing
 	}
-	events := agents.HookEvents()
+	events := HookEvents()
 	for _, event := range events {
 		if !current[event] {
 			return HookStale
@@ -231,7 +244,8 @@ func removeCodexHooks(hooks map[string]any) {
 	}
 }
 
-// codexHookOf returns h's command when h runs `asanamate hook codex`.
+// codexHookOf returns h's command when h runs `asanamate hook codex` or
+// `asanamate-ccmux hook codex`.
 func codexHookOf(h any) (string, bool) {
 	hm, _ := h.(map[string]any)
 	cmd, _ := hm["command"].(string)
