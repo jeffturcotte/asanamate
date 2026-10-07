@@ -352,6 +352,111 @@ func (s Service) RemoveProject(ctx context.Context, gid, projectGID string) erro
 	return s.Client.RemoveFromProject(ctx, gid, projectGID)
 }
 
+// NewTicket is a ticket for Create to make. Empty fields are left unset.
+type NewTicket struct {
+	Name     string
+	Notes    string // Markdown, as Comment reads it, without image uploads
+	Parent   string // a task gid; makes the ticket its subtask
+	Project  string // a project gid
+	Section  string // a section of Project, by name or gid
+	Assignee string // a full name, gid, or "me"
+	Due      string // YYYY-MM-DD
+}
+
+// Create makes a ticket and returns it: a subtask of Parent, a ticket in
+// Project (and Section), or else a ticket in My Tasks, assigned to the user
+// unless Assignee names someone else.
+func (s Service) Create(ctx context.Context, nt NewTicket) (asana.Task, error) {
+	task := asana.NewTask{Name: strings.TrimSpace(nt.Name), Project: nt.Project, DueOn: strings.TrimSpace(nt.Due)}
+	switch {
+	case task.Name == "":
+		return asana.Task{}, errors.New("title is empty")
+	case strings.ContainsAny(task.Name, "\r\n"):
+		return asana.Task{}, errors.New("title must be one line")
+	case nt.Parent != "" && nt.Project != "":
+		return asana.Task{}, errors.New("a subtask goes under its parent; pass a parent or a project, not both")
+	case nt.Section != "" && nt.Project == "":
+		return asana.Task{}, errors.New("a section needs a project")
+	case nt.Parent == "" && nt.Project == "" && s.Workspace == "":
+		return asana.Task{}, errors.New("no workspace to create the ticket in")
+	}
+	if task.DueOn != "" {
+		if _, err := time.Parse(time.DateOnly, task.DueOn); err != nil {
+			return asana.Task{}, fmt.Errorf("due date needs YYYY-MM-DD, got %q", task.DueOn)
+		}
+	}
+	assignee := strings.TrimSpace(nt.Assignee)
+	if assignee == "" && nt.Parent == "" && nt.Project == "" {
+		assignee = "me"
+	}
+	var details string
+	if assignee != "" {
+		u, err := s.assignee(ctx, assignee)
+		if err != nil {
+			return asana.Task{}, err
+		}
+		task.Assignee, details = u.GID, "Assignee: "+ticket.Clean(u.Name)+"\n"
+	}
+	if task.DueOn != "" {
+		details += "Due: " + task.DueOn + "\n"
+	}
+	if notes := strings.TrimSpace(nt.Notes); notes != "" {
+		users, err := s.mentionable(ctx, notes)
+		if err != nil {
+			return asana.Task{}, err
+		}
+		task.HTMLNotes, _ = CommentHTML(notes, users, nil)
+		details += "Notes:\n" + notes + "\n"
+	}
+	where, err := s.placeNew(ctx, &task, nt)
+	if err != nil {
+		return asana.Task{}, err
+	}
+	if err := s.confirm(fmt.Sprintf("Create %q %s?\n%s", task.Name, where, details)); err != nil {
+		return asana.Task{}, err
+	}
+	if nt.Parent != "" {
+		return s.Client.CreateSubtask(ctx, nt.Parent, task)
+	}
+	return s.Client.CreateTask(ctx, task)
+}
+
+// placeNew sets where task goes: its section gid in a project, or the
+// workspace of a My Tasks ticket. It returns where that is for the
+// confirmation, loading names only when there is someone to ask.
+func (s Service) placeNew(ctx context.Context, task *asana.NewTask, nt NewTicket) (string, error) {
+	switch {
+	case nt.Parent != "":
+		if s.Confirm == nil {
+			return "", nil
+		}
+		parent, err := s.Client.Task(ctx, nt.Parent)
+		return fmt.Sprintf("as a subtask of %q", parent.Name), err
+	case nt.Project == "":
+		task.Workspace = s.Workspace
+		if task.Assignee == "me" {
+			return "in My Tasks", nil
+		}
+		return "in the assignee's My Tasks", nil
+	}
+	project := asana.Ref{GID: nt.Project, Name: "project " + nt.Project}
+	if s.Confirm != nil {
+		var err error
+		if project, err = s.Client.Project(ctx, nt.Project); err != nil {
+			return "", err
+		}
+	}
+	where := "in " + ticket.Clean(project.Name)
+	if nt.Section != "" {
+		sec, err := s.findSection(ctx, project, nt.Section)
+		if err != nil {
+			return "", err
+		}
+		task.Section, where = sec.GID, where+" / "+ticket.Clean(sec.Name)
+	}
+	return where, nil
+}
+
 func pickProject(t asana.Task, projectGID string) (asana.Ref, error) {
 	var choices []string
 	for _, m := range t.Memberships {
