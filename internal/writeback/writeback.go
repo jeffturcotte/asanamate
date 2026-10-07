@@ -291,6 +291,18 @@ func (s Service) SetDue(ctx context.Context, gid, date string) error {
 	return s.Client.SetDueOn(ctx, gid, date)
 }
 
+// Complete marks the task complete, or reopens it when done is false.
+func (s Service) Complete(ctx context.Context, gid string, done bool) error {
+	question := "Reopen %q?"
+	if done {
+		question = "Mark %q complete?"
+	}
+	if err := s.confirmTask(ctx, gid, question); err != nil {
+		return err
+	}
+	return s.Client.SetCompleted(ctx, gid, done)
+}
+
 // AddProject adds the task to a project, keeping its other projects.
 func (s Service) AddProject(ctx context.Context, gid, projectGID string) error {
 	if projectGID == "" {
