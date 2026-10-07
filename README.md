@@ -20,8 +20,9 @@ macOS and Linux only.
   See [Keys](#keys).
 - **Act** on a ticket: run your own commands with the ticket as context, such
   as starting a coding agent in its repo. See [Actions](#actions).
-- **Report back** from scripts and agents with `asanamate comment`, `move`,
-  and `field`. See [Writing back to Asana](#writing-back-to-asana).
+- **Report back** from scripts and agents with every edit the TUI makes:
+  `asanamate comment`, `move`, `field`, `assign`, `due`, and `project`. See
+  [Writing back to Asana](#writing-back-to-asana).
 - **Optional:** show running coding agents next to their tickets
   ([Agents](#agents-optional)) and log time to Harvest
   ([Time tracking](#time-tracking-optional)).
@@ -884,8 +885,22 @@ steer the agent. Be careful combining this with auto-approved tools.
 ```sh
 asanamate comment [--yes] <gid> "Opened PR https://..."   # "-" reads stdin
 asanamate move    [--yes] [--project <gid>] <gid> "In Review"
+asanamate move    [--yes] --my-tasks <gid> "Later"          # a section of your My Tasks
 asanamate field   [--yes] [--project <gid>] <gid> "Branch Name" feature/fix-login
+asanamate assign  [--yes] <gid> "Ann Lee"                   # or me; "" unassigns
+asanamate due     [--yes] <gid> 2026-10-01                  # "" clears the date
+asanamate project add    [--yes] <gid> <project-gid>
+asanamate project remove [--yes] <gid> <project-gid>
 ```
+
+The TUI's edits run the same code, so each one is also a command here.
+
+`asanamate assign` takes a workspace user's full name (case-insensitive), or
+`me` for yourself, and refuses a name two users share. `asanamate due` takes
+`YYYY-MM-DD` only. `asanamate move --my-tasks` works only on tickets assigned
+to you, since Asana shows a ticket's My Tasks section only to its assignee.
+Wherever a command takes a name (a section, field, option, or user), a gid
+works too.
 
 `asanamate field` takes the value as typed for text fields, a number, a date
 as `YYYY-MM-DD`, or an option name (case-insensitive). Multi-select and people
