@@ -213,6 +213,43 @@ func TestTaskUpdatesSendFields(t *testing.T) {
 	}
 }
 
+func TestCreateTasksSendFields(t *testing.T) {
+	var path string
+	var got map[string]map[string]any
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Query().Get("opt_fields") == "" {
+			t.Errorf("%s %s", r.Method, r.URL)
+		}
+		path, got = r.URL.Path, nil
+		json.NewDecoder(r.Body).Decode(&got)
+		io.WriteString(w, `{"data":{"gid":"9","name":"New"}}`)
+	})
+	cases := []struct {
+		create   func() (Task, error)
+		wantPath string
+		want     map[string]any
+	}{
+		{func() (Task, error) {
+			return c.CreateTask(ctx, NewTask{Name: "New", Workspace: "w", Assignee: "me", DueOn: "2026-01-02", HTMLNotes: "<body>x</body>"})
+		}, "/tasks", map[string]any{"name": "New", "workspace": "w", "assignee": "me", "due_on": "2026-01-02", "html_notes": "<body>x</body>"}},
+		{func() (Task, error) { return c.CreateTask(ctx, NewTask{Name: "New", Project: "p1"}) },
+			"/tasks", map[string]any{"name": "New", "projects": []any{"p1"}}},
+		{func() (Task, error) { return c.CreateTask(ctx, NewTask{Name: "New", Project: "p1", Section: "s1"}) },
+			"/tasks", map[string]any{"name": "New", "projects": []any{"p1"}, "memberships": []any{map[string]any{"project": "p1", "section": "s1"}}}},
+		{func() (Task, error) { return c.CreateSubtask(ctx, "1", NewTask{Name: "New"}) },
+			"/tasks/1/subtasks", map[string]any{"name": "New"}},
+	}
+	for i, tc := range cases {
+		task, err := tc.create()
+		if err != nil || task.GID != "9" {
+			t.Fatalf("case %d: task = %+v, err = %v", i, task, err)
+		}
+		if path != tc.wantPath || !reflect.DeepEqual(got["data"], tc.want) {
+			t.Errorf("case %d: %s %v, want %s %v", i, path, got["data"], tc.wantPath, tc.want)
+		}
+	}
+}
+
 func TestValidGID(t *testing.T) {
 	for s, want := range map[string]bool{"123": true, "": false, "12a": false, "../1": false} {
 		if ValidGID(s) != want {

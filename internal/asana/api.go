@@ -238,6 +238,48 @@ func (c *Client) SetMyTasksSection(ctx context.Context, taskGID, sectionGID stri
 	return c.updateTask(ctx, taskGID, map[string]any{"assignee_section": sectionGID})
 }
 
+// NewTask is a task to create. Empty fields are left out. Section, a gid,
+// needs Project. Workspace is needed when the task has no project or parent.
+type NewTask struct {
+	Name      string
+	HTMLNotes string
+	Workspace string
+	Project   string
+	Section   string
+	Assignee  string // a user gid or "me"
+	DueOn     string // YYYY-MM-DD
+}
+
+// CreateTask creates a task and returns it with its list fields.
+func (c *Client) CreateTask(ctx context.Context, t NewTask) (Task, error) {
+	return c.createTask(ctx, "/tasks", t)
+}
+
+// CreateSubtask creates a subtask of the parent task and returns it.
+func (c *Client) CreateSubtask(ctx context.Context, parentGID string, t NewTask) (Task, error) {
+	return c.createTask(ctx, "/tasks/"+parentGID+"/subtasks", t)
+}
+
+func (c *Client) createTask(ctx context.Context, path string, t NewTask) (Task, error) {
+	body := map[string]any{"name": t.Name}
+	for key, value := range map[string]string{"html_notes": t.HTMLNotes, "workspace": t.Workspace, "assignee": t.Assignee, "due_on": t.DueOn} {
+		if value != "" {
+			body[key] = value
+		}
+	}
+	if t.Project != "" {
+		body["projects"] = []string{t.Project}
+	}
+	if t.Section != "" {
+		body["memberships"] = []map[string]string{{"project": t.Project, "section": t.Section}}
+	}
+	var r struct {
+		Data Task `json:"data"`
+	}
+	err := c.do(ctx, http.MethodPost, path, fields(listFields), body, &r)
+	return r.Data, err
+}
+
 func (c *Client) updateTask(ctx context.Context, taskGID string, body map[string]any) error {
 	return c.do(ctx, http.MethodPut, "/tasks/"+taskGID, nil, body, nil)
 }
