@@ -30,7 +30,7 @@ type Client struct {
 	BaseURL string
 	token   string
 	http    *http.Client
-	sleep   func(time.Duration)
+	sleep   func(context.Context, time.Duration) error
 }
 
 // New returns a client that authenticates with token.
@@ -39,7 +39,7 @@ func New(token string) *Client {
 		BaseURL: DefaultBaseURL,
 		token:   token,
 		http:    &http.Client{Timeout: 30 * time.Second},
-		sleep:   time.Sleep,
+		sleep:   sleep,
 	}
 }
 
@@ -96,7 +96,9 @@ func (c *Client) send(ctx context.Context, method, path string, query url.Values
 		}
 		if resp.StatusCode == http.StatusTooManyRequests && attempt == 0 {
 			if wait := retryAfter(resp.Header.Get("Retry-After")); wait <= maxRetryWait {
-				c.sleep(wait)
+				if err := c.sleep(ctx, wait); err != nil {
+					return err
+				}
 				continue
 			}
 		}
@@ -107,6 +109,18 @@ func (c *Client) send(ctx context.Context, method, path string, query url.Values
 			return nil
 		}
 		return json.Unmarshal(data, out)
+	}
+}
+
+// sleep waits for d, or until ctx ends.
+func sleep(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
 	}
 }
 
