@@ -167,6 +167,24 @@ func newClient() (*asana.Client, error) {
 	return asana.New(token), nil
 }
 
+// newWriter returns the CLI's writeback service, which confirms on the
+// terminal unless yes, ASANAMATE_CONFIRM_WRITES, or the config turns it off.
+func newWriter(yes bool) (writeback.Service, error) {
+	cfg, err := loadConfig()
+	if err != nil {
+		return writeback.Service{}, err
+	}
+	client, err := newClient()
+	if err != nil {
+		return writeback.Service{}, err
+	}
+	svc := writeback.Service{Client: client, Workspace: cfg.Workspace}
+	if writeback.NeedsConfirm(yes, os.Getenv("ASANAMATE_CONFIRM_WRITES"), cfg.ConfirmWrites) {
+		svc.Confirm = writeback.TTYConfirm
+	}
+	return svc, nil
+}
+
 func writeCommand(name string, args []string) error {
 	if name == "project" {
 		if len(args) == 0 || (args[0] != "add" && args[0] != "remove") {
@@ -210,17 +228,9 @@ func writeCommand(name string, args []string) error {
 		}
 		*project = writeback.MyTasks
 	}
-	cfg, err := loadConfig()
+	svc, err := newWriter(*yes)
 	if err != nil {
 		return err
-	}
-	client, err := newClient()
-	if err != nil {
-		return err
-	}
-	svc := writeback.Service{Client: client, Workspace: cfg.Workspace}
-	if writeback.NeedsConfirm(*yes, os.Getenv("ASANAMATE_CONFIRM_WRITES"), cfg.ConfirmWrites) {
-		svc.Confirm = writeback.TTYConfirm
 	}
 	ctx := context.Background()
 	switch name {
