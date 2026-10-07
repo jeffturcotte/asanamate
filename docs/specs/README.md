@@ -1,0 +1,56 @@
+# Roadmap specs
+
+asanamate aims to be a full-featured, extensible Asana TUI. It should cover
+the Asana work an average user does every day, run well in any terminal layout
+(full screen, tmux pane, sidebar, or popup), and let external commands extend
+it. The CLI should offer every write the TUI offers, so scripts and agents can
+do what a person can.
+
+Each file below is one self-contained task. An agent can pick up any task
+whose dependencies are done, work on its own branch, and merge without waiting
+for the others.
+
+| Spec | Summary | Depends on | Breaking |
+|---|---|---|---|
+| [01-readme-mission](01-readme-mission.md) | Rewrite the README intro around the project's goal and scope | none | no |
+| [02-complete-tickets](02-complete-tickets.md) | Mark tickets complete or reopen them, in the TUI and the CLI | none | no |
+| [03-create-tickets](03-create-tickets.md) | Create tickets and subtasks, in the TUI and the CLI | none | no |
+| [04-cli-parity](04-cli-parity.md) | `assign`, `due`, and `project` subcommands; route TUI writes through `writeback` | none | no |
+| [05-layout-config](05-layout-config.md) | `[layout]` table and a reader toggle key | none | no |
+| [06-extension-protocols](06-extension-protocols.md) | Document and test the external command protocols as the extension contract | none | no |
+| [07-extract-hrvst](07-extract-hrvst.md) | Move the Harvest provider out of the main binary | 06 | yes |
+| [08-extract-agent-adapter](08-extract-agent-adapter.md) | Move the ccmux, Claude, and Codex agent code into an adapter | 06 | yes |
+
+## Rules for every task
+
+- **Read `AGENTS.md` first.** Its config key rules apply to every new key:
+  struct field and doc comment, `Default()`, `validate()`, the template in
+  `internal/setup/setup.go`, the README config table, and the config tests.
+- **New key bindings** go in `internal/keymap/catalog.go`, so they are
+  configurable, show in `?` help, and pass `TestKeyBindingsAreUniqueAndDocumented`.
+  Each spec sets its default keys, and no two specs share one: `x` complete
+  (02), `n` create and `N` create subtask (03), `z` toggle reader (05). Use
+  them as given; if one is taken on `main` when you start, stop and ask the
+  user.
+- **New writes** go through `writeback.Service`, so the TUI and the CLI share
+  one implementation (see 04). If 04 is not merged yet, add the method to
+  `writeback.Service` anyway and call it from the CLI; 04 moves the TUI over.
+- **Shared files.** Several tasks add a case to the subcommand switch in
+  `cmd/asanamate/main.go`, a line to its `usage` text, and rows to the README
+  Keys table. Expect small merge conflicts there; keep each addition to its
+  own lines to make them easy to resolve.
+- **Tests.** The packages you touch have tests. Add tests next to the existing
+  ones, and run `go test ./...` and `go vet ./...` before you finish. CI also
+  runs staticcheck and the race detector.
+- **Docs.** Update the README section for every user-visible change, and the
+  "What it does" list when a feature is added or removed.
+- **Breaking changes** (07, 08) need the user's approval before you start.
+  Follow "Approved breaking changes" in `AGENTS.md`.
+- **Done** means the acceptance list in the spec passes. Then mark the task
+  done in the table above.
+
+## Open questions
+
+- **Action builder or schema.** The action builder (`A`) guides users through
+  action files. A JSON Schema for action files would give completion and docs
+  in any TOML editor with less code to maintain. No decision yet; no spec.
