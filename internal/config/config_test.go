@@ -509,11 +509,11 @@ func TestListSortConfig(t *testing.T) {
 }
 
 func TestKeysConfig(t *testing.T) {
-	cfg, err := Load(writeFile(t, "workspace = \"1\"\n[keys.main]\nquit = [\"x\"]\n[keys.picker]\n"))
+	cfg, err := Load(writeFile(t, "workspace = \"1\"\n[keys.main]\nquit = [\"Q\"]\n[keys.picker]\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Keymap.Name("main", "x") != "quit" || cfg.Keymap.Name("main", "q") != "" {
+	if cfg.Keymap.Name("main", "Q") != "quit" || cfg.Keymap.Name("main", "q") != "" {
 		t.Fatalf("keymap main = %v", cfg.Keymap["main"])
 	}
 	if len(cfg.Keys) != 1 {

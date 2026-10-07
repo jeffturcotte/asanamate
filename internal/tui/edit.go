@@ -26,6 +26,7 @@ const (
 	editAddProject
 	editRemoveProject
 	editBranch
+	editComplete
 )
 
 // myTasks stands for the My Tasks list among a ticket's projects.
@@ -80,6 +81,7 @@ func (m *Model) openEditMenu() {
 		{Label: "Add to project", Key: "p", Value: editAddProject},
 		{Label: "Remove from project", Key: "r", Value: editRemoveProject},
 		{Label: "Set branch", Key: "b", Value: editBranch},
+		{Label: completeLabel(t.Task), Key: "x", Value: editComplete},
 	})
 	p.keySelect = true
 	m.modal = p
@@ -126,8 +128,34 @@ func (m *Model) pickedEdit(op editOp) tea.Cmd {
 		m.openRemoveProjectPicker()
 	case editBranch:
 		m.openBranchInput(t.Task)
+	case editComplete:
+		return m.toggleComplete()
 	}
 	return nil
+}
+
+// completeLabel names the edit that toggles t: Complete when open, Reopen
+// when complete.
+func completeLabel(t asana.Task) string {
+	if t.Completed {
+		return "Reopen"
+	}
+	return "Complete"
+}
+
+// toggleComplete completes the ticket being edited, or reopens it when it is
+// complete.
+func (m *Model) toggleComplete() tea.Cmd {
+	t := m.edit.ticket
+	svc, gid, done := m.writer(), t.GID, !t.Completed
+	what, status := "reopen "+ticket.Clean(t.Name), "Reopened "+ticket.Clean(t.Name)
+	if done {
+		what, status = "complete "+ticket.Clean(t.Name), "Completed "+ticket.Clean(t.Name)
+	}
+	m.edit, m.status = nil, what+"…"
+	return request(func(ctx context.Context) tea.Msg {
+		return editDoneMsg{gid: gid, what: what, done: status, err: svc.Complete(ctx, gid, done)}
+	})
 }
 
 // openBranchInput edits the branch saved for t, which overrides its branch

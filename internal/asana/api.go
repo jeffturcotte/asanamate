@@ -232,6 +232,11 @@ func (c *Client) SetDueOn(ctx context.Context, taskGID, date string) error {
 	return c.updateTask(ctx, taskGID, map[string]any{"due_on": dueOn})
 }
 
+// SetCompleted marks a task complete, or reopens it when done is false.
+func (c *Client) SetCompleted(ctx context.Context, taskGID string, done bool) error {
+	return c.updateTask(ctx, taskGID, map[string]any{"completed": done})
+}
+
 // SetMyTasksSection moves a task into a section of its assignee's My Tasks.
 // Only the assignee can do this.
 func (c *Client) SetMyTasksSection(ctx context.Context, taskGID, sectionGID string) error {

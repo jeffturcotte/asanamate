@@ -202,6 +202,8 @@ func TestTaskUpdatesSendFields(t *testing.T) {
 		{func() error { return c.SetAssignee(ctx, "1", "u1") }, map[string]any{"assignee": "u1"}},
 		{func() error { return c.SetAssignee(ctx, "1", "") }, map[string]any{"assignee": nil}},
 		{func() error { return c.SetMyTasksSection(ctx, "1", "s1") }, map[string]any{"assignee_section": "s1"}},
+		{func() error { return c.SetCompleted(ctx, "1", true) }, map[string]any{"completed": true}},
+		{func() error { return c.SetCompleted(ctx, "1", false) }, map[string]any{"completed": false}},
 	}
 	for i, tc := range cases {
 		if err := tc.write(); err != nil {

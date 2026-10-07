@@ -198,6 +198,46 @@ func TestEditWrites(t *testing.T) {
 	}
 }
 
+func TestCompleteKeyKeepsTicketInViewing(t *testing.T) {
+	m, writes := editModel(t)
+	m.filterInput.SetValue("is:open")
+	m.applyFilter()
+	press(m, "x")
+	if want := `PUT /tasks/1 {"data":{"completed":true}}`; len(*writes) != 1 || strings.TrimSpace((*writes)[0]) != want {
+		t.Fatalf("writes = %q, want %q (status %q)", *writes, want, m.status)
+	}
+	if m.status != "Completed Fix" {
+		t.Errorf("status = %q", m.status)
+	}
+	done := m.tasks[0]
+	done.Completed = true
+	m.Update(tasksMsg{tasks: []asana.Task{done}})
+	if got, _ := m.selected(); got.GID != "1" || !got.Completed || !m.viewingRow {
+		t.Fatalf("selected = %+v, viewingRow = %v; want the completed ticket kept in Viewing", got, m.viewingRow)
+	}
+}
+
+func TestCompleteTogglesByState(t *testing.T) {
+	for _, done := range []bool{false, true} {
+		m, writes := editModel(t)
+		tk := m.details["1"]
+		tk.Completed = done
+		m.details["1"] = tk
+		press(m, "e")
+		label, want := "Complete", `PUT /tasks/1 {"data":{"completed":true}}`
+		if done {
+			label, want = "Reopen", `PUT /tasks/1 {"data":{"completed":false}}`
+		}
+		if !slices.ContainsFunc(m.modal.items, func(it pickItem) bool { return it.Label == label && it.Key == "x" }) {
+			t.Fatalf("completed = %v: edit menu = %+v, want %q on x", done, m.modal.items, label)
+		}
+		press(m, "x")
+		if len(*writes) != 1 || strings.TrimSpace((*writes)[0]) != want {
+			t.Fatalf("completed = %v: writes = %q, want %q", done, *writes, want)
+		}
+	}
+}
+
 func TestAddProjectExcludesExistingMemberships(t *testing.T) {
 	m, _ := editModel(t)
 	press(m, "e", "p")

@@ -32,6 +32,7 @@ var catalog = []Scope{
 		{Name: "due", Keys: []string{"d"}, Desc: "set due date", Group: "Ticket"},
 		{Name: "move_section", Keys: []string{"m"}, Desc: "move to section", Group: "Ticket"},
 		{Name: "assign", Keys: []string{"@"}, Desc: "assign", Group: "Ticket"},
+		{Name: "complete", Keys: []string{"x"}, Desc: "complete / reopen", Group: "Ticket"},
 		{Name: "log_time", Keys: []string{"t"}, Desc: "log time", Hint: "time", Group: "Ticket"},
 		{Name: "attachments", Keys: []string{"f"}, Desc: "attachments", Group: "Ticket"},
 		{Name: "open_browser", Keys: []string{"o"}, Desc: "open in browser", Group: "Ticket"},

@@ -106,6 +106,7 @@ type usersMsg struct {
 type editDoneMsg struct {
 	gid  string
 	what string
+	done string // the status line on success; "" shows "<what>: done"
 	err  error
 }
 

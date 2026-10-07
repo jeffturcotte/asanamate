@@ -227,6 +227,18 @@ func TestSetDueRejectsBadDates(t *testing.T) {
 	}
 }
 
+func TestComplete(t *testing.T) {
+	for _, done := range []bool{true, false} {
+		c, writes := fake(t)
+		if err := (Service{Client: c}).Complete(ctx, "1", done); err != nil {
+			t.Fatalf("Complete(%v): %v", done, err)
+		}
+		if len(*writes) != 1 || (*writes)[0].path != "/tasks/1" || (*writes)[0].body["completed"] != done {
+			t.Errorf("Complete(%v): writes = %+v", done, *writes)
+		}
+	}
+}
+
 func TestProjectMembership(t *testing.T) {
 	c, writes := fake(t)
 	svc := Service{Client: c}
@@ -259,6 +271,8 @@ func TestNewWritesConfirmWithNames(t *testing.T) {
 		svc.Assign(ctx, "1", "Bo"),
 		svc.Assign(ctx, "1", ""),
 		svc.SetDue(ctx, "1", "2026-10-01"),
+		svc.Complete(ctx, "1", true),
+		svc.Complete(ctx, "1", false),
 		svc.AddProject(ctx, "1", "p3"),
 		svc.RemoveProject(ctx, "1", "p2"),
 	} {
@@ -270,6 +284,8 @@ func TestNewWritesConfirmWithNames(t *testing.T) {
 		`Assign "Fix login" to Bo?`,
 		`Unassign "Fix login"?`,
 		`Set the due date of "Fix login" to 2026-10-01?`,
+		`Mark "Fix login" complete?`,
+		`Reopen "Fix login"?`,
 		`Add "Fix login" to project Ops?`,
 		`Remove "Fix login" from project API?`,
 	}
