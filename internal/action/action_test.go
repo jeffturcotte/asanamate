@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -157,16 +158,25 @@ func TestRunBackgroundLogsOutput(t *testing.T) {
 }
 
 func TestRunBackgroundStartsNewSession(t *testing.T) {
-	cmd := exec.Command("/bin/sh", "-c", "sleep 1")
+	// The child logs its own pid: cmd.Process belongs to RunBackground's
+	// goroutine, so reading it here would race.
+	cmd := exec.Command("/bin/sh", "-c", "echo pid=$$; sleep 1")
+	logPath := filepath.Join(t.TempDir(), "actions.log")
 	done := make(chan error, 1)
-	go func() { done <- RunBackground(cmd, filepath.Join(t.TempDir(), "actions.log")) }()
-	for i := 0; i < 100 && cmd.Process == nil; i++ {
+	go func() { done <- RunBackground(cmd, logPath) }()
+	pid := 0
+	for i := 0; i < 100 && pid == 0; i++ {
 		time.Sleep(10 * time.Millisecond)
+		data, _ := os.ReadFile(logPath)
+		// The log header repeats the command, so take the last pid=.
+		if at := strings.LastIndex(string(data), "pid="); at >= 0 {
+			pid, _ = strconv.Atoi(strings.TrimSpace(string(data[at+len("pid="):])))
+		}
 	}
-	if cmd.Process == nil {
+	if pid == 0 {
 		t.Fatal("process did not start")
 	}
-	child, err := unix.Getsid(cmd.Process.Pid)
+	child, err := unix.Getsid(pid)
 	if err != nil {
 		t.Fatal(err)
 	}
