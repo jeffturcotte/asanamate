@@ -195,6 +195,7 @@ func handlers() map[string]handler {
 		}},
 		"reload":           {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.refreshWithImages() }},
 		"reader_view":      {splitOnly: true, run: do(func(m *Model) { m.toggleReaderView(); m.saveDisplay() })},
+		"toggle_reader":    {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.toggleReader() }},
 		"saved_views":      {run: do((*Model).openSavedViews)},
 		"save_view":        {run: do((*Model).openSaveView)},
 		"next_saved_view":  {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.cycleSavedView(1) }},
@@ -232,7 +233,8 @@ func (m *Model) open(tea.KeyPressMsg) tea.Cmd {
 // available reports whether b runs in the current layout.
 func (m *Model) available(b binding) bool {
 	return len(b.keys) > 0 && (!b.splitOnly || m.readerOn()) &&
-		(b.Name != "log_time" || m.deps.Config.TimeTrackingEnabled())
+		(b.Name != "log_time" || m.deps.Config.TimeTrackingEnabled()) &&
+		(b.Name != "toggle_reader" || !m.deps.NoPreview)
 }
 
 // bindingFor returns the binding k runs in the current layout.
@@ -292,6 +294,25 @@ func (m *Model) focusReaderPane() {
 		m.stepField(1)
 		m.recordViewed()
 	}
+}
+
+// toggleReader shows or hides the reader for this session. Hiding it moves
+// focus to the list; showing it draws the selected ticket.
+func (m *Model) toggleReader() tea.Cmd {
+	m.readerHidden = !m.readerHidden
+	if m.readerHidden {
+		m.focusList()
+	}
+	m.layout()
+	if m.readerHidden {
+		return nil
+	}
+	m.renderDetail(false)
+	// The views panel lists recent projects by name.
+	if m.showNav() {
+		return m.refreshProjects()
+	}
+	return nil
 }
 
 // cyclePane moves focus to the next pane: the views panel when it shows, the

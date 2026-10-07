@@ -43,6 +43,40 @@ func TestListOnlyShowsOnlyTheList(t *testing.T) {
 	}
 }
 
+func TestToggleReaderShowsAndHidesTheReader(t *testing.T) {
+	m, _ := testModel(t, config.Config{})
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	m.Update(tasksMsg{tasks: []asana.Task{openTask}})
+	m.Update(key("tab"))
+	m.Update(key("z"))
+	if listW, _, split := m.paneWidths(); listW != 120 || split || m.focusReader {
+		t.Fatalf("hidden: listW = %d, split = %v, focusReader = %v", listW, split, m.focusReader)
+	}
+	if m.Update(key("tab")); m.focusReader {
+		t.Fatal("tab must not focus a hidden reader")
+	}
+	// The ticket arrives while the reader is hidden; showing it draws it.
+	m.Update(detailMsg{gid: "1", ticket: ticket.Ticket{Task: openTask}})
+	m.Update(key("z"))
+	if _, _, split := m.paneWidths(); !split || !strings.Contains(m.reader.View(), "Fix login") {
+		t.Fatalf("shown: split = %v, reader = %q", split, m.reader.View())
+	}
+	m.Update(key("tab"))
+	if !m.focusReader {
+		t.Fatal("tab must focus the shown reader")
+	}
+}
+
+func TestNoPreviewIgnoresToggleReader(t *testing.T) {
+	m, _ := testModel(t, config.Config{})
+	m.deps.NoPreview = true
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	m.Update(key("z"))
+	if _, _, split := m.paneWidths(); split || strings.Contains(m.helpView(), "show / hide reader") {
+		t.Fatalf("split = %v; --no-preview must keep the reader off", split)
+	}
+}
+
 func TestSpaceOpensMenuAfterDetailLoads(t *testing.T) {
 	m, _ := testModel(t, config.Config{Actions: []config.Action{{Name: "Go", Key: "x", Mode: config.ModeExit, Command: "true"}}})
 	m.Update(tasksMsg{tasks: []asana.Task{openTask}})
