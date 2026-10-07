@@ -54,6 +54,34 @@ func TestListResolvesBranchAndRepo(t *testing.T) {
 	}
 }
 
+// TestCommandFixture runs testdata/agents.sh, the minimal agents source
+// docs/extensions.md describes, through Fetch, so a format change fails here.
+func TestCommandFixture(t *testing.T) {
+	script, err := filepath.Abs("testdata/agents.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := realpath(t, t.TempDir())
+	states := map[string][]string{"working": {"busy"}, "waiting": {"permission"}}
+	got, err := Fetch(context.Background(), "", "/bin/sh '"+script+"' '"+dir+"'", states, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Agent{
+		{Path: dir, Status: "busy", Target: "s1", Title: "Fix login", State: Working},
+		{Path: dir, Status: "permission", Target: "s2", State: Waiting},
+		{Path: dir, Status: "mystery", State: Unknown},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %+v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("agent %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
 func TestListReportsCommandFailure(t *testing.T) {
 	if _, err := List(context.Background(), "exit 2"); err == nil {
 		t.Fatal("expected an error")
