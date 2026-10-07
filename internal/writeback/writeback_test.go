@@ -274,6 +274,32 @@ func TestSetFieldSameNameNeedsProject(t *testing.T) {
 	if err := svc.SetField(ctx, "1", "branch name", "x", "p2"); err != nil || len(puts) != 1 || puts[0] != "f5" {
 		t.Fatalf("err = %v, puts = %v", err, puts)
 	}
+	if err := svc.SetField(ctx, "1", "f1", "x", ""); err != nil || len(puts) != 2 || puts[1] != "f1" {
+		t.Fatalf("by gid: err = %v, puts = %v", err, puts)
+	}
+}
+
+func TestSetFieldTakesGIDs(t *testing.T) {
+	users := []asana.Ref{{GID: "9", Name: "Ann"}, {GID: "7", Name: "Ann"}}
+	cases := []struct {
+		field, value string
+		want         any
+	}{
+		{"f3", "o1", "o1"},
+		{"Areas", "o3,o2", []any{"o3", "o2"}},
+		{"Reviewers", "7", []any{"7"}},
+	}
+	for _, tc := range cases {
+		c, writes := fake(t)
+		if err := (Service{Client: c, Users: users}).SetField(ctx, "1", tc.field, tc.value, ""); err != nil {
+			t.Fatalf("%s=%q: %v", tc.field, tc.value, err)
+		}
+		for _, got := range (*writes)[0].body["custom_fields"].(map[string]any) {
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("%s=%q: sent %v, want %v", tc.field, tc.value, got, tc.want)
+			}
+		}
+	}
 }
 
 func TestCommentHTML(t *testing.T) {

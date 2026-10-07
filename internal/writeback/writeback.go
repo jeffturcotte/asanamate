@@ -225,10 +225,10 @@ func pickProject(t asana.Task, projectGID string) (asana.Ref, error) {
 	return asana.Ref{}, fmt.Errorf("task is in several projects; pass --project with one of: %s", strings.Join(choices, ", "))
 }
 
-// SetField sets a custom field from text, as FieldValue reads it; a people
-// field takes comma-separated full names of workspace users. An empty value
-// clears it. When the task has several fields with that name, projectGID picks
-// the one attached to that project.
+// SetField sets a custom field, named or by gid, from text, as FieldValue
+// reads it; a people field takes comma-separated full names or gids of
+// workspace users. An empty value clears it. When the task has several fields
+// with that name, projectGID picks the one attached to that project.
 func (s Service) SetField(ctx context.Context, gid, fieldName, value, projectGID string) error {
 	t, err := s.Client.Task(ctx, gid)
 	if err != nil {
@@ -252,6 +252,11 @@ func (s Service) SetField(ctx context.Context, gid, fieldName, value, projectGID
 // same-named fields: they need the project that owns the intended one.
 func (s Service) resolveField(ctx context.Context, t asana.Task, name, projectGID string) (asana.CustomField, error) {
 	matches := t.FieldsNamed(name)
+	for _, f := range t.CustomFields {
+		if f.GID == name {
+			matches = []asana.CustomField{f}
+		}
+	}
 	switch {
 	case len(matches) == 0:
 		return asana.CustomField{}, fmt.Errorf("task has no custom field %q", name)
@@ -288,22 +293,34 @@ func (s Service) fieldValue(ctx context.Context, f asana.CustomField, value stri
 	}
 	gids := make([]string, 0, len(names))
 	for _, name := range names {
-		var match []asana.Ref
-		for _, u := range users {
-			if strings.EqualFold(strings.TrimSpace(u.Name), name) {
-				match = append(match, u)
-			}
+		u, err := findUser(users, name)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", ticket.FieldName(f), err)
 		}
-		switch len(match) {
-		case 0:
-			return nil, fmt.Errorf("%s: no user named %q", ticket.FieldName(f), name)
-		case 1:
-			gids = appendNew(gids, match[0].GID)
-		default:
-			return nil, fmt.Errorf("%s: several users are named %q", ticket.FieldName(f), name)
-		}
+		gids = appendNew(gids, u.GID)
 	}
 	return gids, nil
+}
+
+// findUser finds the user whose gid is name, or the one user with that full
+// name (ignoring case), refusing a name several users share.
+func findUser(users []asana.Ref, name string) (asana.Ref, error) {
+	var match []asana.Ref
+	for _, u := range users {
+		if u.GID == name {
+			return u, nil
+		}
+		if strings.EqualFold(strings.TrimSpace(u.Name), name) {
+			match = append(match, u)
+		}
+	}
+	switch len(match) {
+	case 0:
+		return asana.Ref{}, fmt.Errorf("no user named %q", name)
+	case 1:
+		return match[0], nil
+	}
+	return asana.Ref{}, fmt.Errorf("several users are named %q", name)
 }
 
 // splitList splits comma-separated names, refusing empty ones.
@@ -324,11 +341,12 @@ func appendNew(list []string, s string) []string {
 	return append(list, s)
 }
 
-// optionGID finds the enum option named name, ignoring case.
+// optionGID finds the enum option whose gid is name, or named name ignoring
+// case.
 func optionGID(f asana.CustomField, name string) (string, error) {
 	var options []string
 	for _, o := range f.EnumOptions {
-		if strings.EqualFold(o.Name, name) {
+		if o.GID == name || strings.EqualFold(o.Name, name) {
 			return o.GID, nil
 		}
 		options = append(options, ticket.Clean(o.Name))
@@ -338,7 +356,8 @@ func optionGID(f asana.CustomField, name string) (string, error) {
 
 // FieldValue converts typed text to the API value for a text, number, enum,
 // multi_enum (comma-separated option names), or date (YYYY-MM-DD) field.
-// Empty text is nil, which clears the field.
+// Option gids work in place of names. Empty text is nil, which clears the
+// field.
 func FieldValue(f asana.CustomField, value string) (any, error) {
 	name := ticket.FieldName(f)
 	if value == "" {
