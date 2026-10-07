@@ -23,6 +23,23 @@ func TestCandidatesExpandsAndDedupes(t *testing.T) {
 	}
 }
 
+// TestCandidatesFixture runs testdata/repos.sh, the minimal repo source
+// docs/extensions.md describes, so a format change fails here.
+func TestCandidatesFixture(t *testing.T) {
+	script, err := filepath.Abs("testdata/repos.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", "/home/u")
+	got, err := Candidates(context.Background(), config.RepoSource{Command: "/bin/sh '" + script + "' /srv/api"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"/home/u/code/web", "/srv/api"}; !slices.Equal(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
 func TestCandidatesReportsFailure(t *testing.T) {
 	if _, err := Candidates(context.Background(), config.RepoSource{Command: "exit 3"}); err == nil {
 		t.Fatal("expected an error")

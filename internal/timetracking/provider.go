@@ -22,8 +22,14 @@ type Asana struct {
 	URL        string `json:"url"`
 }
 
+// ProtocolVersion is the time provider protocol version every request
+// carries. It changes only when existing providers would break; new optional
+// fields keep it, so providers must ignore request fields they do not know.
+const ProtocolVersion = 1
+
 // Request is sent as JSON on provider stdin.
 type Request struct {
+	Version   int               `json:"version"`
 	Operation string            `json:"operation"`
 	Values    map[string]string `json:"values,omitempty"`
 	Asana     *Asana            `json:"asana,omitempty"`
@@ -68,6 +74,7 @@ func (p Provider) Summary(ctx context.Context, asana Asana) (Summary, error) {
 }
 
 func (p Provider) call(ctx context.Context, req Request) ([]byte, error) {
+	req.Version = ProtocolVersion
 	input, err := json.Marshal(req)
 	if err != nil {
 		return nil, err

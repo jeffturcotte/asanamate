@@ -6,6 +6,10 @@ attachments, then press a key to start a coding agent in the ticket's repo with
 the ticket as context. Agents and scripts report back with `asanamate comment`,
 `move`, and `field`.
 
+External commands extend asanamate: actions, agent sources, repo sources, and
+time trackers. [docs/extensions.md](docs/extensions.md) documents each
+protocol.
+
 asanamate runs in any terminal and works well in tmux panes, windows, and popups.
 macOS and Linux only.
 
@@ -391,8 +395,8 @@ once. Run `asanamate doctor` to check a change without starting the TUI.
 | `keys.<scope>.<name>` | see the template | key bindings: a list of keys per binding, such as `[keys.main] quit = ["q", "ctrl+q"]`; `[]` unbinds. Scopes: `main`, `views`, `filter`, `picker`, `form`, `form_field`, `input`, `builder`, `notice`. Keys are a character (`"j"`, `"?"`) or a key name with modifiers (`"ctrl+d"`, `"shift+tab"`, `"enter"`, `"space"`, `"pgdown"`); a letter with `ctrl` or `alt` is lower case, plus `shift` for the capital (`"ctrl+shift+q"`, not `"ctrl+Q"`); `ctrl+c` always quits and can't be bound. `asanamate setup` and `asanamate config update` write every binding, commented, with its default |
 | `reader.max_text_width` | `0` | cards view: wrap description and comment text at this many columns (words are kept whole); `0` wraps at the pane width |
 | `repo_source.root` | your setup directory, or empty | directory whose direct children with a `.git` entry (clones and worktrees) fill the repo picker; absolute or starting with `~`; empty: type a path |
-| `repo_source.command` | unset | prints one repo path per line; replaces `repo_source.root` when set |
-| `time_tracking.id` / `time_tracking.command` | unset (off) | provider ID for saved choices and command implementing the time tracking JSON protocol |
+| `repo_source.command` | unset | prints one repo path per line; replaces `repo_source.root` when set; see [Repo sources](docs/extensions.md#repo-sources) |
+| `time_tracking.id` / `time_tracking.command` | unset (off) | provider ID for saved choices and command implementing the [time tracking JSON protocol](docs/extensions.md#time-tracking) |
 
 The title is always shown. `list.fields` picks the other columns and their
 order: the built-ins `section`, `due`, `assignee`, `initials` (the assignee's
@@ -542,41 +546,11 @@ summary refreshes with ticket details and after a successful log. Loading,
 zero logged time, unsupported retrieval, and unavailable retrieval are distinct;
 a lookup failure does not prevent reading the ticket or logging time.
 
-Other trackers can implement same command protocol. Command runs through
-`/bin/sh -c` and reads one JSON request from stdin. For `{"operation":"form"}`
-return a form spec, such as:
-
-```json
-{"fields":[
-  {"id":"project_id","label":"Project","type":"select","remember":true,
-   "options":[{"id":"123","name":"Web"}]},
-  {"id":"hours","label":"Hours","type":"hours"}
-]}
-```
-
-Fields are required. IDs use snake_case. Select option IDs must be stable;
-`remember` saves a select choice per Asana project. Time forms need exactly
-one `hours` field. The `log` request contains `values` keyed by field ID and
-an `asana` object with `task_gid`, `project_gid`, `title`, and `url`. Exit zero
-only after creating entry. Failed logs are never retried automatically. Use a
-different provider `id` when changing trackers so saved choices stay separate.
-
-Providers can also handle an optional `summary` operation. The request contains
-`asana.task_gid` and `asana.url`; no project selection or form values are needed:
-
-```json
-{"operation":"summary","asana":{"task_gid":"123","url":"https://app.asana.com/0/1/123"}}
-```
-
-Return `{"total_seconds":13500}` for 3 hours 45 minutes, or
-`{"total_seconds":0}` when no linked stopped entries exist. `total_seconds`
-must be a nonnegative integer representing all-time, unrounded duration from
-stopped entries visible to the account, across projects for the exact ticket.
-Normalize provider units to seconds; do not match by ticket title. Retrieve
-all pages before returning a total. On retrieval failure, exit nonzero; never
-return a partial total. Providers without retrieval can return
-`{"unsupported":true}`. Older providers that reject `summary` show unavailable
-time while their existing form and logging operations continue to work.
+Other trackers can implement the same protocol: the command reads one JSON
+request (`form`, `log`, or an optional `summary`) on stdin and prints a JSON
+reply. See [Time tracking](docs/extensions.md#time-tracking) for the request
+and reply formats. Use a different provider `id` when changing trackers so
+saved choices stay separate.
 
 ## Actions
 
@@ -626,24 +600,10 @@ Commands run with `/bin/sh -c`. Ticket data is available only through
 environment variables and files. Always reference the variables, and never
 paste ticket text into the command, because ticket content is untrusted.
 
-| Variable | Value |
-|---|---|
-| `ASANAMATE_GID`, `ASANAMATE_TITLE`, `ASANAMATE_URL` | task gid, name, permalink |
-| `ASANAMATE_SLUG` | branch-friendly title, e.g. `fix-login-bug` |
-| `ASANAMATE_COMPLETED`, `ASANAMATE_ASSIGNEE`, `ASANAMATE_DUE`, `ASANAMATE_TAGS` | task details |
-| `ASANAMATE_MY_SECTION` | My Tasks section |
-| `ASANAMATE_PROJECT`, `ASANAMATE_PROJECT_GID`, `ASANAMATE_SECTION` | active project and the ticket's section in it |
-| `ASANAMATE_REPO` | resolved repo (`repo = true` actions) |
-| `ASANAMATE_WORKTREE` | the repo's worktree with `$ASANAMATE_BRANCH` checked out, the main one included; empty when none has it |
-| `ASANAMATE_BRANCH` | the ticket's branch: the one saved for it, else `branch_field`'s value, else the ID field, else the title slug |
-| `ASANAMATE_AGENT_STATE`, `ASANAMATE_AGENT_STATUS`, `ASANAMATE_AGENT_PATH`, `ASANAMATE_AGENT_TARGET`, `ASANAMATE_AGENT_TITLE` | the agent the action is about (the chosen one for `agent = true`, else the most urgent): normalized state, raw status, directory, jump id, title. Empty without agents |
-| `ASANAMATE_AGENT_TARGETS` | every linked agent, one `target<TAB>state<TAB>path<TAB>title` line each |
-| `ASANAMATE_COMMENT_GID`, `ASANAMATE_COMMENT_AUTHOR`, `ASANAMATE_COMMENT_AUTHOR_GID`, `ASANAMATE_COMMENT_DATE`, `ASANAMATE_COMMENT_TEXT` | the highlighted comment when the menu opened: story gid, author name and gid, `created_at` timestamp, and body as Markdown. Empty when no comment is highlighted |
-| `ASANAMATE_TICKET_JSON`, `ASANAMATE_TICKET_MD` | full ticket as JSON / Markdown |
-| `ASANAMATE_INPUT_FILE` | text typed into the `input` box, possibly empty. Empty path for actions without `input` |
-| `ASANAMATE_PARAM_<ID>` | selected action form value, with its field ID uppercased |
-| `ASANAMATE_FIELD_<NAME>` | custom field display values, e.g. `ASANAMATE_FIELD_BRANCH_NAME` |
-| `ASANAMATE_CONFIRM_WRITES` | `1`/`0`, read by the write-back subcommands |
+Common variables are `$ASANAMATE_GID`, `$ASANAMATE_TITLE`,
+`$ASANAMATE_BRANCH`, `$ASANAMATE_REPO`, and `$ASANAMATE_TICKET_MD` (the full
+ticket as Markdown). [Actions](docs/extensions.md#actions) lists every
+variable, the ticket files, and how output and exit status are handled.
 
 Modes:
 
@@ -761,7 +721,8 @@ preset = "ccmux"   # reads `ccmux show --json` directly
 ```
 
 Or use any tool with a command that prints `<path>\t<status>[\t<target>[\t<title>]]`
-per agent, plus a mapping from its statuses to asanamate's states:
+per agent ([Agent sources](docs/extensions.md#agent-sources) has the details),
+plus a mapping from its statuses to asanamate's states:
 
 ```toml
 [agents]
