@@ -91,6 +91,7 @@ func Merge(old string) (string, []string, error) {
 	if err := config.ApplyMoves(user); err != nil {
 		return "", nil, err
 	}
+	config.ApplyCommandMoves(user)
 	gid, _ := user["workspace"].(string)
 	name := gid
 	if m := workspaceName.FindStringSubmatch(old); m != nil {

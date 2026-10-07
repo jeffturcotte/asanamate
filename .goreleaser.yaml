@@ -6,14 +6,26 @@ before:
     - go mod tidy
     - go test ./...
 
+# Each archive holds both binaries.
 builds:
-  - main: ./cmd/asanamate
+  - id: asanamate
+    main: ./cmd/asanamate
+    binary: asanamate
     env:
       - CGO_ENABLED=0
     goos: [darwin, linux]
     goarch: [amd64, arm64]
     ldflags:
       - -s -w -X main.version={{ .Version }}
+  - id: asanamate-hrvst
+    main: ./cmd/asanamate-hrvst
+    binary: asanamate-hrvst
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
 
 archives:
   - formats: [tar.gz]
@@ -36,9 +48,10 @@ homebrew_casks:
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     homepage: https://github.com/sadmachine/asanamate
     description: Terminal UI for Asana tickets with scriptable actions
+    binaries: [asanamate, asanamate-hrvst]
     hooks:
       post:
         install: |
           if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/asanamate"]
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/asanamate", "#{staged_path}/asanamate-hrvst"]
           end

@@ -384,7 +384,7 @@ type_first = false
 # stdin and writes a form spec as JSON. See README for the protocol.
 [time_tracking]
 # id = "hrvst"
-# command = "asanamate time-provider hrvst --task-id YOUR_TASK_ID"
+# command = "asanamate-hrvst --task-id YOUR_TASK_ID"
 
 
 [repo_source]

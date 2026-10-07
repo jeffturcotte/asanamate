@@ -265,7 +265,7 @@ func TestTimeTrackingConfig(t *testing.T) {
 	if err != nil || cfg.TimeTrackingEnabled() {
 		t.Fatalf("default time tracking = %+v, err = %v", cfg.TimeTracking, err)
 	}
-	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[time_tracking]\nid = \"hrvst\"\ncommand = \"asanamate time-provider hrvst\"\n"))
+	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[time_tracking]\nid = \"hrvst\"\ncommand = \"asanamate-hrvst --task-id 456\"\n"))
 	if err != nil || !cfg.TimeTrackingEnabled() {
 		t.Fatalf("configured time tracking = %+v, err = %v", cfg.TimeTracking, err)
 	}

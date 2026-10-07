@@ -205,9 +205,10 @@ command = '~/bin/repos.sh'
 ## Time tracking
 
 Set `time_tracking.command` to log time to a tracker, and `time_tracking.id`
-to a name for it. asanamate's built-in Harvest provider,
-`asanamate time-provider hrvst`, follows this protocol too. Use a different
-`id` when changing trackers so saved choices stay separate.
+to a name for it. asanamate's Harvest provider, `asanamate-hrvst`
+(`cmd/asanamate-hrvst`), is a separate binary that uses only this protocol,
+like any other provider. Use a different `id` when changing trackers so saved
+choices stay separate.
 
 **When it runs.** Once per request, as a new process each time:
 

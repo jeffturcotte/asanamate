@@ -64,6 +64,14 @@ mkdir -p ~/.local/bin && mv asanamate ~/.local/bin/
 asanamate version
 ```
 
+The archive also holds `asanamate-hrvst`, the Harvest provider for
+[Time tracking](#time-tracking-optional). To log time to Harvest, extract and
+move it the same way:
+
+```sh
+tar -xzf "$archive" asanamate-hrvst && mv asanamate-hrvst ~/.local/bin/
+```
+
 If `asanamate version` is not found, add `~/.local/bin` to your `PATH` in your
 shell's startup file (`~/.zshrc`, `~/.bashrc`), then open a new shell:
 
@@ -77,6 +85,7 @@ quarantine flag once:
 
 ```sh
 xattr -d com.apple.quarantine ~/.local/bin/asanamate
+xattr -d com.apple.quarantine ~/.local/bin/asanamate-hrvst   # if you use it
 ```
 
 ### From source
@@ -85,6 +94,7 @@ Needs Go 1.26 or later.
 
 ```sh
 go install github.com/sadmachine/asanamate/cmd/asanamate@latest
+go install github.com/sadmachine/asanamate/cmd/asanamate-hrvst@latest   # Harvest time tracking
 ```
 
 This installs to `$(go env GOBIN)`, else `$(go env GOPATH)/bin` (usually
@@ -96,7 +106,8 @@ Upgrade the way you installed: replace the binary with a newer archive, or
 rerun `go install`. Upgrades never touch
 your config, actions, or state.
 
-To uninstall, delete the binary. Your
+To uninstall, delete the binaries (`asanamate`, and `asanamate-hrvst` if you
+installed it). Your
 files stay until you delete them yourself: the config and actions in
 `~/.config/asanamate`, the state, ticket exports, and logs in
 `~/.local/state/asanamate`, and the Codex hook, if you added it, in
@@ -145,7 +156,7 @@ Browsing needs none of these. Each one affects only its own feature, and
 | Paste image into comment (`alt+v`) | macOS `osascript` (built in); Linux `wl-clipboard` (Wayland) or `xclip` (X11). On macOS the terminal must send Option as Alt (kitty `macos_option_as_alt`, Ghostty `macos-option-as-alt`, iTerm2 "Esc+") | always on | not needed | not checked | the comment box shows why; type the image's Markdown yourself |
 | Paste into input (`Ctrl+V`) | macOS `pbpaste`; Linux `xclip` or `xsel` (X11) or `wl-clipboard` (Wayland) | always on | not needed | not checked | the input shows why, and your terminal's paste still works |
 | Agent status | a supported agent tool; see [Agents](#agents-optional) | `[agents]` | remove `[agents]` keys | `agents`, `codex_hook` | off |
-| Time tracking | [hrvst](https://github.com/kgajera/hrvst-cli) 3.x; see [Time tracking](#time-tracking-optional) | `[time_tracking]` | remove `[time_tracking]` keys | `time_tracking` | off |
+| Time tracking | `asanamate-hrvst` and [hrvst](https://github.com/kgajera/hrvst-cli) 3.x, or your own provider; see [Time tracking](#time-tracking-optional) | `[time_tracking]` | remove `[time_tracking]` keys | `time_tracking` | off |
 | Inline images | a kitty-graphics terminal ([kitty](https://sw.kovidgoyal.net/kitty/), [Ghostty](https://ghostty.org)); in tmux, `set -g allow-passthrough on` | `images.mode = "auto"` (default) | `images.mode = "off"` | not checked | links shown instead |
 | Nerd Font symbols | a [Nerd Font](https://www.nerdfonts.com) | `symbols = "nerd"` | `symbols = "unicode"` or `"ascii"` | not checked | unicode or ascii symbols |
 | Follow OS reduced motion | macOS `defaults`; GNOME `gsettings` | leave `reduced_motion` unset | set `reduced_motion` | not checked | set `reduced_motion` yourself |
@@ -387,6 +398,14 @@ your config; it keeps your values and saves the old file as a timestamped
 | `repo.command` | `repo_source.command` |
 | `repo.branch_field` | `branch_field` |
 
+The Harvest time tracking provider moved out of asanamate into its own
+binary, `asanamate-hrvst`, in the same release archive (see [Install](#install)).
+Install it, then run `asanamate config update`: it rewrites
+`time_tracking.command = "asanamate time-provider hrvst --task-id <id>"` to
+`"asanamate-hrvst --task-id <id>"`, keeping the flags. Until then, asanamate
+names the old command and stops. `asanamate doctor` no longer checks hrvst;
+run `asanamate-hrvst check` instead.
+
 Default keys changed too: `enter` in the list opens the reader; `c` adds a
 comment (was `C`); `y` copies the link (was `c`); `Y` copies the targeted
 comment (was `y`); `@` assigns (was `A`); `A` opens the action builder (was
@@ -545,21 +564,25 @@ without a background is drawn reversed.
 
 ### Time tracking (optional)
 
-Harvest support uses [hrvst](https://github.com/kgajera/hrvst-cli) 3.x
+Harvest support is a separate provider binary, `asanamate-hrvst`, shipped
+with asanamate (see [Install](#install)). It uses
+[hrvst](https://github.com/kgajera/hrvst-cli) 3.x
 (`npm install -g hrvst-cli`), which needs Node.js 20 or later. Set it up:
 
-1. Run `hrvst login` and authorize your Harvest account. hrvst stores the
-   credentials in `~/.hrvst/config.json`; asanamate reads them from there to
-   create entries with the Asana link, and never stores them itself.
-2. Find the numeric ID of the Harvest task you log time to. Run
+1. Install `asanamate-hrvst` on your `PATH`.
+2. Run `hrvst login` and authorize your Harvest account. hrvst stores the
+   credentials in `~/.hrvst/config.json`; `asanamate-hrvst` reads them from
+   there to create entries with the Asana link, and never stores them itself.
+   `asanamate-hrvst check` confirms hrvst is installed and logged in.
+3. Find the numeric ID of the Harvest task you log time to. Run
    `hrvst users project-assignments me --output=json` and pick the `task.id`
    under `task_assignments`.
-3. Add to the config:
+4. Add to the config:
 
 ```toml
 [time_tracking]
 id = "hrvst"
-command = "asanamate time-provider hrvst --task-id YOUR_TASK_ID"
+command = "asanamate-hrvst --task-id YOUR_TASK_ID"
 ```
 
 To turn time tracking off, remove the `[time_tracking]` keys.

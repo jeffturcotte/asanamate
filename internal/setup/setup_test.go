@@ -195,18 +195,23 @@ func TestTemplateOptionsStayTopLevel(t *testing.T) {
 	}
 }
 
-func TestMergeKeepsTimeTrackingProvider(t *testing.T) {
-	updated, _, err := Merge("workspace = \"1\"\n[time_tracking]\nid = \"hrvst\"\ncommand = \"asanamate time-provider hrvst --task-id 456\"\n")
+// The Harvest provider moved out of asanamate in v0.2.0: Merge rewrites the
+// old command to asanamate-hrvst, keeping its flags and every other value.
+func TestMergeMovesHarvestProvider(t *testing.T) {
+	updated, _, err := Merge("workspace = \"1\"\nsymbols = \"nerd\"\n[time_tracking]\nid = \"hrvst\"\ncommand = \"asanamate time-provider hrvst --task-id 456\"\n")
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(t.TempDir(), "config.toml")
-	if err := os.WriteFile(path, []byte(updated), 0o600); err != nil {
-		t.Fatal(err)
+	cfg := loadString(t, updated)
+	if cfg.TimeTracking.ID != "hrvst" || cfg.TimeTracking.Command != "asanamate-hrvst --task-id 456" || cfg.Symbols != "nerd" {
+		t.Fatalf("merged = %+v, symbols = %q\n%s", cfg.TimeTracking, cfg.Symbols, updated)
 	}
-	cfg, err := config.Load(path)
-	if err != nil || cfg.TimeTracking.ID != "hrvst" || cfg.TimeTracking.Command != "asanamate time-provider hrvst --task-id 456" {
-		t.Fatalf("merged provider = %+v, err = %v", cfg.TimeTracking, err)
+	if strings.Contains(updated, "time-provider") {
+		t.Fatalf("old command left behind:\n%s", updated)
+	}
+	again, _, err := Merge(updated)
+	if err != nil || again != updated {
+		t.Fatalf("second merge changed config: err = %v", err)
 	}
 }
 

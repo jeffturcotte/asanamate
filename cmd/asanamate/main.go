@@ -34,7 +34,6 @@ import (
 	"github.com/sadmachine/asanamate/internal/setup"
 	"github.com/sadmachine/asanamate/internal/state"
 	"github.com/sadmachine/asanamate/internal/ticket"
-	"github.com/sadmachine/asanamate/internal/timetracking"
 	"github.com/sadmachine/asanamate/internal/tui"
 	"github.com/sadmachine/asanamate/internal/writeback"
 )
@@ -69,7 +68,6 @@ const usage = `usage:
                                                    create a ticket (default: in My Tasks, assigned
                                                    to you) or a subtask; prints its gid
   asanamate doctor [<gid>]                         check setup and optional tools; for a ticket, why agents link (or not)
-  asanamate time-provider hrvst --task-id <id>     serve time tracking provider requests on stdin
   asanamate hook codex                             record a Codex hook event read on stdin
                                                    (installed by setup)
   asanamate version
@@ -111,20 +109,6 @@ func run(args []string) int {
 	case "hook":
 		runHook(args[1:])
 		return 0
-	case "time-provider":
-		if len(args) < 2 || args[1] != "hrvst" {
-			err = fmt.Errorf("usage: asanamate time-provider hrvst --task-id <id>")
-		} else {
-			fs := flag.NewFlagSet("time-provider hrvst", flag.ContinueOnError)
-			taskID := fs.String("task-id", "", "default Harvest task ID")
-			if err = fs.Parse(args[2:]); err == nil {
-				if len(fs.Args()) != 0 {
-					err = fmt.Errorf("unexpected time-provider arguments: %v", fs.Args())
-				} else {
-					err = timetracking.RunHarvest(context.Background(), os.Stdin, os.Stdout, *taskID)
-				}
-			}
-		}
 	default:
 		if name != "" && !strings.HasPrefix(name, "-") {
 			fmt.Fprint(os.Stderr, usage)
@@ -706,17 +690,10 @@ func checkFeatures(w io.Writer, cfg config.Config) {
 		tool("editor", editor[0], "asanamate config needs it; set $EDITOR or edit the config file directly")
 	}
 	tool("browser", browser.Opener(), "opening tickets in a browser needs it; on Linux, install xdg-utils and a desktop browser")
-	switch {
-	case cfg.TimeTracking.Command == "":
+	if cfg.TimeTracking.Command == "" {
 		row(w, "time_tracking", "off")
-	case strings.Contains(cfg.TimeTracking.Command, "time-provider hrvst"):
-		if err := timetracking.CheckHarvest(); err != nil {
-			row(w, "time_tracking", "warning: hrvst: "+err.Error())
-		} else {
-			row(w, "time_tracking", "ok: hrvst installed and logged in")
-		}
-	default:
-		row(w, "time_tracking", "unchecked: custom command (not run)")
+	} else {
+		row(w, "time_tracking", "unchecked: command "+strconv.Quote(cfg.TimeTracking.Command)+" (not run)")
 	}
 }
 
