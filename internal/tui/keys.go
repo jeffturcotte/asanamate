@@ -327,15 +327,21 @@ func (m *Model) toggleReaderView() {
 	m.renderDetail(false)
 }
 
-// requestProjects runs open, loading the projects first when they have not
-// loaded yet.
+// requestProjects runs open, first loading the projects when none are known.
+// Cached projects open at once while a fresh list loads.
 func (m *Model) requestProjects(open func() tea.Cmd) tea.Cmd {
+	refresh := m.refreshProjects()
 	if m.projects != nil {
-		return open()
+		return tea.Batch(open(), refresh)
 	}
 	m.afterProjects = open
 	m.status = "loading projects…"
-	if m.loadingProjects {
+	return refresh
+}
+
+// refreshProjects loads the projects from Asana once per session.
+func (m *Model) refreshProjects() tea.Cmd {
+	if m.projectsLoaded || m.loadingProjects || m.deps.Client == nil {
 		return nil
 	}
 	m.loadingProjects = true

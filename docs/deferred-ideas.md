@@ -4,50 +4,23 @@ Improvements found during the 2026-09-28 code review that were left out of the
 cleanup. Each one either adds a feature or rewrites behavior, so it needs its
 own design pass. They are recorded here so they can be picked up later.
 
-## Action run steps
-
-**Now:** `pendingRun` in `internal/tui/flow.go` tracks progress with four
-flags (`projectChosen`, `awaitingFields`, `inputDone`, `formDone`) and an
-empty `branch` string.
-`continueRun` and `execute` re-enter each other until every flag is settled.
-The flow works, but each new step adds another flag and another re-entry
-point.
-
-**Idea:** Model the run as an ordered list of steps: pick agent, pick project,
-resolve repo, collect input, fill the action form, load project fields, ask
-for a branch when the branch field is empty. Each step either finishes right
-away or opens a modal and resumes when it is answered.
-
-**Watch out for:** This is the most intricate flow in the TUI. The tests in
-`flow_test.go` and `agents_test.go` cover it and should pass unchanged.
-
-## Multi-enum and people fields from the CLI
-
-**Now:** The TUI can set `multi_enum` and `people` custom fields
-(`pickedValues` in `internal/tui/edit.go`). `asanamate field` goes through
-`writeback.FieldValue`, which only supports text, number, enum, and date.
-
-**Idea:** Teach `FieldValue` to accept a comma-separated list of option names
-or people names and resolve them to gids. Then the CLI and TUI share one
-conversion.
-
-**Watch out for:** People names need a workspace user lookup and a rule for
-ambiguous names. `CommentHTML` already refuses two users with the same name.
-Clearing the field with `""` must keep working.
-
 ## Cheaper project list
 
 **Now:** `Client.MemberProjects` loads every unarchived project in the
 workspace with its member list, then keeps the ones the user belongs to. In
-large workspaces this is slow and moves a lot of data.
+large workspaces this is slow and moves a lot of data. The TUI caches the
+result in state, so pickers open at once and the load runs in the
+background once per session, but the request costs the same.
 
-**Idea:** Check whether the Asana API has a server-side way to list only the
-user's projects, for example through team memberships
-(`/users/{gid}/team_memberships`, then `/teams/{gid}/projects`), and compare
-the cost.
+**Idea:** Asana has no server-side filter for the user's own projects:
+`GET /projects` has no member filter, and `GET /memberships` needs a project
+`parent` for user memberships. A team-based list
+(`/users/{gid}/team_memberships`, then `GET /memberships` with each team and
+`resource_subtype=project_membership`) moves far less data.
 
-**Watch out for:** A team-based list may include projects the user can see
-but is not a member of, which changes what the project picker shows.
+**Watch out for:** A team-based list includes team projects the user is not a
+member of and misses projects shared with the user directly, which changes
+what the project picker shows.
 
 ## Shared shell runner
 

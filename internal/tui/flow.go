@@ -24,17 +24,43 @@ import (
 type pendingRun struct {
 	action         config.Action
 	ticket         ticket.Ticket
-	project        *asana.Ref
-	projectChosen  bool
-	repo           string // resolved repo, kept while input or project fields are pending
-	awaitingFields bool
+	step           int           // index of the advanceRun step in progress
 	agent          *agents.Agent // chosen agent for agent = true actions
-	comment        *asana.Story  // highlighted comment, set when the menu opened
-	input          string        // text typed for an input action
-	inputDone      bool
+	project        *asana.Ref
+	repo           string       // resolved repo; "" for repo = false actions
+	comment        *asana.Story // highlighted comment, set when the menu opened
+	input          string       // text typed for an input action
 	formValues     map[string]string
-	formDone       bool
-	branch         string // branch typed when the branch field is empty
+	awaitingFields bool   // the project's fields are loading
+	branch         string // branch the action runs on
+}
+
+// advanceRun runs the run's steps in order from the current one, then
+// launches the action. Each step settles one part of the run, or reports wait
+// when it opened a modal or started a load; the handler for that answer
+// records it and calls resumeRun. A step that cancels the run clears m.run.
+func (m *Model) advanceRun() tea.Cmd {
+	steps := []func(*pendingRun) (cmd tea.Cmd, wait bool){
+		m.runAgent,
+		m.runProject,
+		m.runRepo,
+		m.runInput,
+		m.runForm,
+		m.runProjectFields,
+		m.runBranch,
+	}
+	for r := m.run; r.step < len(steps); r.step++ {
+		if cmd, wait := steps[r.step](r); wait || m.run == nil {
+			return cmd
+		}
+	}
+	return m.launch(m.run)
+}
+
+// resumeRun moves past the step whose answer just arrived.
+func (m *Model) resumeRun() tea.Cmd {
+	m.run.step++
+	return m.advanceRun()
 }
 
 // sharesFieldNames reports whether two of the task's custom fields share a
@@ -145,82 +171,92 @@ func (m *Model) pickedAction(i int) tea.Cmd {
 	m.modal = nil
 	m.lastAction = i
 	m.run.action = m.deps.Config.Actions[i]
-	return m.continueRun()
+	return m.advanceRun()
+}
+
+// runAgent picks the agent an agent = true action talks to, asking when the
+// ticket has several.
+func (m *Model) runAgent(r *pendingRun) (tea.Cmd, bool) {
+	if !r.action.Agent {
+		return nil, false
+	}
+	list := m.viewAgents(r.ticket.Task)
+	switch len(list) {
+	case 0:
+		m.run = nil
+		m.showNotice("no running agent for this ticket")
+		return nil, true
+	case 1:
+		r.agent = &list[0]
+		return nil, false
+	}
+	items := make([]pickItem, len(list))
+	for i, a := range list {
+		items[i] = pickItem{Label: m.agentLabel(a, lipgloss.NewStyle()), Hint: ticket.OneLine(filepath.Base(a.Path)), Value: a}
+	}
+	m.modal = newPicker(pickValue(m.pickedAgent), "Which agent?", items)
+	return nil, true
 }
 
 func (m *Model) pickedAgent(a agents.Agent) tea.Cmd {
 	m.modal = nil
 	m.run.agent = &a
-	return m.continueRun()
+	return m.resumeRun()
+}
+
+// runProject picks the action's project. A repo = true action without a
+// valid repo of the ticket's own asks which project's repo to use when the
+// ticket is in several.
+func (m *Model) runProject(r *pendingRun) (tea.Cmd, bool) {
+	if !r.action.Repo {
+		r.project = action.DefaultProject(r.ticket.Task, gidOf(m.viewProject))
+		return nil, false
+	}
+	if path, ok := m.deps.State.TaskRepos[r.ticket.GID]; ok {
+		if isRepoRoot(path) {
+			r.project, r.repo = action.DefaultProject(r.ticket.Task, gidOf(m.viewProject)), path
+			return nil, false
+		}
+		m.status = fmt.Sprintf("ticket repo %s is no longer a git repository; using the project's", path)
+	}
+	switch len(r.ticket.Memberships) {
+	case 0:
+		return nil, false
+	case 1:
+		p := r.ticket.Memberships[0].Project
+		r.project = &p
+		return nil, false
+	}
+	items := make([]pickItem, len(r.ticket.Memberships))
+	for i, mb := range r.ticket.Memberships {
+		items[i] = pickItem{Label: ticket.Clean(mb.Project.Name), Value: mb.Project}
+	}
+	m.modal = newPicker(pickValue(m.pickedTicketProject), "Which project's repo?", items)
+	return nil, true
 }
 
 func (m *Model) pickedTicketProject(ref asana.Ref) tea.Cmd {
 	m.modal = nil
-	m.run.project, m.run.projectChosen = &ref, true
-	return m.continueRun()
+	m.run.project = &ref
+	return m.resumeRun()
 }
 
-// continueRun advances the run: use the ticket's own repo if still valid,
-// otherwise choose the project, use its linked repo if still valid, otherwise
-// load candidates for the repo picker.
-func (m *Model) continueRun() tea.Cmd {
-	r := m.run
-	if r.action.Agent && r.agent == nil {
-		list := m.viewAgents(r.ticket.Task)
-		switch len(list) {
-		case 0:
-			m.run = nil
-			m.showNotice("no running agent for this ticket")
-			return nil
-		case 1:
-			r.agent = &list[0]
-		default:
-			items := make([]pickItem, len(list))
-			for i, a := range list {
-				items[i] = pickItem{Label: m.agentLabel(a, lipgloss.NewStyle()), Hint: ticket.OneLine(filepath.Base(a.Path)), Value: a}
-			}
-			m.modal = newPicker(pickValue(m.pickedAgent), "Which agent?", items)
-			return nil
-		}
-	}
-	if !r.action.Repo {
-		r.project = action.DefaultProject(r.ticket.Task, gidOf(m.viewProject))
-		return m.execute("")
-	}
-	if path, ok := m.deps.State.TaskRepos[r.ticket.GID]; ok {
-		if isRepoRoot(path) {
-			if !r.projectChosen {
-				r.project = action.DefaultProject(r.ticket.Task, gidOf(m.viewProject))
-			}
-			return m.execute(path)
-		}
-		m.status = fmt.Sprintf("ticket repo %s is no longer a git repository; using the project's", path)
-	}
-	if !r.projectChosen {
-		switch len(r.ticket.Memberships) {
-		case 0:
-			r.projectChosen = true
-		case 1:
-			p := r.ticket.Memberships[0].Project
-			r.project, r.projectChosen = &p, true
-		default:
-			items := make([]pickItem, len(r.ticket.Memberships))
-			for i, mb := range r.ticket.Memberships {
-				items[i] = pickItem{Label: ticket.Clean(mb.Project.Name), Value: mb.Project}
-			}
-			m.modal = newPicker(pickValue(m.pickedTicketProject), "Which project's repo?", items)
-			return nil
-		}
+// runRepo uses the project's linked repo while it is still valid, otherwise
+// loads candidates for the repo picker.
+func (m *Model) runRepo(r *pendingRun) (tea.Cmd, bool) {
+	if !r.action.Repo || r.repo != "" {
+		return nil, false
 	}
 	if r.project != nil {
 		if path, ok := m.deps.State.Repos[r.project.GID]; ok {
 			if isRepoRoot(path) {
-				return m.execute(path)
+				r.repo = path
+				return nil, false
 			}
 			m.status = fmt.Sprintf("linked repo %s is no longer a git repository; pick again", path)
 		}
 	}
-	return loadCandidates(m.deps.Config.RepoSource, nil)
+	return loadCandidates(m.deps.Config.RepoSource, nil), true
 }
 
 // isRepoRoot reports whether a saved link still names a repo. Links are saved
@@ -294,7 +330,8 @@ func (m *Model) pickedRepo(path string) tea.Cmd {
 	if p := m.run.project; p != nil {
 		m.saveLink(linkTarget{ref: *p}, resolved)
 	}
-	return m.execute(resolved)
+	m.run.repo = resolved
+	return m.resumeRun()
 }
 
 // resolvePicked resolves a path chosen in the repo picker, closing it, or
@@ -332,27 +369,44 @@ func (m *Model) saveLink(target linkTarget, path string) {
 	}
 }
 
-// typedInput takes the input box's text: the action's input, or, once that
-// is done, the branch for a ticket whose branch field is empty. A branch
-// other than the fallback is saved for the ticket, so agents on it link.
-func (m *Model) typedInput(text string) tea.Cmd {
-	m.input = nil
-	r := m.run
-	if r.action.Input != "" && !r.inputDone {
-		r.input, r.inputDone = text, true
-	} else {
-		r.branch = cmp.Or(text, action.DefaultBranch(r.ticket.Task))
-		if r.branch != action.DefaultBranch(r.ticket.Task) {
-			m.saveBranch(r.ticket.GID, r.branch)
+// runInput asks for an input action's text.
+func (m *Model) runInput(r *pendingRun) (tea.Cmd, bool) {
+	if r.action.Input == "" {
+		return nil, false
+	}
+	m.input = newInputBox(r.action.Input, "optional; leave empty to skip")
+	m.input.onSubmit = func(text string) tea.Cmd {
+		m.input, r.input = nil, text
+		return m.resumeRun()
+	}
+	return nil, true
+}
+
+// runForm opens the action's form, starting each remembered field on its
+// most recent valid choice for the project.
+func (m *Model) runForm(r *pendingRun) (tea.Cmd, bool) {
+	if len(r.action.Form.Fields) == 0 {
+		return nil, false
+	}
+	defaults := map[string]string{}
+	if r.project != nil {
+		for _, field := range r.action.Form.Fields {
+			for _, id := range m.deps.State.RecentFormChoices("action:"+r.action.Key, r.project.GID, field.ID) {
+				if field.HasOption(id) {
+					defaults[field.ID] = id
+					break
+				}
+			}
 		}
 	}
-	return m.execute(r.repo)
+	m.form = newFormModal(r.action.Name, r.action.Form, defaults, m.typedActionForm)
+	return nil, true
 }
 
 func (m *Model) typedActionForm(values map[string]string) tea.Cmd {
 	m.form = nil
 	r := m.run
-	r.formValues, r.formDone = values, true
+	r.formValues = values
 	if r.project != nil {
 		remembered := false
 		for _, field := range r.action.Form.Fields {
@@ -367,53 +421,53 @@ func (m *Model) typedActionForm(values map[string]string) tea.Cmd {
 			}
 		}
 	}
-	return m.execute(r.repo)
+	return m.resumeRun()
 }
 
-func (m *Model) execute(repoPath string) tea.Cmd {
-	r := m.run
-	if r.action.Input != "" && !r.inputDone {
-		r.repo = repoPath
-		m.input = newInputBox(r.action.Input, "optional; leave empty to skip")
-		return nil
+// runProjectFields loads the project's fields when the ticket has same-named
+// fields, so the action sees the project's one. The projectFieldsMsg handler
+// resumes the run.
+func (m *Model) runProjectFields(r *pendingRun) (tea.Cmd, bool) {
+	p := r.project
+	if p == nil || !sharesFieldNames(r.ticket.Task) {
+		return nil, false
 	}
-	if len(r.action.Form.Fields) > 0 && !r.formDone {
-		r.repo = repoPath
-		defaults := map[string]string{}
-		if r.project != nil {
-			for _, field := range r.action.Form.Fields {
-				for _, id := range m.deps.State.RecentFormChoices("action:"+r.action.Key, r.project.GID, field.ID) {
-					if field.HasOption(id) {
-						defaults[field.ID] = id
-						break
-					}
-				}
-			}
-		}
-		m.form = newFormModal(r.action.Name, r.action.Form, defaults, m.typedActionForm)
-		return nil
+	if _, ok := m.projectFields[p.GID]; ok {
+		return nil, false
 	}
-	if p := r.project; p != nil && sharesFieldNames(r.ticket.Task) {
-		if _, ok := m.projectFields[p.GID]; !ok {
-			r.repo, r.awaitingFields = repoPath, true
-			m.status = "loading project fields…"
-			return loadProjectFields(m.deps.Client, p.GID)
-		}
-	}
+	r.awaitingFields = true
+	m.status = "loading project fields…"
+	return loadProjectFields(m.deps.Client, p.GID), true
+}
+
+// runBranch picks the branch, asking for one when the command uses it and
+// the branch field is empty. A typed branch other than the fallback is saved
+// for the ticket, so agents on it link.
+func (m *Model) runBranch(r *pendingRun) (tea.Cmd, bool) {
 	preferred := m.projectFields[gidOf(r.project)]
-	branch := r.branch
-	if branch == "" {
-		saved := m.deps.State.TaskBranches[r.ticket.GID]
-		branch = action.Branch(r.ticket.Task, saved, m.deps.Config.BranchField, preferred)
-		if strings.Contains(r.action.Command, "ASANAMATE_BRANCH") &&
-			action.BranchWarning(r.ticket.Task, saved, m.deps.Config.BranchField, preferred) != "" {
-			r.repo = repoPath
-			m.input = newInputBox(fmt.Sprintf("Branch (%q is empty)", m.deps.Config.BranchField), "empty uses the ID field or title slug")
-			m.input.area.SetValue(branch)
-			return nil
-		}
+	saved := m.deps.State.TaskBranches[r.ticket.GID]
+	r.branch = action.Branch(r.ticket.Task, saved, m.deps.Config.BranchField, preferred)
+	if !strings.Contains(r.action.Command, "ASANAMATE_BRANCH") ||
+		action.BranchWarning(r.ticket.Task, saved, m.deps.Config.BranchField, preferred) == "" {
+		return nil, false
 	}
+	m.input = newInputBox(fmt.Sprintf("Branch (%q is empty)", m.deps.Config.BranchField), "empty uses the ID field or title slug")
+	m.input.area.SetValue(r.branch)
+	m.input.onSubmit = func(text string) tea.Cmd {
+		m.input = nil
+		fallback := action.DefaultBranch(r.ticket.Task)
+		if r.branch = cmp.Or(text, fallback); r.branch != fallback {
+			m.saveBranch(r.ticket.GID, r.branch)
+		}
+		return m.resumeRun()
+	}
+	return nil, true
+}
+
+// launch starts the run's action in its mode.
+func (m *Model) launch(r *pendingRun) tea.Cmd {
 	m.run = nil
+	preferred := m.projectFields[gidOf(r.project)]
 	linked := m.ticketAgents(r.ticket.Task, preferred)
 	agent := r.agent
 	if agent == nil {
@@ -424,26 +478,26 @@ func (m *Model) execute(repoPath string) tea.Cmd {
 		m.showNotice("writing ticket files: " + err.Error())
 		return nil
 	}
-	if r.inputDone {
+	if r.action.Input != "" {
 		if err := files.WriteInput(r.input); err != nil {
 			m.showNotice("writing input: " + err.Error())
 			return nil
 		}
 	}
 	var worktree string
-	if repoPath != "" {
-		worktree = repo.Worktree(repoPath, branch)
+	if r.repo != "" {
+		worktree = repo.Worktree(r.repo, r.branch)
 	}
 	cmd := action.Command(r.action, action.Context{
 		Ticket:        r.ticket,
 		Project:       r.project,
-		Repo:          repoPath,
+		Repo:          r.repo,
 		Worktree:      worktree,
 		ConfirmWrites: m.deps.Config.ConfirmWritesFor(r.action),
 		Files:         files,
 		Preferred:     preferred,
 		BranchField:   m.deps.Config.BranchField,
-		Branch:        branch,
+		Branch:        r.branch,
 		Agent:         agent,
 		Agents:        linked,
 		Comment:       r.comment,

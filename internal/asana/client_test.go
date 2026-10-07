@@ -21,7 +21,7 @@ func newTestClient(t *testing.T, h http.HandlerFunc) *Client {
 	t.Cleanup(srv.Close)
 	c := New("tok")
 	c.BaseURL = srv.URL
-	c.sleep = func(time.Duration) {}
+	c.sleep = func(context.Context, time.Duration) error { return nil }
 	return c
 }
 
@@ -72,10 +72,25 @@ func TestRetriesOnceAfter429(t *testing.T) {
 		}
 		io.WriteString(w, `{"data":{"gid":"1","name":"Me"}}`)
 	})
-	c.sleep = func(d time.Duration) { slept = d }
+	c.sleep = func(_ context.Context, d time.Duration) error { slept = d; return nil }
 	me, err := c.Me(ctx)
 	if err != nil || me.Name != "Me" || calls != 2 || slept != 2*time.Second {
 		t.Fatalf("me = %+v, err = %v, calls = %d, slept = %v", me, err, calls, slept)
+	}
+}
+
+func TestRateLimitWaitStopsWhenContextEnds(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "5")
+		w.WriteHeader(http.StatusTooManyRequests)
+	})
+	c.sleep = sleep
+	timeout, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := c.Me(timeout)
+	if !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > time.Second {
+		t.Fatalf("err = %v after %v; want the deadline error without waiting out Retry-After", err, time.Since(start))
 	}
 }
 
