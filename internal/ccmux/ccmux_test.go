@@ -74,6 +74,19 @@ func TestParse(t *testing.T) {
 	}
 }
 
+// TestListWithoutCcmux checks that a missing ccmux names where to get it,
+// since asanamate shows the error as is.
+func TestListWithoutCcmux(t *testing.T) {
+	saved := command
+	t.Cleanup(func() { command = saved })
+	command = []string{"asanamate-test-no-such-ccmux", "show", "--json"}
+	_, err := List(context.Background(), t.TempDir())
+	want := "asanamate-test-no-such-ccmux not installed; see " + homepage
+	if err == nil || err.Error() != want {
+		t.Fatalf("err = %v, want %q", err, want)
+	}
+}
+
 // TestOutputThroughAgentsCommand feeds the adapter's output through
 // agents.command, as asanamate runs it, and checks each session gets the
 // state, branch, and repo the built-in ccmux preset gave it (TestParse's want

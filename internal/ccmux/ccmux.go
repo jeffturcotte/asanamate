@@ -19,6 +19,9 @@ import (
 // command is the ccmux command the adapter runs.
 var command = []string{"ccmux", "show", "--json"}
 
+// homepage is where to get ccmux, named when it is not installed.
+const homepage = "https://github.com/motherskitchenblr2/ccmux"
+
 // List lists sessions from ccmux. A session that finished a turn you have not
 // looked at yet (idle and unread) reports "completed". ccmux can leave a busy
 // session "idle", so an idle session takes the state its agent last reported
@@ -26,6 +29,9 @@ var command = []string{"ccmux", "show", "--json"}
 // report is newer than ccmux's, else a Codex pane title's state. Statuses
 // other than these pass through as ccmux reports them.
 func List(ctx context.Context, hookDir string) ([]agents.Agent, error) {
+	if _, err := exec.LookPath(command[0]); err != nil {
+		return nil, fmt.Errorf("%s not installed; see %s", command[0], homepage)
+	}
 	out, err := exec.CommandContext(ctx, command[0], command[1:]...).Output()
 	if err != nil {
 		return nil, fmt.Errorf("ccmux show --json failed: %w", err)
