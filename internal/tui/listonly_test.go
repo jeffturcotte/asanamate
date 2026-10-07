@@ -77,6 +77,26 @@ func TestNoPreviewIgnoresToggleReader(t *testing.T) {
 	}
 }
 
+func TestFixedListWidth(t *testing.T) {
+	m, _ := testModel(t, config.Config{Layout: config.Layout{Reader: true, ListWidth: 60}})
+	m.Update(tea.WindowSizeMsg{Width: 160, Height: 30})
+	m.Update(tasksMsg{tasks: []asana.Task{openTask}})
+	m.Update(key("="))
+	listW, readerW, split := m.paneWidths()
+	if listW+panelFrame != 60 || readerW+panelFrame != 160-navW-60 || !split || !m.showNav() {
+		t.Fatalf("listW = %d, readerW = %d, split = %v, nav = %v", listW, readerW, split, m.showNav())
+	}
+	if m.listW != 0 {
+		t.Fatalf("= must leave a fixed list alone, fitted %d", m.listW)
+	}
+	// Too little room beside the list hides the reader, as on narrow terminals.
+	m.deps.Config.Layout.ListWidth = 140
+	m.Update(tea.WindowSizeMsg{Width: 160, Height: 30})
+	if listW, _, split := m.paneWidths(); listW != 160 || split || m.showNav() {
+		t.Fatalf("too wide: listW = %d, split = %v, nav = %v", listW, split, m.showNav())
+	}
+}
+
 func TestSpaceOpensMenuAfterDetailLoads(t *testing.T) {
 	m, _ := testModel(t, config.Config{Actions: []config.Action{{Name: "Go", Key: "x", Mode: config.ModeExit, Command: "true"}}})
 	m.Update(tasksMsg{tasks: []asana.Task{openTask}})

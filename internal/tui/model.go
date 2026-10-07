@@ -834,9 +834,31 @@ func (m *Model) readerOn() bool {
 }
 
 // readerShown reports whether the reader sits beside the list: it is on and
-// the terminal leaves it room.
+// the terminal leaves it room. Beside a fixed-width list and the views
+// panel, that room is minPaneW columns; otherwise the terminal must be
+// narrowWidth wide.
 func (m *Model) readerShown() bool {
-	return m.readerOn() && m.width >= narrowWidth
+	if !m.readerOn() {
+		return false
+	}
+	fixed := m.fixedListW()
+	if fixed == 0 {
+		return m.width >= narrowWidth
+	}
+	room := m.width
+	if room >= wideWidth {
+		room -= navW
+	}
+	return room-fixed >= minPaneW
+}
+
+// fixedListW is the list pane's width from layout.list_width, at least
+// minPaneW, or 0 when the list sizes itself.
+func (m *Model) fixedListW() int {
+	if w := m.deps.Config.Layout.ListWidth; w > 0 {
+		return max(w, minPaneW)
+	}
+	return 0
 }
 
 // paneWidths returns the content widths of the list and the reader. Split
@@ -846,6 +868,9 @@ func (m *Model) paneWidths() (listW, readerW int, split bool) {
 		return m.width, m.width, false
 	}
 	room := m.width - m.navWidth()
+	if fixed := m.fixedListW(); fixed > 0 {
+		return fixed - panelFrame, room - fixed - panelFrame, true
+	}
 	outer := min(room*2/5, room-readerIdealW-panelFrame)
 	if m.listW > 0 {
 		outer = min(m.listW, room-readerMinW-panelFrame)
