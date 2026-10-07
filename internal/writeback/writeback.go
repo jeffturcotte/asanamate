@@ -72,6 +72,19 @@ func (s Service) users(ctx context.Context) ([]asana.Ref, error) {
 	return s.Client.WorkspaceUsers(ctx, s.Workspace)
 }
 
+// mentionable returns the users Markdown text can @mention, loading them only
+// when the text has an @.
+func (s Service) mentionable(ctx context.Context, text string) ([]asana.Ref, error) {
+	if !strings.Contains(text, "@") {
+		return s.Users, nil
+	}
+	users, err := s.users(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("loading people to mention: %w", err)
+	}
+	return users, nil
+}
+
 func (s Service) confirm(question string) error {
 	if s.Confirm == nil {
 		return nil
@@ -94,12 +107,9 @@ func (s Service) Comment(ctx context.Context, gid, text string) error {
 	if text == "" {
 		return errors.New("comment text is empty")
 	}
-	users := s.Users
-	if strings.Contains(text, "@") {
-		var err error
-		if users, err = s.users(ctx); err != nil {
-			return fmt.Errorf("loading people to mention: %w", err)
-		}
+	users, err := s.mentionable(ctx, text)
+	if err != nil {
+		return err
 	}
 	paths := LocalImages(text)
 	files := make([][]byte, len(paths))
@@ -194,24 +204,34 @@ func (s Service) Move(ctx context.Context, gid, section, projectGID string) erro
 	if err != nil {
 		return err
 	}
-	sections, err := s.Client.Sections(ctx, list.GID)
+	sec, err := s.findSection(ctx, list, section)
 	if err != nil {
 		return err
+	}
+	if err := s.confirm(fmt.Sprintf("Move %q to %s / %s?", t.Name, ticket.Clean(list.Name), ticket.Clean(sec.Name))); err != nil {
+		return err
+	}
+	if projectGID == MyTasks {
+		return s.Client.SetMyTasksSection(ctx, gid, sec.GID)
+	}
+	return s.Client.AddToSection(ctx, sec.GID, gid)
+}
+
+// findSection finds the section of list whose gid is section, or named
+// section ignoring case and surrounding space.
+func (s Service) findSection(ctx context.Context, list asana.Ref, section string) (asana.Ref, error) {
+	sections, err := s.Client.Sections(ctx, list.GID)
+	if err != nil {
+		return asana.Ref{}, err
 	}
 	var names []string
 	for _, sec := range sections {
 		if sec.GID == section || strings.EqualFold(strings.TrimSpace(sec.Name), strings.TrimSpace(section)) {
-			if err := s.confirm(fmt.Sprintf("Move %q to %s / %s?", t.Name, ticket.Clean(list.Name), ticket.Clean(sec.Name))); err != nil {
-				return err
-			}
-			if projectGID == MyTasks {
-				return s.Client.SetMyTasksSection(ctx, gid, sec.GID)
-			}
-			return s.Client.AddToSection(ctx, sec.GID, gid)
+			return sec, nil
 		}
 		names = append(names, ticket.Clean(sec.Name))
 	}
-	return fmt.Errorf("no section %q in %s; sections: %s", section, ticket.Clean(list.Name), strings.Join(names, ", "))
+	return asana.Ref{}, fmt.Errorf("no section %q in %s; sections: %s", section, ticket.Clean(list.Name), strings.Join(names, ", "))
 }
 
 // sectionList is the list whose sections Move picks from: one of the task's
@@ -249,23 +269,13 @@ func (s Service) confirmTask(ctx context.Context, gid, question string, args ...
 // "me", the token's owner. An empty user unassigns it.
 func (s Service) Assign(ctx context.Context, gid, user string) error {
 	user = strings.TrimSpace(user)
-	switch {
-	case user == "":
+	if user == "" {
 		if err := s.confirmTask(ctx, gid, "Unassign %q?"); err != nil {
 			return err
 		}
 		return s.Client.SetAssignee(ctx, gid, "")
-	case strings.EqualFold(user, "me"):
-		if err := s.confirmTask(ctx, gid, "Assign %q to you?"); err != nil {
-			return err
-		}
-		return s.Client.SetAssignee(ctx, gid, "me")
 	}
-	users, err := s.users(ctx)
-	if err != nil {
-		return fmt.Errorf("loading people: %w", err)
-	}
-	u, err := findUser(users, user)
+	u, err := s.assignee(ctx, user)
 	if err != nil {
 		return err
 	}
@@ -273,6 +283,19 @@ func (s Service) Assign(ctx context.Context, gid, user string) error {
 		return err
 	}
 	return s.Client.SetAssignee(ctx, gid, u.GID)
+}
+
+// assignee resolves user, a full name or gid, to a workspace user, or "me"
+// to the token's owner, whose gid is "me" and name is "you".
+func (s Service) assignee(ctx context.Context, user string) (asana.Ref, error) {
+	if strings.EqualFold(user, "me") {
+		return asana.Ref{GID: "me", Name: "you"}, nil
+	}
+	users, err := s.users(ctx)
+	if err != nil {
+		return asana.Ref{}, fmt.Errorf("loading people: %w", err)
+	}
+	return findUser(users, user)
 }
 
 // SetDue sets the task's due date as YYYY-MM-DD; an empty date clears it.
