@@ -279,7 +279,7 @@ func TestMarkdownKeepsJScroll(t *testing.T) {
 }
 
 func TestReboundMoveKeysScrollTheReader(t *testing.T) {
-	for _, tc := range []struct{ binding, key string }{{"scroll_down", "ctrl+e"}, {"down", "n"}} {
+	for _, tc := range []struct{ binding, key string }{{"scroll_down", "ctrl+e"}, {"down", "w"}} {
 		t.Run(tc.binding, func(t *testing.T) {
 			m, _ := editModel(t)
 			km, err := keymap.Resolve(map[string]map[string][]string{"main": {tc.binding: {tc.key}}})
