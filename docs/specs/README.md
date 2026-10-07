@@ -17,7 +17,7 @@ can run in parallel, each on its own branch.
 | [02-complete-tickets](02-complete-tickets.md) | Mark tickets complete or reopen them, in the TUI and the CLI | 01 | no |
 | [03-create-tickets](03-create-tickets.md) | Create tickets and subtasks, in the TUI and the CLI | 01 | no |
 | [04-layout-config](04-layout-config.md) | `[layout]` table and a reader toggle key | none | no |
-| [05-extension-protocols](05-extension-protocols.md) | Document and test the external command protocols as the extension contract | none | no |
+| [05-extension-protocols](05-extension-protocols.md) | Document and test the external command protocols as the extension contract (done) | none | no |
 | [06-extract-hrvst](06-extract-hrvst.md) | Move the Harvest provider out of the main binary | 05 | yes |
 | [07-extract-agent-adapter](07-extract-agent-adapter.md) | Move the ccmux, Claude, and Codex agent code into an adapter | 05 | yes |
 | [08-readme-mission](08-readme-mission.md) | Rewrite the README intro around the project's goal and scope | 02, 03, 05 | no |
