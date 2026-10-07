@@ -202,3 +202,14 @@ func TestHarvestSummaryZeroAndUnitConversion(t *testing.T) {
 		}
 	}
 }
+
+// The built-in provider follows the protocol rule it documents: it ignores
+// the version and any request fields it does not know.
+func TestHarvestIgnoresVersionAndUnknownFields(t *testing.T) {
+	var out bytes.Buffer
+	request := `{"version":1,"operation":"nope","future":{"x":1}}`
+	err := runHarvest(context.Background(), strings.NewReader(request), &out, "", "", "")
+	if err == nil || !strings.Contains(err.Error(), `unknown time provider operation "nope"`) {
+		t.Fatalf("error = %v", err)
+	}
+}

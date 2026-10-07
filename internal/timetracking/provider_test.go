@@ -26,7 +26,7 @@ func TestCommandProtocol(t *testing.T) {
 		t.Fatalf("form = %+v, err = %v", spec, err)
 	}
 	request, _ := os.ReadFile(path)
-	if !strings.Contains(string(request), `"operation":"form"`) {
+	if !strings.Contains(string(request), `{"version":1,"operation":"form"}`) {
 		t.Fatalf("request = %s", request)
 	}
 	values := map[string]string{"project_id": "opaque", "hours": "1.25"}
@@ -34,7 +34,7 @@ func TestCommandProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	request, _ = os.ReadFile(path)
-	for _, want := range []string{`"operation":"log"`, `"project_id":"opaque"`, `"hours":"1.25"`, `"task_gid":"1"`, `"project_gid":"2"`} {
+	for _, want := range []string{`"version":1`, `"operation":"log"`, `"project_id":"opaque"`, `"hours":"1.25"`, `"task_gid":"1"`, `"project_gid":"2"`} {
 		if !strings.Contains(string(request), want) {
 			t.Fatalf("request = %s; missing %s", request, want)
 		}
@@ -66,7 +66,7 @@ func TestSummaryProtocol(t *testing.T) {
 		t.Fatalf("summary = %+v, err = %v", summary, err)
 	}
 	request, _ := os.ReadFile(path)
-	if !strings.Contains(string(request), `"operation":"summary"`) || !strings.Contains(string(request), `"task_gid":"42"`) || strings.Contains(string(request), `"values"`) {
+	if !strings.Contains(string(request), `"version":1,"operation":"summary"`) || !strings.Contains(string(request), `"task_gid":"42"`) || strings.Contains(string(request), `"values"`) {
 		t.Fatalf("request = %s", request)
 	}
 }
