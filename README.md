@@ -805,6 +805,8 @@ command = "asanamate-ccmux"   # runs `ccmux show --json`
 `asanamate-ccmux` ships in the release archive next to `asanamate`; extract it
 with `tar -xzf "$archive" asanamate-ccmux` and move it to `~/.local/bin/` too
 (see [Install](#install)). It must be on the `PATH` asanamate runs with.
+It does not install ccmux; without ccmux, the status line and `doctor` show
+`ccmux not installed` with a link to it.
 
 Or use any tool with a command that prints `<path>\t<status>[\t<target>[\t<title>]]`
 per agent ([Agent sources](docs/extensions.md#agent-sources) has the details),
