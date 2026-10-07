@@ -55,7 +55,8 @@ const usage = `usage:
   asanamate comment [--yes] <gid> <text | ->       comment on a task ("-" reads stdin)
   asanamate move    [--yes] [--project <gid>] <gid> <section>
   asanamate field   [--yes] [--project <gid>] <gid> <field> <value>
-                                                   set a custom field ("" clears it)
+                                                   set a custom field ("a, b" for multi-select
+                                                   and people; "" clears it)
   asanamate doctor [<gid>]                         check setup and optional tools; for a ticket, why agents link (or not)
   asanamate time-provider hrvst --task-id <id>     serve time tracking provider requests on stdin
   asanamate hook codex                             record a Codex hook event read on stdin

@@ -21,7 +21,9 @@ const taskJSON = `{"data":{"gid":"1","name":"Fix login",
   {"gid":"f1","name":"Branch Name ","resource_subtype":"text"},
   {"gid":"f2","name":"Points","resource_subtype":"number"},
   {"gid":"f3","name":"Stage","resource_subtype":"enum","enum_options":[{"gid":"o1","name":"Review"}]},
-  {"gid":"f4","name":"When","resource_subtype":"date"}]}}`
+  {"gid":"f4","name":"When","resource_subtype":"date"},
+  {"gid":"f5","name":"Areas","resource_subtype":"multi_enum","enum_options":[{"gid":"o2","name":"Frontend"},{"gid":"o3","name":"Backend"}]},
+  {"gid":"f6","name":"Reviewers","resource_subtype":"people"}]}}`
 
 type write struct {
 	method, path string
@@ -159,6 +161,45 @@ func TestSetFieldValues(t *testing.T) {
 				t.Errorf("%s=%q: sent %v, want %v", tc.field, tc.value, got, tc.want)
 			}
 		}
+	}
+}
+
+func TestSetFieldListValues(t *testing.T) {
+	users := []asana.Ref{{GID: "9", Name: "Ann Lee"}, {GID: "8", Name: "Bo"}}
+	cases := []struct {
+		field, value string
+		want         any
+	}{
+		{"areas", "backend, frontend", []any{"o3", "o2"}},
+		{"Areas", "Frontend,frontend", []any{"o2"}},
+		{"reviewers", "ann lee, Bo", []any{"9", "8"}},
+		{"Reviewers", "", nil},
+	}
+	for _, tc := range cases {
+		c, writes := fake(t)
+		if err := (Service{Client: c, Users: users}).SetField(ctx, "1", tc.field, tc.value, ""); err != nil {
+			t.Fatalf("%s=%q: %v", tc.field, tc.value, err)
+		}
+		fields := (*writes)[0].body["custom_fields"].(map[string]any)
+		if got := fields[map[string]string{"areas": "f5", "Areas": "f5", "reviewers": "f6", "Reviewers": "f6"}[tc.field]]; !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("%s=%q: sent %v, want %v", tc.field, tc.value, got, tc.want)
+		}
+	}
+}
+
+func TestSetFieldRejectsUnknownOrAmbiguousPeople(t *testing.T) {
+	c, writes := fake(t)
+	svc := Service{Client: c, Users: []asana.Ref{{GID: "9", Name: "Ann"}, {GID: "7", Name: "Ann"}, {GID: "8", Name: "Bo"}}}
+	for value, want := range map[string]string{"Ann": "several", "Cy": "no user", "Bo,": "empty"} {
+		if err := svc.SetField(ctx, "1", "Reviewers", value, ""); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("SetField(Reviewers, %q) = %v, want error containing %q", value, err, want)
+		}
+	}
+	if err := svc.SetField(ctx, "1", "Areas", "Frontend, Ops", ""); err == nil || !strings.Contains(err.Error(), "Backend") {
+		t.Errorf("unknown option err = %v, want list of options", err)
+	}
+	if len(*writes) != 0 {
+		t.Fatalf("writes = %+v", *writes)
 	}
 }
 

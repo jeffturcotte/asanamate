@@ -21,20 +21,6 @@ away or opens a modal and resumes when it is answered.
 **Watch out for:** This is the most intricate flow in the TUI. The tests in
 `flow_test.go` and `agents_test.go` cover it and should pass unchanged.
 
-## Multi-enum and people fields from the CLI
-
-**Now:** The TUI can set `multi_enum` and `people` custom fields
-(`pickedValues` in `internal/tui/edit.go`). `asanamate field` goes through
-`writeback.FieldValue`, which only supports text, number, enum, and date.
-
-**Idea:** Teach `FieldValue` to accept a comma-separated list of option names
-or people names and resolve them to gids. Then the CLI and TUI share one
-conversion.
-
-**Watch out for:** People names need a workspace user lookup and a rule for
-ambiguous names. `CommentHTML` already refuses two users with the same name.
-Clearing the field with `""` must keep working.
-
 ## Cheaper project list
 
 **Now:** `Client.MemberProjects` loads every unarchived project in the

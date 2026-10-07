@@ -868,6 +868,12 @@ asanamate move    [--yes] [--project <gid>] <gid> "In Review"
 asanamate field   [--yes] [--project <gid>] <gid> "Branch Name" feature/fix-login
 ```
 
+`asanamate field` takes the value as typed for text fields, a number, a date
+as `YYYY-MM-DD`, or an option name (case-insensitive). Multi-select and people
+fields take a comma-separated list of option names or users' full names, such
+as `"Frontend, Backend"`; the list replaces the field's current value. `""`
+clears any field.
+
 Each command asks on the terminal before writing unless `--yes` is given,
 `ASANAMATE_CONFIRM_WRITES=0` is set, or `confirm_writes = false`. With no
 terminal available (for example, a background action), a write that needs
