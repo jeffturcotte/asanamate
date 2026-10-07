@@ -293,6 +293,15 @@ light = "light"
 # quote = ""
 # rule = ""
 
+[layout]
+# Start with the reading pane beside the list; z shows or hides it for the
+# session. --no-preview forces it off.
+reader = true
+# Fix the list pane at this many columns, borders included, and give the
+# reader the rest; the reader hides when that leaves it too little room.
+# 0 sizes the list automatically (= fits it to its content).
+list_width = 0
+
 [list]
 # Automatically reload the list at this interval (at least 1s).
 # R changes it for the current session only; use durations such as "15s" or "1m".

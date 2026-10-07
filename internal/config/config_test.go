@@ -535,3 +535,18 @@ func TestPickerConfig(t *testing.T) {
 		t.Fatalf("set: %+v, err = %v", cfg.Picker, err)
 	}
 }
+
+func TestLayoutConfig(t *testing.T) {
+	cfg, err := Load(writeFile(t, "workspace = \"1\"\n"))
+	if err != nil || cfg.Layout != (Layout{Reader: true}) {
+		t.Fatalf("default: %+v, err = %v", cfg.Layout, err)
+	}
+	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[layout]\nreader = false\nlist_width = 60\n"))
+	if err != nil || cfg.Layout != (Layout{ListWidth: 60}) {
+		t.Fatalf("set: %+v, err = %v", cfg.Layout, err)
+	}
+	_, err = Load(writeFile(t, "workspace = \"1\"\n[layout]\nlist_width = -1\n"))
+	if err == nil || !strings.Contains(err.Error(), "layout.list_width") {
+		t.Fatalf("negative list_width: err = %v", err)
+	}
+}
