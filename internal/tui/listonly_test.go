@@ -11,22 +11,35 @@ import (
 	"github.com/sadmachine/asanamate/internal/ticket"
 )
 
-func TestNoPreviewShowsOnlyTheList(t *testing.T) {
-	m, _ := testModel(t, config.Config{})
-	m.deps.NoPreview = true
-	m.Update(tea.WindowSizeMsg{Width: 160, Height: 30})
-	m.Update(tasksMsg{tasks: []asana.Task{openTask}})
-	m.Update(key("tab"))
-	if listW, _, split := m.paneWidths(); listW != 160 || split || m.focusReader {
-		t.Fatalf("listW = %d, split = %v, focusReader = %v", listW, split, m.focusReader)
-	}
-	m.Update(detailMsg{gid: "1", ticket: ticket.Ticket{Task: openTask}})
-	body := m.body()
-	if m.shownGID != "1" || !strings.Contains(body, "Fix login") || strings.Contains(body, "Loading") {
-		t.Fatalf("shown = %q, body = %q", m.shownGID, body)
-	}
-	if strings.Contains(m.helpView(), "next / previous pane") || strings.Contains(m.helpView(), "views panel") {
-		t.Fatal("key help must not advertise the reader in list-only mode")
+func TestListOnlyShowsOnlyTheList(t *testing.T) {
+	for name, start := range map[string]func(t *testing.T) *Model{
+		"--no-preview": func(t *testing.T) *Model {
+			m, _ := testModel(t, config.Config{})
+			m.deps.NoPreview = true
+			return m
+		},
+		"layout.reader = false": func(t *testing.T) *Model {
+			_, st := testModel(t, config.Config{})
+			return New(Deps{Config: config.Config{Layout: config.Layout{Reader: false}}, State: st, StateDir: t.TempDir()})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := start(t)
+			m.Update(tea.WindowSizeMsg{Width: 160, Height: 30})
+			m.Update(tasksMsg{tasks: []asana.Task{openTask}})
+			m.Update(key("tab"))
+			if listW, _, split := m.paneWidths(); listW != 160 || split || m.focusReader {
+				t.Fatalf("listW = %d, split = %v, focusReader = %v", listW, split, m.focusReader)
+			}
+			m.Update(detailMsg{gid: "1", ticket: ticket.Ticket{Task: openTask}})
+			body := m.body()
+			if m.shownGID != "1" || !strings.Contains(body, "Fix login") || strings.Contains(body, "Loading") {
+				t.Fatalf("shown = %q, body = %q", m.shownGID, body)
+			}
+			if strings.Contains(m.helpView(), "next / previous pane") || strings.Contains(m.helpView(), "views panel") {
+				t.Fatal("key help must not advertise the reader in list-only mode")
+			}
+		})
 	}
 }
 

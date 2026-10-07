@@ -43,7 +43,7 @@ func (m *Model) renderDetail(keepScroll bool) {
 	if !ok {
 		return
 	}
-	if m.deps.NoPreview {
+	if !m.readerOn() {
 		m.shownGID = t.GID
 		return
 	}

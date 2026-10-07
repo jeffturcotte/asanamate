@@ -231,7 +231,7 @@ func (m *Model) open(tea.KeyPressMsg) tea.Cmd {
 
 // available reports whether b runs in the current layout.
 func (m *Model) available(b binding) bool {
-	return len(b.keys) > 0 && (!b.splitOnly || !m.deps.NoPreview) &&
+	return len(b.keys) > 0 && (!b.splitOnly || m.readerOn()) &&
 		(b.Name != "log_time" || m.deps.Config.TimeTrackingEnabled())
 }
 

@@ -67,7 +67,8 @@ type Deps struct {
 	Symbols string
 	// ReducedMotion shows static symbols instead of the working spinner.
 	ReducedMotion bool
-	// NoPreview hides the reading pane and gives the list the full width.
+	// NoPreview hides the reading pane and gives the list the full width,
+	// overriding layout.reader and toggle_reader.
 	NoPreview bool
 	// ExitOnAction runs background actions as exit actions, so asanamate
 	// quits first. It suits popups, which close when asanamate exits.
@@ -99,11 +100,12 @@ type Model struct {
 	refreshInterval time.Duration    // auto-update interval, from saved settings or config
 	refreshSeq      uint64           // invalidates timers from earlier session intervals
 
-	focusReader bool
-	focusNav    bool   // the views panel has focus; wide layout only
-	navCursor   int    // selected row among the views panel's selectable rows
-	help        bool   // the key help is open
-	savedView   string // named view associated with the current project's settings
+	focusReader  bool
+	focusNav     bool   // the views panel has focus; wide layout only
+	navCursor    int    // selected row among the views panel's selectable rows
+	help         bool   // the key help is open
+	savedView    string // named view associated with the current project's settings
+	readerHidden bool   // the reader is off for this session, from layout.reader or toggle_reader
 
 	projects        []asana.Project
 	projectsLoaded  bool                       // projects came from Asana this session, not the state cache
@@ -182,6 +184,7 @@ func New(d Deps) *Model {
 		sym:             newSymbols(d.Symbols, d.Config.Agents.Symbols, d.ReducedMotion),
 		loading:         true,
 		now:             time.Now,
+		readerHidden:    !d.Config.Layout.Reader,
 	}
 	for _, p := range d.State.Projects {
 		m.projects = append(m.projects, asana.Project{GID: p.GID, Name: p.Name})
@@ -823,10 +826,23 @@ func (m *Model) saveView() {
 	}
 }
 
+// readerOn reports whether the reader is available: layout.reader sets its
+// start, toggle_reader flips it, and --no-preview forces it off. On narrow
+// terminals it opens full screen instead of beside the list.
+func (m *Model) readerOn() bool {
+	return !m.deps.NoPreview && !m.readerHidden
+}
+
+// readerShown reports whether the reader sits beside the list: it is on and
+// the terminal leaves it room.
+func (m *Model) readerShown() bool {
+	return m.readerOn() && m.width >= narrowWidth
+}
+
 // paneWidths returns the content widths of the list and the reader. Split
 // panes sit in panels, each panelFrame columns wider than its content.
 func (m *Model) paneWidths() (listW, readerW int, split bool) {
-	if m.deps.NoPreview || m.width < narrowWidth {
+	if !m.readerShown() {
 		return m.width, m.width, false
 	}
 	room := m.width - m.navWidth()
