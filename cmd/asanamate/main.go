@@ -63,6 +63,7 @@ const usage = `usage:
                                                    set a task's due date ("" clears it)
   asanamate project add|remove [--yes] <gid> <project-gid>
                                                    add a task to a project or remove it
+  asanamate complete [--yes] [--reopen] <gid>        mark a task complete (--reopen reopens it)
   asanamate doctor [<gid>]                         check setup and optional tools; for a ticket, why agents link (or not)
   asanamate time-provider hrvst --task-id <id>     serve time tracking provider requests on stdin
   asanamate hook codex                             record a Codex hook event read on stdin
@@ -86,6 +87,8 @@ func run(args []string) int {
 	case "comment", "move", "field":
 		err = writeCommand(name, args[1:])
 	case "assign", "due", "project":
+		err = writeCommand(name, args[1:])
+	case "complete":
 		err = writeCommand(name, args[1:])
 	case "version":
 		fmt.Println(currentVersion())
@@ -184,11 +187,18 @@ func writeCommand(name string, args []string) error {
 	if name == "move" {
 		myTasks = fs.Bool("my-tasks", false, "move within your My Tasks instead of a project")
 	}
+	reopen := new(bool)
+	if name == "complete" {
+		reopen = fs.Bool("reopen", false, "reopen a completed task instead")
+	}
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	rest := fs.Args()
 	want := map[string]int{"comment": 2, "move": 2, "field": 3, "assign": 2, "due": 2, "project add": 2, "project remove": 2}[name]
+	if name == "complete" {
+		want = 1
+	}
 	if len(rest) != want {
 		return fmt.Errorf("%s: wrong number of arguments\n%s", name, usage)
 	}
@@ -244,6 +254,8 @@ func writeCommand(name string, args []string) error {
 		return svc.AddProject(ctx, gid, *project)
 	case "project remove":
 		return svc.RemoveProject(ctx, gid, *project)
+	case "complete":
+		return svc.Complete(ctx, gid, !*reopen)
 	default:
 		return svc.SetField(ctx, gid, rest[1], rest[2], *project)
 	}
