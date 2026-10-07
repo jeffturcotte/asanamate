@@ -49,7 +49,7 @@ func TestHelpAndHintsComeFromTheTable(t *testing.T) {
 func TestReboundKeyRunsItsBinding(t *testing.T) {
 	cfg := config.Config{}
 	var err error
-	if cfg.Keymap, err = keymap.Resolve(map[string]map[string][]string{"main": {"quit": {"x"}}}); err != nil {
+	if cfg.Keymap, err = keymap.Resolve(map[string]map[string][]string{"main": {"quit": {"Q"}}}); err != nil {
 		t.Fatal(err)
 	}
 	m, _ := testModel(t, cfg)
@@ -59,12 +59,12 @@ func TestReboundKeyRunsItsBinding(t *testing.T) {
 			t.Fatal("q still quits")
 		}
 	}
-	_, cmd := m.Update(key("x"))
+	_, cmd := m.Update(key("Q"))
 	if cmd == nil {
-		t.Fatal("x did nothing")
+		t.Fatal("Q did nothing")
 	}
 	if _, ok := cmd().(tea.QuitMsg); !ok {
-		t.Fatal("x did not quit")
+		t.Fatal("Q did not quit")
 	}
 }
 

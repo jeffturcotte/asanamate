@@ -484,11 +484,11 @@ func TestTemplateListsEveryBinding(t *testing.T) {
 }
 
 func TestMergeKeepsKeyOverrides(t *testing.T) {
-	updated, added, err := Merge("workspace = \"1\"\n[keys.main]\nquit = [\"x\"]\n")
+	updated, added, err := Merge("workspace = \"1\"\n[keys.main]\nquit = [\"Q\"]\n")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg := loadString(t, updated); cfg.Keymap.Name("main", "x") != "quit" {
+	if cfg := loadString(t, updated); cfg.Keymap.Name("main", "Q") != "quit" {
 		t.Fatalf("override lost:\n%s", updated)
 	}
 	if !slices.Contains(added, "picker.type_first") {

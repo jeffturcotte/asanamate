@@ -68,11 +68,11 @@ func TestPrintable(t *testing.T) {
 }
 
 func TestResolveOverridesAndUnbinds(t *testing.T) {
-	k, err := Resolve(map[string]map[string][]string{"main": {"quit": {"x", "ctrl+q"}, "help": {}}})
+	k, err := Resolve(map[string]map[string][]string{"main": {"quit": {"Q", "ctrl+q"}, "help": {}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(k.Keys("main", "quit"), []string{"x", "ctrl+q"}) || len(k.Keys("main", "help")) != 0 || k.Name("main", "q") != "" {
+	if !slices.Equal(k.Keys("main", "quit"), []string{"Q", "ctrl+q"}) || len(k.Keys("main", "help")) != 0 || k.Name("main", "q") != "" {
 		t.Fatalf("k.main = %v", k["main"])
 	}
 }
