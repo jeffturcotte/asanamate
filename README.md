@@ -9,6 +9,25 @@ the ticket as context. Agents and scripts report back with `asanamate comment`,
 asanamate runs in any terminal and works well in tmux panes, windows, and popups.
 macOS and Linux only.
 
+## What it does
+
+- **Browse** My Tasks or any project: filter, group, sort, pin tickets, and
+  save views.
+- **Read** a ticket's fields, description, subtasks, comments, reactions, and
+  attachments, with images inline in kitty-graphics terminals.
+- **Edit** a ticket: comment (with images), move it to a section, assign or
+  unassign it, set its due date or a custom field, and add or remove projects.
+  See [Keys](#keys).
+- **Act** on a ticket: run your own commands with the ticket as context, such
+  as starting a coding agent in its repo. See [Actions](#actions).
+- **Report back** from scripts and agents with `asanamate comment`, `move`,
+  and `field`. See [Writing back to Asana](#writing-back-to-asana).
+- **Optional:** show running coding agents next to their tickets
+  ([Agents](#agents-optional)) and log time to Harvest
+  ([Time tracking](#time-tracking-optional)).
+
+asanamate does not create tickets or mark them complete; use Asana for those.
+
 **Early release.** asanamate is pre-1.0: expect breaking changes, including to
 config keys, before 1.0. Release notes call out each one.
 
