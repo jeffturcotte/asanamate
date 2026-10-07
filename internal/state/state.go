@@ -1,5 +1,5 @@
 // Package state stores data asanamate learns while running: repo links, recent
-// projects and tickets, explicit pins, saved views, and each project's last list view.
+// projects and tickets, the project list, explicit pins, saved views, and each project's last list view.
 package state
 
 import (
@@ -34,6 +34,9 @@ type State struct {
 	// TaskBranches maps an Asana task gid to a git branch typed for that task,
 	// used in place of its branch field and the fallback.
 	TaskBranches map[string]string `toml:"task_branches"`
+	// Projects caches the projects the user is a member of, from the last
+	// load, so pickers open before a fresh list arrives.
+	Projects []Project `toml:"projects,omitempty"`
 	// RecentProjects holds project gids, most recently opened first.
 	RecentProjects []string `toml:"recent_projects"`
 	// RecentTickets holds the tickets last focused in the reader, most recent first.
@@ -87,6 +90,12 @@ type View struct {
 type Column struct {
 	Field string `toml:"field"`
 	GID   string `toml:"gid,omitempty"`
+}
+
+// Project is a cached project's gid and name.
+type Project struct {
+	GID  string `toml:"gid"`
+	Name string `toml:"name"`
 }
 
 // RecentTicket is a ticket in the history, with the names its picker row shows.

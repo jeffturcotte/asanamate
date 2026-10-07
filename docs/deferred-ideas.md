@@ -25,15 +25,19 @@ away or opens a modal and resumes when it is answered.
 
 **Now:** `Client.MemberProjects` loads every unarchived project in the
 workspace with its member list, then keeps the ones the user belongs to. In
-large workspaces this is slow and moves a lot of data.
+large workspaces this is slow and moves a lot of data. The TUI caches the
+result in state, so pickers open at once and the load runs in the
+background once per session, but the request costs the same.
 
-**Idea:** Check whether the Asana API has a server-side way to list only the
-user's projects, for example through team memberships
-(`/users/{gid}/team_memberships`, then `/teams/{gid}/projects`), and compare
-the cost.
+**Idea:** Asana has no server-side filter for the user's own projects:
+`GET /projects` has no member filter, and `GET /memberships` needs a project
+`parent` for user memberships. A team-based list
+(`/users/{gid}/team_memberships`, then `GET /memberships` with each team and
+`resource_subtype=project_membership`) moves far less data.
 
-**Watch out for:** A team-based list may include projects the user can see
-but is not a member of, which changes what the project picker shows.
+**Watch out for:** A team-based list includes team projects the user is not a
+member of and misses projects shared with the user directly, which changes
+what the project picker shows.
 
 ## Shared shell runner
 

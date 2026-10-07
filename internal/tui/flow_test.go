@@ -206,7 +206,7 @@ func TestInputActionCancels(t *testing.T) {
 func linksModel(t *testing.T) (*Model, *state.State) {
 	t.Helper()
 	m, st := testModel(t, config.Config{RepoSource: config.RepoSource{Command: `printf '/definitely/missing\n'`}})
-	m.projects = []asana.Project{{GID: "p3", Name: "Zed"}, {GID: "p1", Name: "Web"}, {GID: "p2", Name: "API"}}
+	m.projects, m.projectsLoaded = []asana.Project{{GID: "p3", Name: "Zed"}, {GID: "p1", Name: "Web"}, {GID: "p2", Name: "API"}}, true
 	m.viewProject, m.loading = &asana.Ref{GID: "p1", Name: "Web"}, false
 	return m, st
 }

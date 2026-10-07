@@ -169,6 +169,7 @@ type Model struct {
 	afterProjects   func() tea.Cmd    // runs once projects load
 	linkNames       map[string]string // names of linked projects outside projects
 	loadingProjects bool              // projects are loading
+	projectsLoaded  bool              // projects came from Asana this session, not the state cache
 	menuFor         string            // gid whose menu opens once its details arrive
 	menuOpen        func() tea.Cmd    // opens that menu
 	openGID         string            // history ticket to show once its details arrive
@@ -214,6 +215,9 @@ func New(d Deps) *Model {
 		loading:         true,
 		now:             time.Now,
 	}
+	for _, p := range d.State.Projects {
+		m.projects = append(m.projects, asana.Project{GID: p.GID, Name: p.Name})
+	}
 	m.bindings = keyBindings()
 	m.restoreView()
 	m.refreshInterval, _ = config.ParseRefreshInterval(cmp.Or(d.Config.List.RefreshInterval, config.Default().List.RefreshInterval))
@@ -242,9 +246,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		m.layout()
 		// The views panel lists recent projects by name.
-		if m.showNav() && m.projects == nil && !m.loadingProjects && m.deps.Client != nil {
-			m.loadingProjects = true
-			return m, tea.Batch(loadProjects(m.deps.Client, m.deps.Config.Workspace), m.requestImageCellSize())
+		if m.showNav() {
+			return m, tea.Batch(m.refreshProjects(), m.requestImageCellSize())
 		}
 		return m, m.requestImageCellSize()
 	case uv.CellSizeEvent:
@@ -329,7 +332,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.status = ""
-		m.projects = msg.projects
+		m.projects, m.projectsLoaded = msg.projects, true
+		m.deps.State.Projects = make([]state.Project, len(msg.projects))
+		for i, p := range msg.projects {
+			m.deps.State.Projects[i] = state.Project{GID: p.GID, Name: p.Name}
+		}
+		if err := m.deps.State.Save(); err != nil {
+			m.status = "saving state: " + err.Error()
+		}
 		if open := m.afterProjects; open != nil {
 			m.afterProjects = nil
 			return m, open()

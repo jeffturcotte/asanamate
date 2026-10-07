@@ -982,7 +982,7 @@ is no need to copy them.
 - Config: `~/.config/asanamate/config.toml`
 - Actions: `~/.config/asanamate/actions/*.toml`
 - Themes: `~/.config/asanamate/themes/*.toml`
-- State (repo links, saved branches, saved views, recent projects, ticket history): `~/.local/state/asanamate/state.toml`
+- State (repo links, saved branches, saved views, recent projects, the cached project list, ticket history): `~/.local/state/asanamate/state.toml`
 - Ticket exports: `~/.local/state/asanamate/tickets/<gid>/`
 - Background action log: `~/.local/state/asanamate/actions.log`
 

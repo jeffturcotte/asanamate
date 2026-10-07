@@ -377,3 +377,37 @@ func TestEditedTicketStaysSelectedAfterReloadDropsIt(t *testing.T) {
 		t.Fatalf("selected = %q, visible = %+v, groups = %q; want Viewing dropped", got.GID, m.visible, m.groups)
 	}
 }
+
+func TestCachedProjectsOpenAtOnceAndRefresh(t *testing.T) {
+	st, err := state.Load(filepath.Join(t.TempDir(), state.FileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Projects = []state.Project{{GID: "p1", Name: "Web"}}
+	m := New(Deps{State: st, StateDir: t.TempDir(), Client: asana.New("tok")})
+	opened := false
+	cmd := m.requestProjects(func() tea.Cmd { opened = true; return nil })
+	if !opened || len(m.projects) != 1 || m.projects[0].Name != "Web" {
+		t.Fatalf("opened = %v, projects = %+v; want the cached list right away", opened, m.projects)
+	}
+	if cmd == nil || !m.loadingProjects {
+		t.Fatal("want a background refresh of the cached projects")
+	}
+}
+
+func TestLoadedProjectsAreCachedOncePerSession(t *testing.T) {
+	m, st := testModel(t, config.Config{})
+	m.deps.Client = asana.New("tok")
+	m.loadingProjects = true
+	m.Update(projectsMsg{projects: []asana.Project{{GID: "p2", Name: "API"}}})
+	saved, err := state.Load(st.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(saved.Projects, []state.Project{{GID: "p2", Name: "API"}}) {
+		t.Fatalf("saved projects = %+v", saved.Projects)
+	}
+	if cmd := m.requestProjects(func() tea.Cmd { return nil }); cmd != nil || m.loadingProjects {
+		t.Fatal("projects loaded this session must not load again")
+	}
+}
