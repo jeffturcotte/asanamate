@@ -206,6 +206,103 @@ func (s Service) Move(ctx context.Context, gid, sectionName, projectGID string) 
 	return fmt.Errorf("no section %q in %s; sections: %s", sectionName, ticket.Clean(project.Name), strings.Join(names, ", "))
 }
 
+// confirmTask asks question, a format whose first verb is the task's name. It
+// loads the task only when there is someone to ask.
+func (s Service) confirmTask(ctx context.Context, gid, question string, args ...any) error {
+	if s.Confirm == nil {
+		return nil
+	}
+	t, err := s.Client.Task(ctx, gid)
+	if err != nil {
+		return err
+	}
+	return s.confirm(fmt.Sprintf(question, append([]any{t.Name}, args...)...))
+}
+
+// Assign assigns the task to a workspace user, by full name or gid, or to
+// "me", the token's owner. An empty user unassigns it.
+func (s Service) Assign(ctx context.Context, gid, user string) error {
+	user = strings.TrimSpace(user)
+	switch {
+	case user == "":
+		if err := s.confirmTask(ctx, gid, "Unassign %q?"); err != nil {
+			return err
+		}
+		return s.Client.SetAssignee(ctx, gid, "")
+	case strings.EqualFold(user, "me"):
+		if err := s.confirmTask(ctx, gid, "Assign %q to you?"); err != nil {
+			return err
+		}
+		return s.Client.SetAssignee(ctx, gid, "me")
+	}
+	users, err := s.users(ctx)
+	if err != nil {
+		return fmt.Errorf("loading people: %w", err)
+	}
+	u, err := findUser(users, user)
+	if err != nil {
+		return err
+	}
+	if err := s.confirmTask(ctx, gid, "Assign %q to %s?", ticket.Clean(u.Name)); err != nil {
+		return err
+	}
+	return s.Client.SetAssignee(ctx, gid, u.GID)
+}
+
+// SetDue sets the task's due date as YYYY-MM-DD; an empty date clears it.
+func (s Service) SetDue(ctx context.Context, gid, date string) error {
+	date = strings.TrimSpace(date)
+	question, args := "Clear the due date of %q?", []any{}
+	if date != "" {
+		if _, err := time.Parse(time.DateOnly, date); err != nil {
+			return fmt.Errorf("due date needs YYYY-MM-DD, got %q", date)
+		}
+		question, args = "Set the due date of %q to %s?", []any{date}
+	}
+	if err := s.confirmTask(ctx, gid, question, args...); err != nil {
+		return err
+	}
+	return s.Client.SetDueOn(ctx, gid, date)
+}
+
+// AddProject adds the task to a project, keeping its other projects.
+func (s Service) AddProject(ctx context.Context, gid, projectGID string) error {
+	if projectGID == "" {
+		return errors.New("project gid is empty")
+	}
+	if s.Confirm != nil {
+		p, err := s.Client.Project(ctx, projectGID)
+		if err != nil {
+			return err
+		}
+		if err := s.confirmTask(ctx, gid, "Add %q to project %s?", ticket.Clean(p.Name)); err != nil {
+			return err
+		}
+	}
+	return s.Client.AddToProject(ctx, gid, projectGID)
+}
+
+// RemoveProject removes the task from one of its projects.
+func (s Service) RemoveProject(ctx context.Context, gid, projectGID string) error {
+	if projectGID == "" {
+		return errors.New("project gid is empty")
+	}
+	if s.Confirm != nil {
+		t, err := s.Client.Task(ctx, gid)
+		if err != nil {
+			return err
+		}
+		p, err := pickProject(t, projectGID)
+		if err != nil {
+			return err
+		}
+		if err := s.confirm(fmt.Sprintf("Remove %q from project %s?", t.Name, ticket.Clean(p.Name))); err != nil {
+			return err
+		}
+	}
+	return s.Client.RemoveFromProject(ctx, gid, projectGID)
+}
+
 func pickProject(t asana.Task, projectGID string) (asana.Ref, error) {
 	var choices []string
 	for _, m := range t.Memberships {

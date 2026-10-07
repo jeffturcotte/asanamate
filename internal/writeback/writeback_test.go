@@ -39,6 +39,8 @@ func fake(t *testing.T) (*asana.Client, *[]write) {
 			io.WriteString(w, taskJSON)
 		case r.Method == http.MethodGet && r.URL.Path == "/projects/p1/sections":
 			io.WriteString(w, `{"data":[{"gid":"s1","name":"To Do"},{"gid":"s2","name":"In Review"}]}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/projects/p3":
+			io.WriteString(w, `{"data":{"gid":"p3","name":"Ops"}}`)
 		case r.Method == http.MethodPost && r.URL.Path == "/attachments":
 			_, h, err := r.FormFile("file")
 			if err != nil {
@@ -136,6 +138,110 @@ func TestMoveMatchesSectionCaseInsensitively(t *testing.T) {
 	}
 	if err := (Service{Client: c}).Move(ctx, "1", "Shipped", "p1"); err == nil || !strings.Contains(err.Error(), "To Do") {
 		t.Fatalf("err = %v, want list of sections", err)
+	}
+}
+
+func TestAssign(t *testing.T) {
+	users := []asana.Ref{{GID: "9", Name: "Ann Lee"}, {GID: "8", Name: "Bo"}}
+	for user, want := range map[string]any{"Bo": "8", " ann lee ": "9", "9": "9", "me": "me", "": nil} {
+		c, writes := fake(t)
+		if err := (Service{Client: c, Users: users}).Assign(ctx, "1", user); err != nil {
+			t.Fatalf("Assign(%q): %v", user, err)
+		}
+		if len(*writes) != 1 || (*writes)[0].path != "/tasks/1" || (*writes)[0].body["assignee"] != want {
+			t.Errorf("Assign(%q): writes = %+v, want assignee %v", user, *writes, want)
+		}
+	}
+}
+
+func TestAssignRejectsUnknownOrAmbiguousUsers(t *testing.T) {
+	c, writes := fake(t)
+	svc := Service{Client: c, Users: []asana.Ref{{GID: "9", Name: "Ann"}, {GID: "7", Name: "ann"}, {GID: "8", Name: "Bo"}}}
+	for user, want := range map[string]string{"Ann": "several", "Cy": "no user"} {
+		if err := svc.Assign(ctx, "1", user); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Assign(%q) = %v, want error containing %q", user, err, want)
+		}
+	}
+	if len(*writes) != 0 {
+		t.Fatalf("writes = %+v", *writes)
+	}
+}
+
+func TestSetDue(t *testing.T) {
+	for date, want := range map[string]any{"2026-10-01": "2026-10-01", " 2026-10-01\n": "2026-10-01", "": nil} {
+		c, writes := fake(t)
+		if err := (Service{Client: c}).SetDue(ctx, "1", date); err != nil {
+			t.Fatalf("SetDue(%q): %v", date, err)
+		}
+		if len(*writes) != 1 || (*writes)[0].path != "/tasks/1" || (*writes)[0].body["due_on"] != want {
+			t.Errorf("SetDue(%q): writes = %+v, want due_on %v", date, *writes, want)
+		}
+	}
+}
+
+func TestSetDueRejectsBadDates(t *testing.T) {
+	c, writes := fake(t)
+	for _, date := range []string{"tomorrow", "2026-02-30", "10/01/2026", "2026-1-1", "2026-10-01T10:00:00Z"} {
+		if err := (Service{Client: c}).SetDue(ctx, "1", date); err == nil || !strings.Contains(err.Error(), "YYYY-MM-DD") {
+			t.Errorf("SetDue(%q) = %v, want YYYY-MM-DD error", date, err)
+		}
+	}
+	if len(*writes) != 0 {
+		t.Fatalf("writes = %+v", *writes)
+	}
+}
+
+func TestProjectMembership(t *testing.T) {
+	c, writes := fake(t)
+	svc := Service{Client: c}
+	if err := svc.AddProject(ctx, "1", "p3"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RemoveProject(ctx, "1", "p1"); err != nil {
+		t.Fatal(err)
+	}
+	want := []write{
+		{"POST", "/tasks/1/addProject", map[string]any{"project": "p3"}},
+		{"POST", "/tasks/1/removeProject", map[string]any{"project": "p1"}},
+	}
+	if !reflect.DeepEqual(*writes, want) {
+		t.Fatalf("writes = %+v", *writes)
+	}
+	if svc.AddProject(ctx, "1", "") == nil || svc.RemoveProject(ctx, "1", "") == nil {
+		t.Fatal("an empty project gid must fail")
+	}
+}
+
+func TestNewWritesConfirmWithNames(t *testing.T) {
+	c, writes := fake(t)
+	var asked []string
+	svc := Service{Client: c, Users: []asana.Ref{{GID: "8", Name: "Bo"}}, Confirm: func(p string) (bool, error) {
+		asked = append(asked, p)
+		return false, nil
+	}}
+	for _, err := range []error{
+		svc.Assign(ctx, "1", "Bo"),
+		svc.Assign(ctx, "1", ""),
+		svc.SetDue(ctx, "1", "2026-10-01"),
+		svc.AddProject(ctx, "1", "p3"),
+		svc.RemoveProject(ctx, "1", "p2"),
+	} {
+		if !errors.Is(err, ErrDeclined) {
+			t.Fatalf("err = %v", err)
+		}
+	}
+	want := []string{
+		`Assign "Fix login" to Bo?`,
+		`Unassign "Fix login"?`,
+		`Set the due date of "Fix login" to 2026-10-01?`,
+		`Add "Fix login" to project Ops?`,
+		`Remove "Fix login" from project API?`,
+	}
+	if !reflect.DeepEqual(asked, want) || len(*writes) != 0 {
+		t.Fatalf("asked = %q, writes = %+v", asked, *writes)
+	}
+	if err := svc.RemoveProject(ctx, "1", "p3"); err == nil || !strings.Contains(err.Error(), "not in project") {
+		t.Fatalf("remove from a project the task is not in: err = %v", err)
 	}
 }
 
