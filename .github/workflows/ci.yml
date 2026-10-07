@@ -42,6 +42,7 @@ jobs:
           for os in darwin linux; do
             for arch in amd64 arm64; do
               tar -tzf "asanamate_${os}_${arch}.tar.gz" | grep -qx asanamate
+              tar -tzf "asanamate_${os}_${arch}.tar.gz" | grep -qx asanamate-ccmux
             done
           done
       - uses: actions/upload-artifact@v4
@@ -71,11 +72,12 @@ jobs:
       # start, and doctor must fail only because nothing is configured.
       - name: Run the binary on a bare system
         run: |
-          tar -xzf "${{ matrix.archive }}" asanamate
+          tar -xzf "${{ matrix.archive }}" asanamate asanamate-ccmux
           export HOME="$(mktemp -d)" PATH=/usr/bin:/bin
           unset XDG_CONFIG_HOME XDG_STATE_HOME ASANA_ACCESS_TOKEN
           ./asanamate version
           ./asanamate help > /dev/null
+          ./asanamate-ccmux help > /dev/null
           if ./asanamate doctor 2> err.txt; then echo "doctor passed without config"; exit 1; fi
           grep -q "run \`asanamate setup\`" err.txt
       # With a config but a bad token and no tools on PATH, doctor must report

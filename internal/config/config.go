@@ -97,12 +97,11 @@ func (c Config) TimeTrackingEnabled() bool {
 	return c.TimeTracking.ID != "" && c.TimeTracking.Command != ""
 }
 
-// Agents links tickets to running coding agents. It is off unless Preset or
-// Command is set. Command prints "<path>\t<status>[\t<target>]" per agent.
+// Agents links tickets to running coding agents. It is off unless Command is
+// set. Command prints one line per agent (docs/extensions.md).
 // States maps extra raw statuses onto asanamate's states; Symbols overrides
 // the symbol shown per state.
 type Agents struct {
-	Preset  string              `toml:"preset"`
 	Command string              `toml:"command"`
 	States  map[string][]string `toml:"states"`
 	Symbols map[string]string   `toml:"symbols"`
@@ -110,7 +109,7 @@ type Agents struct {
 
 // AgentsEnabled reports whether agent tracking is turned on.
 func (c Config) AgentsEnabled() bool {
-	return c.Agents.Preset != "" || strings.TrimSpace(c.Agents.Command) != ""
+	return strings.TrimSpace(c.Agents.Command) != ""
 }
 
 // Symbol sets.
@@ -269,6 +268,9 @@ func Load(path string) (Config, error) {
 	if _, err := toml.Decode(string(data), &raw); err == nil {
 		if mv, ok := movedFrom(raw); ok {
 			return cfg, fmt.Errorf("%s: %s moved to %s in v0.2.0; run `asanamate config update`", path, mv.From, mv.To)
+		}
+		if _, ok := getPath(raw, agentsPreset); ok {
+			return cfg, fmt.Errorf("%s: %s was replaced by agents.command in v0.2.0; run `asanamate config update`", path, agentsPreset)
 		}
 	}
 	md, err := toml.Decode(string(data), &cfg)
@@ -444,14 +446,6 @@ func oneOf(key, got string, allowed ...string) error {
 }
 
 func (a Agents) validate() error {
-	if a.Preset != "" {
-		if err := oneOf("agents.preset", a.Preset, agents.Presets()...); err != nil {
-			return err
-		}
-		if strings.TrimSpace(a.Command) != "" {
-			return errors.New("set agents.preset or agents.command, not both")
-		}
-	}
 	// agents.states maps onto the known states; agents.symbols also covers unknown.
 	var known []string
 	for _, s := range agents.States {

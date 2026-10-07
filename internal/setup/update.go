@@ -96,6 +96,9 @@ func Merge(old string) (string, []string, error) {
 	if m := workspaceName.FindStringSubmatch(old); m != nil {
 		name = m[1]
 	}
+	if err := config.MoveAgentsPreset(user); err != nil {
+		return "", nil, err
+	}
 	var out, added []string
 	used := map[string]bool{} // dotted keys taken from the user's file
 	live := map[string]bool{} // tables the template defines

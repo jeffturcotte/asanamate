@@ -36,10 +36,6 @@ type Options struct {
 	Client     *asana.Client
 	ConfigPath string
 	StatePath  string
-	// CodexHome and Executable let setup offer the Codex status hook; leave
-	// either unset to skip it.
-	CodexHome  string
-	Executable string
 }
 
 // Run asks for the workspace and an optional repo directory, then writes the
@@ -86,7 +82,7 @@ func Run(ctx context.Context, o Options) error {
 	}
 	fmt.Fprintf(o.Out, summary, o.ConfigPath, repos, actions, o.StatePath)
 	warnMissingPager(o.Out)
-	return OfferCodexHook(o)
+	return nil
 }
 
 func chooseWorkspace(o Options, workspaces []asana.Ref) (asana.Ref, error) {
@@ -154,9 +150,32 @@ func warnMissingPager(out io.Writer) {
 	if _, err := exec.LookPath(pager); err == nil {
 		return
 	}
-	lipgloss.Fprintln(out, "\n"+warning.Render("Warning: pager "+strconv.Quote(pager)+" not found")+"\n"+
+	Warn(out, "Warning: pager "+strconv.Quote(pager)+" not found",
 		"  The \"View ticket in pager\" action (v) needs it. Install less, or set\n"+
-		"  $PAGER to a pager you have.")
+			"  $PAGER to a pager you have.")
+}
+
+// warning highlights the heading of a setup warning. lipgloss.Fprintln drops
+// the color when the output is not a terminal or NO_COLOR is set.
+var warning = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Yellow)
+
+// Warn prints a setup warning: a highlighted heading, then body.
+func Warn(out io.Writer, heading, body string) {
+	lipgloss.Fprintln(out, "\n"+warning.Render(heading)+"\n"+body)
+}
+
+// WriteWithBackup writes data to path, readable only by you, after saving
+// old, the file's previous contents, to a timestamped backup (see
+// backupPath) when old is not nil. It returns the backup's path, else "".
+func WriteWithBackup(path string, old, data []byte) (string, error) {
+	backup := ""
+	if old != nil {
+		backup = backupPath(path)
+		if err := writePrivate(backup, old); err != nil {
+			return "", err
+		}
+	}
+	return backup, writePrivate(path, data)
 }
 
 // Render returns the commented config file for a workspace and repo
@@ -357,15 +376,14 @@ inline = false
 # for browse mode (j/k to move); a second esc closes the picker.
 type_first = false
 
-# Optional: show running coding agents next to their tickets. Off unless a
-# preset or command is set. A ticket matches agents on its branch (see
-# branch_field) in one of its linked repos. See the README for agent actions.
-# [agents]
-# preset = "ccmux"
-#
-# Or, instead of preset, any tool: a command printing one line per agent,
+# Optional: show running coding agents next to their tickets. Off unless
+# command is set. A ticket matches agents on its branch (see branch_field) in
+# one of its linked repos. See the README for agent actions.
+# The command prints one line per agent,
 #   path<TAB>status[<TAB>target[<TAB>title]]
-# command = '''my-agents --tsv'''
+# such as the ccmux adapter, asanamate-ccmux, or your own tool.
+# [agents]
+# command = "asanamate-ccmux"
 #
 # Map the tool's raw statuses onto asanamate's states. A status equal to a
 # state name already maps to it; anything unmapped shows as "unknown".

@@ -7,13 +7,24 @@ before:
     - go test ./...
 
 builds:
-  - main: ./cmd/asanamate
+  - id: asanamate
+    main: ./cmd/asanamate
     env:
       - CGO_ENABLED=0
     goos: [darwin, linux]
     goarch: [amd64, arm64]
     ldflags:
       - -s -w -X main.version={{ .Version }}
+  # The ccmux agent adapter ships in the same archive.
+  - id: asanamate-ccmux
+    main: ./cmd/asanamate-ccmux
+    binary: asanamate-ccmux
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
 
 archives:
   - formats: [tar.gz]
@@ -41,4 +52,5 @@ homebrew_casks:
         install: |
           if OS.mac?
             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/asanamate"]
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/asanamate-ccmux"]
           end

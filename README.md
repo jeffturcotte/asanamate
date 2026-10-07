@@ -32,8 +32,9 @@ macOS and Linux only.
   `asanamate comment`, `move`, `field`, `assign`, `due`, `project`, and
   `complete`. See
   [Writing back to Asana](#writing-back-to-asana).
-- **Optional:** show running coding agents next to their tickets
-  ([Agents](#agents-optional)) and log time to Harvest
+- **Optional:** show running coding agents next to their tickets, from ccmux
+  through the bundled `asanamate-ccmux` adapter or from any tool
+  ([Agents](#agents-optional)), and log time to Harvest
   ([Time tracking](#time-tracking-optional)).
 
 **Early release.** asanamate is pre-1.0: expect breaking changes, including to
@@ -79,6 +80,9 @@ quarantine flag once:
 xattr -d com.apple.quarantine ~/.local/bin/asanamate
 ```
 
+The archive also holds `asanamate-ccmux`, the ccmux agent adapter. If you use
+ccmux, install it the same way (see [Agents](#agents-optional)).
+
 ### From source
 
 Needs Go 1.26 or later.
@@ -88,7 +92,9 @@ go install github.com/sadmachine/asanamate/cmd/asanamate@latest
 ```
 
 This installs to `$(go env GOBIN)`, else `$(go env GOPATH)/bin` (usually
-`~/go/bin`); add that directory to your `PATH` as above.
+`~/go/bin`); add that directory to your `PATH` as above. For the ccmux agent
+adapter, also run
+`go install github.com/sadmachine/asanamate/cmd/asanamate-ccmux@latest`.
 
 ### Upgrade and uninstall
 
@@ -96,7 +102,8 @@ Upgrade the way you installed: replace the binary with a newer archive, or
 rerun `go install`. Upgrades never touch
 your config, actions, or state.
 
-To uninstall, delete the binary. Your
+To uninstall, delete the binaries (`asanamate`, and `asanamate-ccmux` if
+you installed it). Your
 files stay until you delete them yourself: the config and actions in
 `~/.config/asanamate`, the state, ticket exports, and logs in
 `~/.local/state/asanamate`, and the Codex hook, if you added it, in
@@ -109,10 +116,9 @@ files stay until you delete them yourself: the config and actions in
 2. Run `asanamate setup`. It checks the token, asks for your workspace and, optionally, the
    directory that holds your git repositories (`-` skips it), and writes
    `~/.config/asanamate/config.toml` with every default explained, plus a
-   pager action and a Claude example in `~/.config/asanamate/actions/`. When
-   Codex is installed, it also offers to add asanamate's agent status hook (see
-   [Agent status](#agent-status)). It warns when the pager action's pager
-   (`$PAGER`, else `less`) is not installed.
+   pager action and a Claude example in `~/.config/asanamate/actions/`. It
+   warns when the pager action's pager (`$PAGER`, else `less`) is not
+   installed.
 3. Run `asanamate`. `asanamate doctor` checks the setup if something fails.
 
 ### Token
@@ -144,7 +150,7 @@ Browsing needs none of these. Each one affects only its own feature, and
 | Copy link or comment (`c`, `y`) | terminal OSC 52 support; in tmux, `set -g set-clipboard on` | always on | not needed | not checked | nothing is copied; asanamate cannot detect this |
 | Paste image into comment (`alt+v`) | macOS `osascript` (built in); Linux `wl-clipboard` (Wayland) or `xclip` (X11). On macOS the terminal must send Option as Alt (kitty `macos_option_as_alt`, Ghostty `macos-option-as-alt`, iTerm2 "Esc+") | always on | not needed | not checked | the comment box shows why; type the image's Markdown yourself |
 | Paste into input (`Ctrl+V`) | macOS `pbpaste`; Linux `xclip` or `xsel` (X11) or `wl-clipboard` (Wayland) | always on | not needed | not checked | the input shows why, and your terminal's paste still works |
-| Agent status | a supported agent tool; see [Agents](#agents-optional) | `[agents]` | remove `[agents]` keys | `agents`, `codex_hook` | off |
+| Agent status | an agents command, such as `asanamate-ccmux` for ccmux; see [Agents](#agents-optional) | `agents.command` | remove `[agents]` keys | `agents` | off |
 | Time tracking | [hrvst](https://github.com/kgajera/hrvst-cli) 3.x; see [Time tracking](#time-tracking-optional) | `[time_tracking]` | remove `[time_tracking]` keys | `time_tracking` | off |
 | Inline images | a kitty-graphics terminal ([kitty](https://sw.kovidgoyal.net/kitty/), [Ghostty](https://ghostty.org)); in tmux, `set -g allow-passthrough on` | `images.mode = "auto"` (default) | `images.mode = "off"` | not checked | links shown instead |
 | Nerd Font symbols | a [Nerd Font](https://www.nerdfonts.com) | `symbols = "nerd"` | `symbols = "unicode"` or `"ascii"` | not checked | unicode or ascii symbols |
@@ -394,6 +400,20 @@ comment (was `y`); `@` assigns (was `A`); `A` opens the action builder (was
 restores the previous filter. Pickers start in browse mode; press `/` to
 search, or set `picker.type_first = true`.
 
+The ccmux agent source moved out of asanamate into the `asanamate-ccmux`
+adapter, which ships in the same archive. Install it next to `asanamate` (see
+[Agents](#agents-optional)); `asanamate config update` rewrites the preset:
+
+| v0.1.0 | v0.2.0 |
+|---|---|
+| `agents.preset = "ccmux"` | `agents.command = "asanamate-ccmux"` |
+| `asanamate setup hooks` | `asanamate-ccmux setup` |
+| `asanamate hook codex` (Codex hook) | `asanamate-ccmux hook codex` |
+
+Codex hooks that run `asanamate hook codex` keep working in v0.2.0, and
+`doctor` warns about them in its `codex_hook` row; v0.3.0 drops that command.
+Run `asanamate-ccmux setup` to replace the hook.
+
 ## Configuration
 
 `~/.config/asanamate/config.toml` (or `$XDG_CONFIG_HOME/asanamate/config.toml`).
@@ -415,7 +435,7 @@ once. Run `asanamate doctor` to check a change without starting the TUI.
 | `list.refresh_interval` | `"30s"` | automatic list reload interval, at least `1s`; durations such as `"15s"` or `"1m"`; `R` or the `s` settings menu overrides it and the override persists, `ctrl+s` applies it; the statusline shows the interval, and an automatic reload marks the list border yellow instead of opening the loading modal |
 | `list.fields` | `["section", "due"]` | default values shown with the title, in aligned columns (`single` layout); `s`, then `c` overrides columns per project; due dates show relative to today and are colored by urgency |
 | `branch_field` | `""` | custom field holding the ticket's git branch (`$ASANAMATE_BRANCH`); empty uses the ticket's ID field, else the title slug |
-| `agents.preset` / `agents.command` | unset (off) | opt-in agent tracking; see [Agents](#agents-optional) |
+| `agents.command` | unset (off) | opt-in agent tracking, such as `"asanamate-ccmux"`; see [Agents](#agents-optional) |
 | `symbols` | `unicode` on UTF-8, else `ascii` | `unicode`, `nerd`, or `ascii` for ticket markers and agent states |
 | `reduced_motion` | OS setting | `true` shows static agent symbols instead of the spinner |
 | `list.separator` | `false` | frame each ticket with lines above and below; neighbours share one; the `s` settings menu toggles it and the choice persists |
@@ -748,14 +768,19 @@ command = 'sesh connect "$ASANAMATE_REPO"'
 
 asanamate can show coding agents that another tool is running, such as
 [ccmux](https://github.com/motherskitchenblr2/ccmux), next to their tickets.
-It is off until you pick a source:
+It is off until you set a command that lists them. For ccmux, use the
+`asanamate-ccmux` adapter:
 
 ```toml
 branch_field = "Branch Name"
 
 [agents]
-preset = "ccmux"   # reads `ccmux show --json` directly
+command = "asanamate-ccmux"   # runs `ccmux show --json`
 ```
+
+`asanamate-ccmux` ships in the release archive next to `asanamate`; extract it
+with `tar -xzf "$archive" asanamate-ccmux` and move it to `~/.local/bin/` too
+(see [Install](#install)). It must be on the `PATH` asanamate runs with.
 
 Or use any tool with a command that prints `<path>\t<status>[\t<target>[\t<title>]]`
 per agent ([Agent sources](docs/extensions.md#agent-sources) has the details),
@@ -772,39 +797,41 @@ completed = ["done", "finished"]
 idle      = ["sleeping"]   # anything unmapped is "unknown"
 ```
 
-The sources run every 5 seconds. With the ccmux preset, a session that finished
-a turn you have not looked at yet counts as `completed`, and an agent's title is
-ccmux's session summary, else its first prompt (one line, cut to 60
-characters), else its pane title.
+The command runs every 5 seconds. With `asanamate-ccmux`, a session that
+finished a turn you have not looked at yet counts as `completed`, and an
+agent's title is ccmux's session summary, else its first prompt (one line, cut
+to 60 characters), else its pane title. Agents link by the branch and repo
+ccmux reports, so a session in a nested repo links to the project around it.
 
 ### Agent status
 
-ccmux can report a busy session as `idle`, Codex sessions most of all. With the
-ccmux preset, an `idle` session therefore takes the state its agent last
+ccmux can report a busy session as `idle`, Codex sessions most of all.
+`asanamate-ccmux` therefore gives an `idle` session the state its agent last
 reported itself, when that report is newer than ccmux's:
 
 - **Claude Code** keeps a file per running session in
-  `$CLAUDE_CONFIG_DIR/sessions/` (else `~/.claude/sessions/`). asanamate reads
-  it as is; nothing to install.
-- **Codex** reports through a hook. `asanamate setup` offers to add
-  `asanamate hook codex` to `$CODEX_HOME/hooks.json` (else
-  `~/.codex/hooks.json`), saving the old file as a timestamped
-  `hooks.json.<time>.bak`; run
-  `asanamate setup hooks` to add it later. Codex asks you to trust the new
+  `$CLAUDE_CONFIG_DIR/sessions/` (else `~/.claude/sessions/`). The adapter
+  reads it as is; nothing to install.
+- **Codex** reports through a hook. `asanamate-ccmux setup` adds
+  `asanamate-ccmux hook codex` to `$CODEX_HOME/hooks.json` (else
+  `~/.codex/hooks.json`), after asking, saving the old file as a timestamped
+  `hooks.json.<time>.bak`. Codex asks you to trust the new
   hooks on its next start, and needs hooks on (`[features] hooks = true`). The
   hook writes one file per session in `$XDG_STATE_HOME/asanamate/agents/`
   (else `~/.local/state/asanamate/agents/`).
   Without it, Codex states fall back to the Codex pane title, and are
   inaccurate or wrong when the title format changes.
 
-  The hook runs asanamate by its full path. After you move or reinstall
-  asanamate somewhere else, `asanamate setup hooks` finds the old hook, and
-  `doctor` reports it in its `codex_hook` row; answer yes to replace it with
-  the current path. Your other hooks stay, and the old file is saved as a
-  timestamped `hooks.json.<time>.bak` again. To remove the hook, delete the entries whose command
-  ends in `hook codex` from `hooks.json`.
+  The hook runs `asanamate-ccmux` by its full path. After you move or
+  reinstall it somewhere else, run `asanamate-ccmux setup` again: it finds the
+  old hook, including one that runs `asanamate hook codex` from before
+  v0.2.0, and offers to replace it with the current path. Your other hooks
+  stay, and the old file is saved as a timestamped `hooks.json.<time>.bak`
+  again. To remove the hook, delete the entries whose command ends in
+  `hook codex` from `hooks.json`.
 
-Any status other than `idle` from ccmux is kept as is.
+Any status other than `idle` from ccmux is passed on as is, so
+`[agents.states]` can map it.
 
 **Linking.** A ticket matches every agent whose working directory has
 `$ASANAMATE_BRANCH` checked out, in the ticket's own repo when set, else a
@@ -991,6 +1018,11 @@ feature, without running actions or writing anything:
 - `warning` lines name a missing tool and the feature that needs it.
 - `off` features are not configured; `unchecked` ones run your own commands,
   which `doctor` does not run.
+- An `agents` warning ending in `exit status 127` means the shell cannot
+  find the agents command, such as `asanamate-ccmux`: install it on your
+  `PATH` (see [Agents](#agents-optional)).
+- A `codex_hook` warning means Codex still runs `asanamate hook codex`, which
+  v0.3.0 drops; run `asanamate-ccmux setup` to replace it.
 
 With a ticket gid, it also explains why each agent links to that ticket or not.
 
@@ -1010,7 +1042,7 @@ With a ticket gid, it also explains why each agent links to that ticket or not.
 5. Install the tools your own actions use, and the optional tools you had on
    (see [Optional features](#optional-features)). Run `hrvst login` again for
    time tracking.
-6. Run `asanamate setup hooks` if you use the Codex hook; it adds or repairs
+6. Run `asanamate-ccmux setup` if you use the Codex hook; it adds or repairs
    the hook for the new path.
 7. Run `asanamate doctor` and fix what it reports.
 
