@@ -14,6 +14,7 @@ working = "6"
 pinned = { fg = "166", bold = true }
 viewing = { fg = "5", bold = true }
 reacted = { bg = "254" }
+new = { fg = "15", bg = "1", bold = true }
 authors = ["4", "5", "6", "2", "3", "1"]
 
 [colors.mode]

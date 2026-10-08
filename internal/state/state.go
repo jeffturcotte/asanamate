@@ -1,10 +1,12 @@
 // Package state stores data asanamate learns while running: repo links, recent
-// projects and tickets, the project list, explicit pins, saved views, and each project's last list view.
+// projects and tickets, the project list, explicit pins, saved views, each
+// project's last list view, and the My Tasks tickets already seen.
 package state
 
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -56,6 +58,9 @@ type State struct {
 	// CurrentSavedViews maps a project gid ("" for My Tasks) to its named view.
 	// The project's settings may have changed since that view was applied.
 	CurrentSavedViews map[string]string `toml:"current_saved_views,omitempty"`
+	// SeenTasks maps a task gid to its modified_at when last shown in the reader.
+	// It covers the My Tasks list; nil means no My Tasks list has loaded yet.
+	SeenTasks map[string]string `toml:"seen_tasks"`
 	// TimeProjects holds recent tracker project IDs by provider ID and Asana project GID.
 	// Kept so choices saved by earlier builds can seed the new form field.
 	TimeProjects map[string]map[string][]string `toml:"time_projects"`
@@ -249,6 +254,46 @@ func (s *State) SetTaskBranch(taskGID, branch string) {
 		return
 	}
 	s.TaskBranches[taskGID] = branch
+}
+
+// SyncSeen drops seen tasks that are no longer in the My Tasks list, tasks.
+// The first sync records every task as seen, so an existing list starts
+// unmarked. It reports whether the state changed.
+func (s *State) SyncSeen(tasks []asana.Task) bool {
+	if s.SeenTasks == nil {
+		s.SeenTasks = make(map[string]string, len(tasks))
+		for _, t := range tasks {
+			s.SeenTasks[t.GID] = t.ModifiedAt
+		}
+		return true
+	}
+	listed := make(map[string]bool, len(tasks))
+	for _, t := range tasks {
+		listed[t.GID] = true
+	}
+	n := len(s.SeenTasks)
+	maps.DeleteFunc(s.SeenTasks, func(gid, _ string) bool { return !listed[gid] })
+	return len(s.SeenTasks) != n
+}
+
+// MarkSeen records t as seen at its modified_at, once a My Tasks list has
+// loaded. It reports whether the state changed.
+func (s *State) MarkSeen(t asana.Task) bool {
+	if s.SeenTasks == nil || t.ModifiedAt == "" || s.SeenTasks[t.GID] == t.ModifiedAt {
+		return false
+	}
+	s.SeenTasks[t.GID] = t.ModifiedAt
+	return true
+}
+
+// Changed reports whether t was modified since it was last seen, or was never
+// seen, once a My Tasks list has loaded.
+func (s *State) Changed(t asana.Task) bool {
+	if s.SeenTasks == nil || t.ModifiedAt == "" {
+		return false
+	}
+	seen, ok := s.SeenTasks[t.GID]
+	return !ok || seen != t.ModifiedAt
 }
 
 // SetView remembers the list view used for a project.
