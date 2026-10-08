@@ -383,8 +383,9 @@ reassigned to someone else. It stores activity only in memory.
   refresh, rather than the ticket auto-update timer. `I` or `Esc` from the
   event list returns to tickets; `?` shows all Activity keys.
 
-Activity requires paid access to Asana's workspace search API. The header
-shows scan coverage and reports failed or incomplete requests. Search indexing
+Activity requires paid access to Asana's workspace search API. The statusline
+shows scan coverage, and failed or incomplete requests show at the top of the
+event list. Search indexing
 can lag behind changes, and Asana consolidates stories, so this is not a
 complete audit log. Current ownership and description mentions are labelled
 as current context, not proof of who owned a task when an older event occurred.

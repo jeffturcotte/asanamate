@@ -375,16 +375,24 @@ func (m *Model) openActivityPeriod() {
 
 func (m *Model) activityList(width, height int) string {
 	a := m.activity
+	// An error or partial scan leads the list, above any older results.
+	var banner string
+	rows := height
+	if note := a.note(); note != "" {
+		banner = warnStyle.Render(ansi.Wrap(note, max(width, 1), "")) + "\n"
+		rows -= lipgloss.Height(banner) - 1
+	}
+	box := lipgloss.NewStyle().Width(width).Height(height).MaxHeight(height)
 	if len(a.visible) == 0 {
 		text := "No matching activity."
 		if a.loading {
 			text = "Loading workspace activity…"
 		} else if a.err != "" {
-			text = a.err
+			text = ""
 		}
-		return lipgloss.NewStyle().Width(width).Height(height).Render(ansi.Wrap(ticket.OneLine(text), max(width, 1), ""))
+		return box.Render(banner + ansi.Wrap(text, max(width, 1), ""))
 	}
-	count := max(height/3, 1)
+	count := max(rows/3, 1)
 	start := max(0, a.cursor-count+1)
 	var lines []string
 	for i := start; i < min(start+count, len(a.visible)); i++ {
@@ -425,108 +433,108 @@ func (m *Model) activityList(width, height int) string {
 			lines = append(lines, row)
 		}
 	}
-	return lipgloss.NewStyle().Width(width).Height(height).Render(strings.Join(lines, "\n"))
+	return box.Render(banner + strings.Join(lines, "\n"))
+}
+
+// count is how many loaded events mode shows, before the search.
+func (a *activityView) count(mode string) int {
+	n := 0
+	for _, e := range a.report.Entries {
+		if e.Automatic && !a.automated {
+			continue
+		}
+		if mode == "Both" || mode == "Mine" && e.Mine || mode == "Related" && !e.Mine {
+			n++
+		}
+	}
+	return n
+}
+
+// note is the load error or partial-scan warning, if any.
+func (a *activityView) note() string {
+	if a.err != "" {
+		return "Error: " + a.err
+	}
+	if a.report.Warning != "" {
+		return "Partial: " + ticket.OneLine(a.report.Warning)
+	}
+	return ""
 }
 
 func (m *Model) activityPanes(h int) string {
 	a := m.activity
-	var tabs []string
-	for _, mode := range activityModes {
-		count := 0
-		for _, e := range a.report.Entries {
-			if e.Automatic && !a.automated {
-				continue
-			}
-			if mode == "Both" || mode == "Mine" && e.Mine || mode == "Related" && !e.Mine {
-				count++
-			}
-		}
-		label := fmt.Sprintf("%s %d", mode, count)
-		if mode == a.mode {
-			label = selectedStyle.Render("[" + label + "]")
-		} else {
-			label = dimStyle.Render(label)
-		}
-		tabs = append(tabs, label)
-	}
-	top := strings.Join(tabs, "  ") + dimStyle.Render(fmt.Sprintf("  ·  last %d days", a.days))
-	if a.filtering {
-		top = a.query.View()
-	} else if q := a.query.Value(); q != "" {
-		top += dimStyle.Render("  /" + ticket.OneLine(q))
-	}
-	coverage := "API search · accessible tasks · consolidated history"
-	if !a.report.Until.IsZero() {
-		coverage = fmt.Sprintf("%d/%d tickets scanned · %s · consolidated history", a.report.Scanned, a.report.Total, a.report.Until.Local().Format("15:04 MST"))
-	}
-	if a.loading {
-		coverage = "Loading workspace activity… · " + keyLabel("main", "reload") + " restarts · " + keyLabel("main", "activity") + " returns"
-		if len(m.sym.spinner) > 0 {
-			coverage = m.sym.spinner[m.frame%len(m.sym.spinner)] + " " + coverage
-		}
-	}
-	if a.err != "" {
-		coverage = "Error: " + a.err
-	} else if a.report.Warning != "" {
-		coverage = "Partial: " + ticket.OneLine(a.report.Warning)
-	}
-	if a.err == "" && a.report.Warning == "" && !a.loading {
-		coverage += " · " + keyLabel("main", "reload") + " refresh"
-	}
-	if a.automated {
-		coverage += " · automated included"
-	}
-	header := ansi.Truncate(top, m.width, "…") + "\n" + ansi.Truncate(warnStyle.Render(coverage), m.width, "…") + "\n"
-	height := max(h-2, 1)
 	listW, readerW, split := m.paneWidths()
 	if !split {
-		a.reader.SetHeight(height)
-		body := m.activityList(listW, height)
+		a.reader.SetHeight(h)
+		body := m.activityList(listW, h)
 		if a.details {
 			body = a.reader.View()
 		}
 		if m.showNav() {
-			nav := m.panel("[0] Views", "", m.navView(navW-panelFrame, max(height-panelFrame, 1)), navW, height, m.focusColor(m.focusNav))
-			return header + lipgloss.JoinHorizontal(lipgloss.Top, nav, lipgloss.NewStyle().Width(listW).Height(height).Render(body))
+			nav := m.panel("[0] Views", "", m.navView(navW-panelFrame, max(h-panelFrame, 1)), navW, h, m.focusColor(m.focusNav))
+			return lipgloss.JoinHorizontal(lipgloss.Top, nav, lipgloss.NewStyle().Width(listW).Height(h).Render(body))
 		}
-		return header + lipgloss.NewStyle().Width(m.width).Height(height).Render(body)
+		return lipgloss.NewStyle().Width(m.width).Height(h).Render(body)
 	}
-	inner := max(height-panelFrame, 1)
+	inner := max(h-panelFrame, 1)
 	a.reader.SetHeight(inner)
 	count := fmt.Sprintf("%d/%d", a.cursor+1, len(a.visible))
 	if len(a.visible) == 0 {
 		count = "0/0"
 	}
-	list := m.panel("[1] Activity", count, m.activityList(listW, inner), listW+panelFrame, height, m.focusColor(!a.details && !m.focusNav))
-	reader := m.panel("[2] Event", "enter ticket", a.reader.View(), readerW+panelFrame, height, m.focusColor(a.details))
+	list := m.panel("[1] Activity · "+a.mode, count, m.activityList(listW, inner), listW+panelFrame, h, m.focusColor(!a.details && !m.focusNav))
+	reader := m.panel("[2] Event", "enter ticket", a.reader.View(), readerW+panelFrame, h, m.focusColor(a.details))
 	if m.showNav() {
-		nav := m.panel("[0] Views", "", m.navView(navW-panelFrame, inner), navW, height, m.focusColor(m.focusNav))
-		return header + lipgloss.JoinHorizontal(lipgloss.Top, nav, list, reader)
+		nav := m.panel("[0] Views", "", m.navView(navW-panelFrame, inner), navW, h, m.focusColor(m.focusNav))
+		return lipgloss.JoinHorizontal(lipgloss.Top, nav, list, reader)
 	}
-	return header + lipgloss.JoinHorizontal(lipgloss.Top, list, reader)
+	return lipgloss.JoinHorizontal(lipgloss.Top, list, reader)
 }
 
-func (m *Model) activityStatusline() string {
+// activityMode is mode for the Activity view.
+func (m *Model) activityMode() (name string, pill lipgloss.Style, hints [][2]string) {
+	switch a := m.activity; {
+	case a.filtering:
+		return "FILTER", filterPill, [][2]string{{typedLabel("filter", "done"), "apply"}, {typedLabel("filter", "cancel"), "cancel"}}
+	case m.focusNav:
+		return "VIEWS", normalPill, [][2]string{{keyLabel("views", "down", "up"), "move"}, {keyLabel("views", "open"), "open"}, {keyLabel("main", "focus_list"), "activity"}}
+	case a.details:
+		return "ACTIVITY", readPill, [][2]string{{keyLabel("main", "down", "up"), "scroll"}, {keyLabel("main", "open"), "ticket"}, {keyLabel("main", "focus_list"), "list"}}
+	}
+	return "ACTIVITY", normalPill, [][2]string{{keyLabel("main", "down", "up"), "move"}, {keyLabel("activity", "prev_mode", "next_mode"), "filter"},
+		{keyLabel("activity", "period"), "period"}, {keyLabel("main", "filter"), "search"}, {keyLabel("main", "reload"), "refresh"},
+		{keyLabel("main", "activity"), "back"}, {keyLabel("main", "help"), "keys"}}
+}
+
+// activitySegs are the statusline segments for the Activity view: what it
+// shows and how complete the last scan was.
+func (m *Model) activitySegs() []string {
 	a := m.activity
-	left := normalPill.Render(" ACTIVITY ") + fmt.Sprintf(" %s · %d events", a.mode, len(a.visible))
-	right := keyLabel("main", "down", "up") + " move  " + keyLabel("activity", "prev_mode", "next_mode") + " filter  " + keyLabel("activity", "period") + " period  " + keyLabel("main", "filter") + " search  " + keyLabel("main", "reload") + " refresh  " + keyLabel("main", "help") + " keys"
-	if a.details {
-		right = keyLabel("main", "down", "up") + " scroll  " + keyLabel("main", "open") + " ticket  " + keyLabel("main", "focus_list") + " list"
+	period := fmt.Sprintf("last %d days", a.days)
+	if a.days == 1 {
+		period = "last 24 hours"
 	}
+	segs := []string{m.sym.icon(iconView) + "Activity · " + a.mode, period}
 	if a.filtering {
-		right = keyLabel("filter", "done", "cancel") + " done · words match ticket, actor, and activity"
+		segs = append(segs, a.query.View())
+	} else if q := a.query.Value(); q != "" {
+		segs = append(segs, m.sym.icon(iconFilter)+ticket.OneLine(q))
 	}
-	if m.focusNav {
-		right = keyLabel("views", "down", "up") + " move  " + keyLabel("views", "open") + " open  " + keyLabel("main", "focus_list") + " activity"
+	if a.automated {
+		segs = append(segs, "automated shown")
 	}
-	if m.status != "" {
-		right = ticket.OneLine(m.status)
+	segs = append(segs, fmt.Sprintf("%d events", len(a.visible)))
+	switch {
+	case a.loading:
+		loading := "scanning"
+		if len(m.sym.spinner) > 0 {
+			loading = m.sym.spinner[m.frame%len(m.sym.spinner)] + " " + loading
+		}
+		segs = append(segs, loading)
+	case !a.report.Until.IsZero():
+		segs = append(segs, fmt.Sprintf("%d/%d scanned %s", a.report.Scanned, a.report.Total, a.report.Until.Local().Format("15:04")))
 	}
-	gap := m.width - ansi.StringWidth(left) - ansi.StringWidth(right)
-	if gap < 2 {
-		return ansi.Truncate(left+"  "+dimStyle.Render(right), m.width, "…")
-	}
-	return left + strings.Repeat(" ", gap) + dimStyle.Render(right)
+	return segs
 }
 
 func (m *Model) activityHelp() string {

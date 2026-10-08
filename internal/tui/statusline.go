@@ -21,6 +21,8 @@ func (m *Model) mode() (name string, pill lipgloss.Style, hints [][2]string) {
 	pane := [2]string{keyLabel("main", "next_pane"), "pane"}
 	list := [2]string{keyLabel("main", "focus_list"), "list"}
 	switch {
+	case m.activityOpen:
+		return m.activityMode()
 	case m.loading && m.tasks == nil:
 		// Only quit works until the first tasks land.
 		return "NORMAL", normalPill, [][2]string{{keyLabel("main", "quit"), "quit"}}
@@ -49,32 +51,13 @@ func (m *Model) mode() (name string, pill lipgloss.Style, hints [][2]string) {
 // shows, then the key hints for what has focus, or the latest status message
 // in their place.
 func (m *Model) statusline() string {
-	if m.activityOpen {
-		return m.activityStatusline()
-	}
 	name, pillStyle, hints := m.mode()
 	pill := pillStyle.Render(" " + name + " ")
-	sep := dimStyle.Render(" │ ")
-	segs := []string{m.sym.icon(iconView) + m.viewName()}
-	if _, _, split := m.paneWidths(); !split && len(m.deps.State.SavedViews) > 0 {
-		segs = append(segs, m.savedViewLabel())
+	segs := m.listSegs()
+	if m.activityOpen {
+		segs = m.activitySegs()
 	}
-	if m.filtering {
-		segs = append(segs, m.filterInput.View())
-	} else if f := m.filterInput.Value(); f != "" {
-		segs = append(segs, m.sym.icon(iconFilter)+f)
-	}
-	if m.groupBy != "" {
-		segs = append(segs, m.sym.icon(iconGroup)+m.groupBy)
-	}
-	if m.sortBy.By != "" {
-		segs = append(segs, "sort: "+sortLabel(m.sortBy))
-	}
-	segs = append(segs, fmt.Sprintf("%d/%d", len(m.visible), len(m.tasks)), m.refreshLabel())
-	if s := m.sym.summary(m.linkedAgents(), m.frame); s != "" {
-		segs = append(segs, s)
-	}
-	left := pill + " " + strings.Join(segs, sep)
+	left := pill + " " + strings.Join(segs, dimStyle.Render(" │ "))
 
 	status := m.status
 	if len(m.notices) > 0 {
@@ -99,6 +82,31 @@ func (m *Model) statusline() string {
 		return ansi.Truncate(pill+" "+right, m.width, "…")
 	}
 	return left + strings.Repeat(" ", gap) + right
+}
+
+// listSegs are the statusline segments for the ticket list: where it is,
+// what it shows, and linked agents.
+func (m *Model) listSegs() []string {
+	segs := []string{m.sym.icon(iconView) + m.viewName()}
+	if _, _, split := m.paneWidths(); !split && len(m.deps.State.SavedViews) > 0 {
+		segs = append(segs, m.savedViewLabel())
+	}
+	if m.filtering {
+		segs = append(segs, m.filterInput.View())
+	} else if f := m.filterInput.Value(); f != "" {
+		segs = append(segs, m.sym.icon(iconFilter)+f)
+	}
+	if m.groupBy != "" {
+		segs = append(segs, m.sym.icon(iconGroup)+m.groupBy)
+	}
+	if m.sortBy.By != "" {
+		segs = append(segs, "sort: "+sortLabel(m.sortBy))
+	}
+	segs = append(segs, fmt.Sprintf("%d/%d", len(m.visible), len(m.tasks)), m.refreshLabel())
+	if s := m.sym.summary(m.linkedAgents(), m.frame); s != "" {
+		segs = append(segs, s)
+	}
+	return segs
 }
 
 // viewName is the viewed project's name, or My Tasks.

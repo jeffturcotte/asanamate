@@ -118,7 +118,7 @@ func (m *Model) navItems() []navItem {
 	if m.activityOpen && m.activity != nil {
 		items = append(items, navItem{label: "Activity filter", right: keyLabel("activity", "next_mode", "prev_mode"), heading: true})
 		for _, mode := range activityModes {
-			items = append(items, navItem{label: mode, activityMode: mode, active: mode == m.activity.mode})
+			items = append(items, navItem{label: mode, right: fmt.Sprint(m.activity.count(mode)), activityMode: mode, active: mode == m.activity.mode})
 		}
 		return items
 	}
