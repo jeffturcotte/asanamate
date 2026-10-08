@@ -98,9 +98,14 @@ func TestFetchKeepsPartialResultsAndSorts(t *testing.T) {
 	defer srv.Close()
 	c := asana.New("token")
 	c.BaseURL = srv.URL
-	r, err := Fetch(context.Background(), c, "w", since, until)
+	var snaps []Report
+	r, err := Fetch(context.Background(), c, "w", since, until, func(r Report) { snaps = append(snaps, r) })
 	if err != nil || r.Total != 3 || r.Scanned != 2 || len(r.Entries) != 2 || r.Entries[0].Story.GID != "related" || !strings.Contains(r.Warning, "1 ticket feeds failed") {
 		t.Fatalf("report = %+v, err = %v", r, err)
+	}
+	// One snapshot for the search page, then one per ticket feed.
+	if len(snaps) != 4 || snaps[0].Total != 3 || snaps[0].Scanned != 0 || len(snaps[3].Entries) != 2 || snaps[3].Entries[0].Story.GID != "related" {
+		t.Fatalf("snapshots = %+v", snaps)
 	}
 }
 
@@ -115,7 +120,7 @@ func TestPaidSearchErrorIsActionable(t *testing.T) {
 	defer srv.Close()
 	c := asana.New("token")
 	c.BaseURL = srv.URL
-	_, err := Fetch(context.Background(), c, "w", since, until)
+	_, err := Fetch(context.Background(), c, "w", since, until, nil)
 	if err == nil || !strings.Contains(err.Error(), "paid workspace search API") {
 		t.Fatalf("err = %v", err)
 	}

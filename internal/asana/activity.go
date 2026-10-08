@@ -7,37 +7,41 @@ import (
 	"time"
 )
 
-// RecentTasks searches all accessible workspace tasks changed since since.
-// Search uses creation-time cursors, not offset pagination. Partial results
-// accompany errors so callers can disclose incomplete coverage.
-func (c *Client) RecentTasks(ctx context.Context, workspace string, since time.Time) ([]Task, error) {
+// RecentTasks searches all accessible workspace tasks changed since since,
+// passing each page of new tasks to page as it arrives. Search uses
+// creation-time cursors, not offset pagination. Pages delivered before an
+// error remain valid, so callers can disclose incomplete coverage.
+func (c *Client) RecentTasks(ctx context.Context, workspace string, since time.Time, page func([]Task)) error {
 	q := fields("name,assignee.name,html_notes,created_at,modified_at,permalink_url,memberships.project.name")
 	q.Set("modified_at.after", since.UTC().Add(-time.Second).Format(time.RFC3339Nano))
 	q.Set("sort_by", "created_at")
 	q.Set("sort_ascending", "true")
 	q.Set("limit", "100")
-	var all []Task
 	seen := map[string]bool{}
 	var cursor time.Time
 	for {
-		var page struct {
+		var resp struct {
 			Data []Task `json:"data"`
 		}
-		if err := c.do(ctx, http.MethodGet, "/workspaces/"+workspace+"/tasks/search", q, nil, &page); err != nil {
-			return all, err
+		if err := c.do(ctx, http.MethodGet, "/workspaces/"+workspace+"/tasks/search", q, nil, &resp); err != nil {
+			return err
 		}
-		for _, t := range page.Data {
+		var fresh []Task
+		for _, t := range resp.Data {
 			if !seen[t.GID] {
 				seen[t.GID] = true
-				all = append(all, t)
+				fresh = append(fresh, t)
 			}
 		}
-		if len(page.Data) < 100 {
-			return all, nil
+		if len(fresh) > 0 {
+			page(fresh)
 		}
-		last, err := time.Parse(time.RFC3339Nano, page.Data[len(page.Data)-1].CreatedAt)
+		if len(resp.Data) < 100 {
+			return nil
+		}
+		last, err := time.Parse(time.RFC3339Nano, resp.Data[len(resp.Data)-1].CreatedAt)
 		if err != nil || !last.After(cursor) {
-			return all, fmt.Errorf("task search cursor did not advance; results are incomplete")
+			return fmt.Errorf("task search cursor did not advance; results are incomplete")
 		}
 		cursor = last
 		// Keep boundary tasks in the next page and de-duplicate by gid. This

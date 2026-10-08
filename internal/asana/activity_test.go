@@ -32,9 +32,14 @@ func TestRecentTasksUsesSearchCursorAndDeduplicatesBoundary(t *testing.T) {
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": page})
 	})
-	tasks, err := c.RecentTasks(ctx, "77", time.Now().Add(-24*time.Hour))
-	if err != nil || len(tasks) != 101 || calls != 2 {
-		t.Fatalf("len = %d, calls = %d, err = %v", len(tasks), calls, err)
+	var tasks []Task
+	pages := 0
+	err := c.RecentTasks(ctx, "77", time.Now().Add(-24*time.Hour), func(page []Task) {
+		pages++
+		tasks = append(tasks, page...)
+	})
+	if err != nil || len(tasks) != 101 || calls != 2 || pages != 2 {
+		t.Fatalf("len = %d, calls = %d, pages = %d, err = %v", len(tasks), calls, pages, err)
 	}
 }
 
@@ -48,7 +53,8 @@ func TestRecentTasksReportsStalledSearchInsteadOfLosingTies(t *testing.T) {
 		calls++
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": page})
 	})
-	tasks, err := c.RecentTasks(ctx, "77", time.Now())
+	var tasks []Task
+	err := c.RecentTasks(ctx, "77", time.Now(), func(page []Task) { tasks = append(tasks, page...) })
 	if len(tasks) != 100 || calls != 2 || err == nil || !strings.Contains(err.Error(), "incomplete") {
 		t.Fatalf("len = %d, calls = %d, err = %v", len(tasks), calls, err)
 	}

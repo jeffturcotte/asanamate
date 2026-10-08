@@ -363,7 +363,8 @@ work in narrow terminals and list-only mode too.
 
 Press `I`, or choose Activity in the wide Views panel. The view loads Asana's
 stories from recently changed tasks across the workspace, including tasks you
-reassigned to someone else. It stores activity only in memory.
+reassigned to someone else. It stores activity only in memory. Events appear
+as each task loads, newest first, and the statusline counts scanned tasks.
 
 - `[` / `]` switches between **Both**, **Mine** (your actions), and **Related**
   (actions by others on tasks currently assigned to you, assignments to you,
