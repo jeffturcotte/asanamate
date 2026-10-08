@@ -343,6 +343,7 @@ func (m *Model) gotTasks(msg tasksMsg) tea.Cmd {
 	}
 	prev, _ := m.selected()
 	m.tasks, m.pinExtras, m.linked = msg.tasks, msg.pins, nil
+	m.syncChanged(msg)
 	m.refreshViewing(msg.tasks...)
 	m.refreshViewing(msg.pins...)
 	m.applyFilter()

@@ -23,6 +23,7 @@ var (
 	loadingStyle  lipgloss.Style
 	authorStyles  []lipgloss.Style
 	reactedStyle  lipgloss.Style // pill of a comment reaction the user made
+	newStyle      lipgloss.Style // NEW badge on changed My Tasks tickets
 	stateStyles   map[agents.State]lipgloss.Style
 	// Mode pills: normal (also VIEWS and loading), filter, read, and edit.
 	normalPill, filterPill, readPill, editPill lipgloss.Style
@@ -43,6 +44,7 @@ func applyPalette(p config.Palette) {
 	workingStyle, dimStyle, selectedStyle = lipStyle(c.Working), lipStyle(c.Muted), lipStyle(c.Highlight)
 	loadingStyle = modalStyle.BorderForeground(warnStyle.GetForeground()).Padding(2, 4)
 	reactedStyle = lipStyle(c.Reacted)
+	newStyle = lipStyle(c.New)
 	stateStyles = map[agents.State]lipgloss.Style{
 		agents.Waiting:   warnStyle,
 		agents.Working:   workingStyle,

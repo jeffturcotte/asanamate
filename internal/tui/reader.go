@@ -43,6 +43,7 @@ func (m *Model) renderDetail(keepScroll bool) {
 	if !ok {
 		return
 	}
+	m.markSeen(t.Task)
 	if !m.readerOn() {
 		m.shownGID = t.GID
 		return

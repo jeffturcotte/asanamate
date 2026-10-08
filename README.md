@@ -318,6 +318,13 @@ pins remain until you unpin them.
 current view excludes it. Moving to another ticket clears it. Unpinning a
 ticket outside the filter keeps it in Viewing until you move away.
 
+In My Tasks, a `NEW` badge after the title marks tickets that changed since
+you last viewed them, including tickets newly assigned to you. The `new` color
+role styles it; the selected row shows it reversed. Asana counts new comments, assignment, completion, and edits
+to the name, due date, description, or custom fields as changes; moving a
+ticket between projects is not. The mark clears once the ticket loads in the
+reader. The first My Tasks load marks nothing.
+
 ## Filtering
 
 Space-separated terms, all of which must match:
@@ -629,6 +636,7 @@ without a background is drawn reversed.
 | `header`, `selection` | group headers, selection marker |
 | `pinned`, `viewing` | Pinned and Viewing section headers |
 | `reacted` | comment reactions you made, drawn as pills |
+| `new` | `NEW` badge on My Tasks tickets changed since you last viewed them |
 | `authors` | comment author names, cycled |
 | `mode.normal`, `mode.filter`, `mode.read`, `mode.edit` | statusline mode pills |
 | `markdown.text`, `.heading`, `.h1`, `.link`, `.code`, `.code_block`, `.quote`, `.rule` | reading pane Markdown, on top of glamour's dark or light style |
@@ -1180,7 +1188,7 @@ is no need to copy them.
 - Config: `~/.config/asanamate/config.toml`
 - Actions: `~/.config/asanamate/actions/*.toml`
 - Themes: `~/.config/asanamate/themes/*.toml`
-- State (repo links, saved branches, saved views, recent projects, the cached project list, ticket history): `~/.local/state/asanamate/state.toml`
+- State (repo links, saved branches, saved views, recent projects, the cached project list, ticket history, seen My Tasks tickets): `~/.local/state/asanamate/state.toml`
 - Ticket exports: `~/.local/state/asanamate/tickets/<gid>/`
 - Background action log: `~/.local/state/asanamate/actions.log`
 

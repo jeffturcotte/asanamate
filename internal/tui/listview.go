@@ -27,9 +27,10 @@ type listState struct {
 	groupBy     string      // list field the list is grouped by; "" for none
 	listW       int         // fitted list pane width; 0 for the default split
 	cursor      int
-	cols        []int // width of each list field column; 0 when empty
-	badgeW      int   // width of the widest agent badge
-	titleW      int   // width of the widest ticket title
+	cols        []int           // width of each list field column; 0 when empty
+	badgeW      int             // width of the widest agent badge
+	titleW      int             // width of the widest ticket title
+	changed     map[string]bool // My Tasks tickets modified since last shown
 	filterInput textinput.Model
 	// filterBefore is the filter when editing started; the filter cancel key restores it.
 	filterBefore string
@@ -83,10 +84,10 @@ func (m *Model) selectionBar() bool {
 	return m.deps.Config.List.Selection.Style == config.StyleBar && !m.focusReader
 }
 
-// renderRowLine fits line into width with tail right-aligned. A selected line
-// is bold, or with selectionBar highlighted across the row up to the tail,
-// which styles itself.
-func (m *Model) renderRowLine(line, tail string, width int, selected bool) string {
+// renderRowLine fits line into width with flag after it and tail
+// right-aligned. A selected line is bold, or with selectionBar highlighted
+// across the row up to the tail. Flag and tail style themselves.
+func (m *Model) renderRowLine(line, flag, tail string, width int, selected bool) string {
 	tailW := ansi.StringWidth(tail)
 	if tail != "" && width-tailW-1 < 8 {
 		tail, tailW = "", 0
@@ -95,12 +96,21 @@ func (m *Model) renderRowLine(line, tail string, width int, selected bool) strin
 	if tail != "" {
 		room = width - tailW - 1
 	}
+	if flag != "" {
+		room = max(room-ansi.StringWidth(flag)-1, 1)
+	}
 	line = ansi.Truncate(line, room, "…")
 	switch {
+	case selected && m.selectionBar() && flag != "":
+		fill := strings.Repeat(" ", max(width-tailW-ansi.StringWidth(line)-1-ansi.StringWidth(flag), 0))
+		return selectedStyle.Render(ansi.Strip(line)+" ") + flag + selectedStyle.Render(fill) + tail
 	case selected && m.selectionBar():
 		return selectedStyle.Render(ansi.Strip(line)+strings.Repeat(" ", max(width-tailW-ansi.StringWidth(line), 0))) + tail
 	case selected:
 		line = titleStyle.Render(ansi.Strip(line))
+	}
+	if flag != "" {
+		line += " " + flag
 	}
 	if tail == "" {
 		return line
@@ -198,15 +208,15 @@ func (m *Model) listView(width, height int) string {
 		}
 		row, rowTail := m.listRow(i, cols)
 		for j, line := range row {
-			tail := ""
+			flag, tail := "", ""
 			if j == 0 {
-				tail = rowTail
+				flag, tail = m.newBadge(i), rowTail
 			}
 			lead := gutter
 			if i == m.cursor {
 				lead = cursor
 			}
-			lines = append(lines, lead+m.renderRowLine(line, tail, rowW, i == m.cursor))
+			lines = append(lines, lead+m.renderRowLine(line, flag, tail, rowW, i == m.cursor))
 		}
 	}
 	if sepH > 0 {
@@ -392,6 +402,9 @@ func (m *Model) fitList() {
 		row, tail := m.listRow(i, m.cols)
 		for j, line := range row {
 			lineW := gutter + ansi.StringWidth(line)
+			if flag := m.newBadge(i); j == 0 && flag != "" {
+				lineW += 1 + ansi.StringWidth(flag)
+			}
 			if j == 0 && tail != "" {
 				lineW += 2 + ansi.StringWidth(tail)
 			}

@@ -40,6 +40,7 @@ type Colors struct {
 	Pinned    Style          `toml:"pinned"`
 	Viewing   Style          `toml:"viewing"`
 	Reacted   Style          `toml:"reacted"` // comment reactions the user made
+	New       Style          `toml:"new"`     // NEW badge on My Tasks tickets changed since last viewed
 	Authors   []Style        `toml:"authors"`
 	Mode      ModeColors     `toml:"mode"`
 	Markdown  MarkdownColors `toml:"markdown"`

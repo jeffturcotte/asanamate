@@ -12,6 +12,7 @@ import (
 
 	"github.com/sadmachine/asanamate/internal/asana"
 	"github.com/sadmachine/asanamate/internal/config"
+	"github.com/sadmachine/asanamate/internal/ticket"
 )
 
 func strp(s string) *string { return &s }
@@ -354,5 +355,52 @@ func TestInitialsColumnIsABadge(t *testing.T) {
 	}
 	if _, tail := m.listRow(1, m.cols); !strings.Contains(tail, authorStyle("Bob Ray").Reverse(true).Bold(true).Render(" BR ")) {
 		t.Fatalf("tail = %q", tail)
+	}
+}
+
+func TestChangedMyTasksRowsMarked(t *testing.T) {
+	m, st := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle}})
+	a := asana.Task{GID: "1", Name: "A", ModifiedAt: "t1"}
+	b := asana.Task{GID: "2", Name: "B", ModifiedAt: "t1"}
+	c := asana.Task{GID: "3", Name: "C", ModifiedAt: "t1"}
+	// The first load is the baseline, so nothing is marked.
+	m.Update(tasksMsg{tasks: []asana.Task{a, b}})
+	if got := listLines(m, 20, 2); !slices.Equal(got, []string{"□  A", "□  B"}) {
+		t.Fatalf("baseline rows = %q", got)
+	}
+	b.ModifiedAt = "t2"
+	m.Update(tasksMsg{tasks: []asana.Task{a, b, c}})
+	if got := listLines(m, 20, 3); !slices.Equal(got, []string{"□  A", "□  B  NEW", "□  C  NEW"}) {
+		t.Fatalf("changed rows = %q", got)
+	}
+	if !strings.Contains(m.listView(20, 3), newStyle.Render(" NEW ")) {
+		t.Fatal("unselected badge is not in the new style")
+	}
+
+	// Showing B in the reader records it as seen.
+	m.cursor = 1
+	m.Update(detailMsg{gid: "2", ticket: ticket.Ticket{Task: b}})
+	if got := listLines(m, 20, 3); !slices.Equal(got, []string{"□  A", "□  B", "□  C  NEW"}) || st.SeenTasks["2"] != "t2" {
+		t.Fatalf("viewed rows = %q, seen = %v", got, st.SeenTasks)
+	}
+
+	// A refresh that changes the shown ticket does not mark it.
+	b.ModifiedAt = "t3"
+	m.Update(tasksMsg{tasks: []asana.Task{a, b, c}})
+	if got := listLines(m, 20, 3); !slices.Equal(got, []string{"□  A", "□  B", "□  C  NEW"}) {
+		t.Fatalf("shown row marked: %q", got)
+	}
+
+	// The selected row reverses its badge.
+	m.cursor = 2
+	if !strings.Contains(m.listView(20, 3), newStyle.Reverse(true).Render(" NEW ")) {
+		t.Fatal("selected badge is not reversed")
+	}
+
+	// Project views never mark rows.
+	m.viewProject = &asana.Ref{GID: "p"}
+	m.Update(tasksMsg{project: m.viewProject, tasks: []asana.Task{c}})
+	if got := listLines(m, 20, 1); !slices.Equal(got, []string{"□  C"}) {
+		t.Fatalf("project view rows = %q", got)
 	}
 }
