@@ -92,14 +92,6 @@ func (s symbolSet) icon(name string) string {
 	return ""
 }
 
-var stateStyles = map[agents.State]lipgloss.Style{
-	agents.Waiting:   warnStyle,
-	agents.Working:   workingStyle,
-	agents.Completed: okStyle,
-	agents.Idle:      dimStyle,
-	agents.Unknown:   dimStyle,
-}
-
 // newSymbols returns the named set with per-state overrides applied. An
 // overridden working symbol, or reduced motion, turns the spinner off.
 func newSymbols(set string, overrides map[string]string, reducedMotion bool) symbolSet {
