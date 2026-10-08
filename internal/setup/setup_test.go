@@ -3,7 +3,6 @@ package setup
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,9 +14,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sadmachine/asanamate/internal/agents"
 	"github.com/sadmachine/asanamate/internal/asana"
 	"github.com/sadmachine/asanamate/internal/config"
+	"github.com/sadmachine/asanamate/internal/keymap"
 )
 
 func fakeClient(t *testing.T) *asana.Client {
@@ -171,13 +170,11 @@ func TestTemplateMatchesDefaults(t *testing.T) {
 }
 
 func TestTemplateOptionsStayTopLevel(t *testing.T) {
-	// Uncomment every commented setting and table, but not prose. The
-	// custom agents command is the documented alternative to the preset, so
-	// it stays commented.
+	// Uncomment every commented setting and table, but not prose.
 	setting := regexp.MustCompile(`^# (\[|[a-z_]+ +=)`)
 	var body strings.Builder
 	for _, line := range strings.Split(Render(asana.Ref{GID: "1", Name: "W"}, "/code"), "\n") {
-		if setting.MatchString(line) && !strings.HasPrefix(line, "# command = '''my-agents") {
+		if setting.MatchString(line) {
 			line = strings.TrimPrefix(line, "# ")
 		}
 		body.WriteString(line + "\n")
@@ -188,154 +185,224 @@ func TestTemplateOptionsStayTopLevel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("config with every commented option enabled does not load: %v", err)
 	}
-	if cfg.Symbols != "unicode" || cfg.ReducedMotion == nil || cfg.Agents.Preset != "ccmux" ||
+	if cfg.Symbols != "unicode" || cfg.ReducedMotion == nil || cfg.Agents.Command != "asanamate-ccmux" ||
 		!slices.Contains(cfg.Agents.States["working"], "running") || cfg.Agents.Symbols["waiting"] == "" {
 		t.Fatalf("cfg = %+v", cfg)
 	}
 }
 
-func TestMergeKeepsTimeTrackingProvider(t *testing.T) {
-	updated, _, err := Merge("workspace = \"1\"\n[time_tracking]\nid = \"hrvst\"\ncommand = \"asanamate time-provider hrvst --task-id 456\"\n")
+// The Harvest provider moved out of asanamate in v0.2.0: Merge rewrites the
+// old command to asanamate-hrvst, keeping its flags and every other value.
+func TestMergeMovesHarvestProvider(t *testing.T) {
+	updated, _, err := Merge("workspace = \"1\"\nsymbols = \"nerd\"\n[time_tracking]\nid = \"hrvst\"\ncommand = \"asanamate time-provider hrvst --task-id 456\"\n")
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(t.TempDir(), "config.toml")
-	if err := os.WriteFile(path, []byte(updated), 0o600); err != nil {
+	cfg := loadString(t, updated)
+	if cfg.TimeTracking.ID != "hrvst" || cfg.TimeTracking.Command != "asanamate-hrvst --task-id 456" || cfg.Symbols != "nerd" {
+		t.Fatalf("merged = %+v, symbols = %q\n%s", cfg.TimeTracking, cfg.Symbols, updated)
+	}
+	if strings.Contains(updated, "time-provider") {
+		t.Fatalf("old command left behind:\n%s", updated)
+	}
+	again, _, err := Merge(updated)
+	if err != nil || again != updated {
+		t.Fatalf("second merge changed config: err = %v", err)
+	}
+}
+
+func TestMergeMovesReleasedKeys(t *testing.T) {
+	updated, _, err := Merge("workspace = \"1\"\ntheme = \"light\"\naccent_color = \"2\"\n[list.header]\nstyle = \"bar\"\ncolor = \"3\"\n[list.pinned]\ncolor = \"208\"\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := loadString(t, updated)
+	if cfg.Theme.Name != "light" || cfg.Colors.Accent.FG != "2" || cfg.Colors.Header.FG != "3" || cfg.Colors.Pinned.FG != "208" || cfg.List.Header.Style != "bar" {
+		t.Fatalf("cfg = %+v\n%s", cfg, updated)
+	}
+	if strings.Contains(updated, "accent_color") || strings.Contains(updated, "[list.pinned]") {
+		t.Fatalf("old keys left behind:\n%s", updated)
+	}
+}
+
+func TestMergeMovesEmptyPinnedToAccent(t *testing.T) {
+	updated, _, err := Merge("workspace = \"1\"\naccent_color = \"6\"\n[list.pinned]\ncolor = \"\"\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg := loadString(t, updated); cfg.Palette(true).Colors.Pinned.FG != "6" {
+		t.Fatalf("pinned = %+v\n%s", cfg.Palette(true).Colors.Pinned, updated)
+	}
+}
+
+func TestMergeMovesDisplayFilterAndRepo(t *testing.T) {
+	updated, _, err := Merge(`workspace = "1"
+[display]
+symbols = "nerd"
+reduced_motion = false
+[list]
+filter = "is:open project:Work"
+fields = ["section", "Branch Name", "due"]
+[repo]
+root = ""
+command = "sesh list -z"
+branch_field = "Branch Name"
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := loadString(t, updated)
+	if cfg.Symbols != "nerd" || cfg.ReducedMotion == nil || *cfg.ReducedMotion || cfg.DefaultFilter != "is:open project:Work" || cfg.RepoSource.Root != "" || cfg.RepoSource.Command != "sesh list -z" || cfg.BranchField != "Branch Name" || !reflect.DeepEqual(cfg.List.Fields, []string{"section", "Branch Name", "due"}) {
+		t.Fatalf("cfg = %+v\n%s", cfg, updated)
+	}
+	for _, old := range []string{"[display]", "[repo]", "\nfilter = "} {
+		if strings.Contains(updated, old) {
+			t.Fatalf("old key %q left behind:\n%s", old, updated)
+		}
+	}
+	again, _, err := Merge(updated)
+	if err != nil || again != updated {
+		t.Fatalf("second merge changed config: err = %v", err)
+	}
+}
+
+// The ccmux preset became the asanamate-ccmux adapter; the rest of [agents]
+// stays as set.
+func TestMergeRewritesAgentsPreset(t *testing.T) {
+	updated, _, err := Merge("workspace = \"1\"\n[agents]\npreset = \"ccmux\"\n[agents.states]\nworking = [\"busy\"]\n[agents.symbols]\nwaiting = \"!!\"\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := loadString(t, updated)
+	if cfg.Agents.Command != "asanamate-ccmux" || !reflect.DeepEqual(cfg.Agents.States, map[string][]string{"working": {"busy"}}) || cfg.Agents.Symbols["waiting"] != "!!" {
+		t.Fatalf("agents = %+v\n%s", cfg.Agents, updated)
+	}
+	if strings.Contains(updated, "preset") {
+		t.Fatalf("agents.preset left behind:\n%s", updated)
+	}
+	again, _, err := Merge(updated)
+	if err != nil || again != updated {
+		t.Fatalf("second merge changed config: err = %v", err)
+	}
+	for body, want := range map[string]string{
+		"[agents]\npreset = \"ccmux\"\ncommand = \"x\"\n": "agents.preset and agents.command are both set",
+		"[agents]\npreset = \"tmux\"\n":                   `agents.preset "tmux" has no replacement`,
+	} {
+		if _, _, err := Merge("workspace = \"1\"\n" + body); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%q: err = %v", body, err)
+		}
+	}
+}
+
+func TestMergeKeepsStyleTables(t *testing.T) {
+	updated, _, err := Merge("workspace = \"1\"\n[colors]\naccent = { fg = \"4\", bold = false }\nauthors = [\"1\", { fg = \"2\", italic = true }]\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`accent = { bold = false, fg = "4" }`, `authors = ["1", { fg = "2", italic = true }]`} {
+		if !strings.Contains(updated, want) {
+			t.Errorf("missing %s in:\n%s", want, updated)
+		}
+	}
+	if cfg := loadString(t, updated); *cfg.Colors.Accent.Bold || !*cfg.Colors.Authors[1].Italic {
+		t.Fatalf("cfg = %+v", cfg.Colors)
+	}
+}
+
+func TestUpdateMigratesV010Config(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	os.WriteFile(path, []byte("workspace = \"1\"\naccent_color = \"2\"\n"), 0o600)
+	o := Options{In: bufio.NewReader(strings.NewReader("")), Out: &strings.Builder{}, ConfigPath: path}
+	if err := Update(o, true); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := config.Load(path)
-	if err != nil || cfg.TimeTracking.ID != "hrvst" || cfg.TimeTracking.Command != "asanamate time-provider hrvst --task-id 456" {
-		t.Fatalf("merged provider = %+v, err = %v", cfg.TimeTracking, err)
+	if err != nil || cfg.Colors.Accent.FG != "2" {
+		t.Fatalf("cfg = %+v, err = %v", cfg.Colors.Accent, err)
+	}
+	if leftovers, _ := filepath.Glob(filepath.Join(dir, ".config-*")); len(leftovers) != 0 {
+		t.Fatalf("temporary check file left behind: %v", leftovers)
 	}
 }
 
-func TestOfferCodexHook(t *testing.T) {
-	home := t.TempDir()
-	path := filepath.Join(home, "hooks.json")
-	theirs := `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"other && x"}]}]},"extra":1}`
-	os.WriteFile(path, []byte(theirs), 0o600)
-	offer := func(input string) string {
-		t.Helper()
-		out := &strings.Builder{}
-		o := Options{In: bufio.NewReader(strings.NewReader(input)), Out: out, CodexHome: home, Executable: "/bin/it's asanamate"}
-		if err := OfferCodexHook(o); err != nil {
-			t.Fatal(err)
-		}
-		return out.String()
-	}
-
-	if out := offer("n\n"); !strings.Contains(out, "inaccurate or wrong") || !strings.Contains(out, "setup hooks") {
-		t.Fatalf("decline output = %q", out)
-	}
-	if data, _ := os.ReadFile(path); string(data) != theirs {
-		t.Fatalf("declined but changed: %s", data)
-	}
-
-	offer("y\n")
-	if data, _ := os.ReadFile(path + ".bak"); string(data) != theirs {
-		t.Fatalf("backup = %s", data)
-	}
-	var got struct {
-		Hooks map[string][]struct {
-			Hooks []struct{ Type, Command string }
-		}
-		Extra int
-	}
-	data, _ := os.ReadFile(path)
-	if err := json.Unmarshal(data, &got); err != nil {
+func TestRunWritesThemeExample(t *testing.T) {
+	path := runSetup(t)
+	example := filepath.Join(config.ThemesDir(path), "example.toml.example")
+	data, err := os.ReadFile(example)
+	if err != nil {
 		t.Fatal(err)
 	}
-	want := `'/bin/it'\''s asanamate' hook codex`
-	stop := got.Hooks["Stop"]
-	if got.Extra != 1 || len(stop) != 2 || stop[0].Hooks[0].Command != "other && x" || stop[1].Hooks[0].Command != want {
-		t.Fatalf("hooks.json = %s", data)
-	}
-	if len(got.Hooks["UserPromptSubmit"]) != 1 || len(got.Hooks["SessionEnd"]) != 1 {
-		t.Fatalf("missing events: %s", data)
-	}
-
-	if out := offer(""); out != "" {
-		t.Fatalf("installed hook offered again: %q", out)
+	os.WriteFile(filepath.Join(config.ThemesDir(path), "mine.toml"), data, 0o600)
+	body, _ := os.ReadFile(path)
+	body = []byte(strings.Replace(string(body), "name = \"auto\"", "name = \"mine\"", 1))
+	os.WriteFile(path, body, 0o600)
+	cfg, err := config.Load(path)
+	if err != nil || cfg.Palette(true).Colors.Accent.FG != "#7aa2f7" {
+		t.Fatalf("accent = %+v, err = %v", cfg.Palette(true).Colors.Accent, err)
 	}
 }
 
-// A hook left at an old path, or missing from some events, is replaced in
-// place: other hooks, even in the same group, stay, and nothing is doubled.
-func TestOfferCodexHookRepairsStaleHook(t *testing.T) {
-	home := t.TempDir()
-	path := filepath.Join(home, "hooks.json")
-	stale := `{"hooks":{"Stop":[{"matcher":"x","hooks":[` +
-		`{"type":"command","command":"other"},{"type":"command","command":"'/old/asanamate' hook codex"}]}],` +
-		`"SessionEnd":[{"hooks":[{"type":"command","command":"'/new/asanamate' hook codex"}]}]}}`
-	os.WriteFile(path, []byte(stale), 0o600)
-	offer := func(input string) string {
-		t.Helper()
-		out := &strings.Builder{}
-		o := Options{In: bufio.NewReader(strings.NewReader(input)), Out: out, CodexHome: home, Executable: "/new/asanamate"}
-		if err := OfferCodexHook(o); err != nil {
-			t.Fatal(err)
-		}
-		return out.String()
-	}
-	if state, err := CodexHook(home, "/new/asanamate"); err != nil || state != HookStale {
-		t.Fatalf("state = %v, err = %v", state, err)
-	}
-	if out := offer("n\n"); !strings.Contains(out, "out of date") {
-		t.Fatalf("decline output = %q", out)
-	}
-	if data, _ := os.ReadFile(path); string(data) != stale {
-		t.Fatalf("declined but changed: %s", data)
-	}
-
-	if out := offer("y\n"); !strings.Contains(out, "Replaced the hook") {
-		t.Fatalf("repair output = %q", out)
-	}
-	if data, _ := os.ReadFile(path + ".bak"); string(data) != stale {
-		t.Fatalf("backup = %s", data)
-	}
-	var got struct {
-		Hooks map[string][]struct {
-			Matcher string
-			Hooks   []struct{ Type, Command string }
-		}
-	}
-	data, _ := os.ReadFile(path)
-	if err := json.Unmarshal(data, &got); err != nil {
+// runSetup runs setup without a repo directory and returns the config path.
+func runSetup(t *testing.T) string {
+	t.Helper()
+	o, _ := options(t, "2\n-\n")
+	if err := Run(context.Background(), o); err != nil {
 		t.Fatal(err)
 	}
-	const want = `'/new/asanamate' hook codex`
-	stop := got.Hooks["Stop"]
-	if len(stop) != 2 || stop[0].Matcher != "x" || len(stop[0].Hooks) != 1 || stop[0].Hooks[0].Command != "other" || stop[1].Hooks[0].Command != want {
-		t.Fatalf("hooks.json = %s", data)
+	return o.ConfigPath
+}
+
+// loadString loads body as a config file.
+func loadString(t *testing.T, body string) config.Config {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	for _, event := range agents.HookEvents() {
-		ours := 0
-		for _, g := range got.Hooks[event] {
-			for _, h := range g.Hooks {
-				if h.Command == want {
-					ours++
-				}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, body)
+	}
+	return cfg
+}
+
+func TestTemplateListsEveryBinding(t *testing.T) {
+	tmpl := Render(asana.Ref{GID: "1", Name: "W"}, "")
+	for _, s := range keymap.Catalog() {
+		if !strings.Contains(tmpl, "\n[keys."+s.Name+"]\n") {
+			t.Errorf("template lacks [keys.%s]", s.Name)
+		}
+		for _, b := range s.Bindings {
+			if !strings.Contains(tmpl, "\n# "+b.Name+" = ") {
+				t.Errorf("template lacks keys.%s.%s", s.Name, b.Name)
 			}
 		}
-		if ours != 1 {
-			t.Fatalf("%s has %d asanamate hooks: %s", event, ours, data)
-		}
-	}
-	if state, _ := CodexHook(home, "/new/asanamate"); state != HookCurrent {
-		t.Fatalf("state after repair = %v", state)
-	}
-	if out := offer(""); out != "" {
-		t.Fatalf("repaired hook offered again: %q", out)
 	}
 }
 
-func TestOfferCodexHookSkipsWithoutCodex(t *testing.T) {
-	out := &strings.Builder{}
-	o := Options{Out: out, CodexHome: filepath.Join(t.TempDir(), "missing"), Executable: "asanamate"}
-	if err := OfferCodexHook(o); err != nil || out.Len() != 0 {
-		t.Fatalf("err = %v, out = %q", err, out)
+func TestMergeKeepsKeyOverrides(t *testing.T) {
+	updated, added, err := Merge("workspace = \"1\"\n[keys.main]\nquit = [\"Q\"]\n")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if state, err := CodexHook(o.CodexHome, o.Executable); err != nil || state != CodexAbsent {
-		t.Fatalf("state = %v, err = %v", state, err)
+	if cfg := loadString(t, updated); cfg.Keymap.Name("main", "Q") != "quit" {
+		t.Fatalf("override lost:\n%s", updated)
+	}
+	if !slices.Contains(added, "picker.type_first") {
+		t.Errorf("added = %v", added)
+	}
+}
+
+func TestUpdateWritesThemeExample(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	os.WriteFile(path, []byte("workspace = \"1\"\n"), 0o600)
+	o := Options{In: bufio.NewReader(strings.NewReader("")), Out: &strings.Builder{}, ConfigPath: path}
+	if err := Update(o, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(config.ThemesDir(path), "example.toml.example")); err != nil {
+		t.Fatalf("config update must add the theme example: %v", err)
 	}
 }

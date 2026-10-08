@@ -54,25 +54,34 @@ func (m *Model) viewAgents(t asana.Task) []agents.Agent {
 }
 
 // agentNotes explains, in the current view, why t may be missing agents: an
-// empty branch field, and, when nothing is linked, the agents in t's repos
-// that are on another branch.
-func (m *Model) agentNotes(t asana.Task) []string {
+// empty branch field, and the agents in t's repos that are on another branch.
+// The other-branch agents stay hidden until shown, and hidden counts them.
+func (m *Model) agentNotes(t asana.Task) (notes []string, hidden int) {
 	if !m.deps.Config.AgentsEnabled() {
-		return nil
+		return nil, 0
 	}
 	preferred := m.projectFields[gidOf(m.viewProject)]
-	var notes []string
 	saved := m.deps.State.TaskBranches[t.GID]
 	if w := action.BranchWarning(t, saved, m.deps.Config.BranchField, preferred); w != "" {
 		notes = append(notes, w)
 	}
-	if len(m.viewAgents(t)) == 0 {
-		branch := action.Branch(t, saved, m.deps.Config.BranchField, preferred)
-		for _, a := range agents.Unlinked(m.agents, branch, m.deps.State.LinkedRepos(t)) {
-			notes = append(notes, agents.Hint(a, branch))
-		}
+	branch := action.Branch(t, saved, m.deps.Config.BranchField, preferred)
+	others := agents.Unlinked(m.agents, branch, m.deps.State.LinkedRepos(t))
+	if !m.showOthers {
+		return notes, len(others)
 	}
-	return notes
+	for _, a := range others {
+		notes = append(notes, agents.Hint(a, branch))
+	}
+	return notes, 0
+}
+
+// otherAgents names n agents on other branches.
+func otherAgents(n int) string {
+	if n == 1 {
+		return "1 agent on another branch"
+	}
+	return fmt.Sprintf("%d agents on other branches", n)
 }
 
 // agentStates lists the states of t's agents, for filter terms.

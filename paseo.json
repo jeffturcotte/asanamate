@@ -1,0 +1,10 @@
+{
+  "metadataGeneration": {
+    "branchName": {
+      "instructions": "Prefix branches with `feature/` for larger feature additions or refactors, `update/` for smaller updates or changes to existing features, and `bugfix/` for fixing bugs."
+    },
+    "commitMessage": {
+      "instructions": "Short atomic commits, no agent attribution."
+    }
+  }
+}

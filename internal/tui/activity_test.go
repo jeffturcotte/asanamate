@@ -11,6 +11,7 @@ import (
 
 	"github.com/sadmachine/asanamate/internal/activity"
 	"github.com/sadmachine/asanamate/internal/asana"
+	"github.com/sadmachine/asanamate/internal/keymap"
 	"github.com/sadmachine/asanamate/internal/ticket"
 )
 
@@ -33,19 +34,19 @@ func TestActivityFiltersAndAutomatedToggle(t *testing.T) {
 	if len(m.activity.visible) != 2 {
 		t.Fatalf("Both = %d", len(m.activity.visible))
 	}
-	keys(m, "]")
+	sendKeys(m, "]")
 	if m.activity.mode != "Mine" || len(m.activity.visible) != 1 || !m.activity.visible[0].Mine {
 		t.Fatalf("Mine = %+v", m.activity.visible)
 	}
-	keys(m, "]")
+	sendKeys(m, "]")
 	if m.activity.mode != "Related" || len(m.activity.visible) != 1 || m.activity.visible[0].Mine {
 		t.Fatalf("Related = %+v", m.activity.visible)
 	}
-	keys(m, "z")
+	sendKeys(m, "!")
 	if len(m.activity.visible) != 2 || !m.activity.visible[1].Automatic {
 		t.Fatalf("automated = %+v", m.activity.visible)
 	}
-	keys(m, "]")
+	sendKeys(m, "]")
 	if m.activity.mode != "Both" || len(m.activity.visible) != 3 {
 		t.Fatalf("Both including automated = %+v", m.activity.visible)
 	}
@@ -54,11 +55,11 @@ func TestActivityFiltersAndAutomatedToggle(t *testing.T) {
 func TestActivitySearchDoesNotChangeSavedTicketFilter(t *testing.T) {
 	m := activityModel(t, 160)
 	before := m.filterInput.Value()
-	keys(m, "/", "S", "a", "m", "enter")
+	sendKeys(m, "/", "S", "a", "m", "enter")
 	if m.activity.filtering || len(m.activity.visible) != 2 {
 		t.Fatalf("search = %q, visible = %d", m.activity.query.Value(), len(m.activity.visible))
 	}
-	keys(m, "]")
+	sendKeys(m, "]")
 	if len(m.activity.visible) != 1 || m.filterInput.Value() != before {
 		t.Fatalf("activity search affected ticket filter")
 	}
@@ -70,7 +71,7 @@ func TestActivitySearchDoesNotChangeSavedTicketFilter(t *testing.T) {
 func TestActivityTicketRoundTripKeepsEventAndAllowsExistingReader(t *testing.T) {
 	m := activityModel(t, 160)
 	m.details[sideTask.GID] = ticket.Ticket{Task: sideTask}
-	keys(m, "enter")
+	sendKeys(m, "enter")
 	if m.activityOpen || !m.activityTicket || !m.focusReader {
 		t.Fatal("Enter must open existing ticket reader")
 	}
@@ -81,11 +82,11 @@ func TestActivityTicketRoundTripKeepsEventAndAllowsExistingReader(t *testing.T) 
 	if !ok || selected.GID != sideTask.GID {
 		t.Fatalf("selected = %+v", selected)
 	}
-	keys(m, "esc")
+	sendKeys(m, "esc")
 	if !m.activityOpen || m.activityTicket || m.activity.cursor != 0 {
 		t.Fatal("Esc must return to same Activity entry")
 	}
-	keys(m, "j")
+	sendKeys(m, "j")
 	if m.activity.cursor != 1 {
 		t.Fatal("Activity navigation did not resume")
 	}
@@ -93,15 +94,15 @@ func TestActivityTicketRoundTripKeepsEventAndAllowsExistingReader(t *testing.T) 
 
 func TestActivityNarrowEnterShowsEventThenTicket(t *testing.T) {
 	m := activityModel(t, 80)
-	keys(m, "j", "enter")
+	sendKeys(m, "j", "enter")
 	if !m.activityOpen || !m.activity.details || !strings.Contains(ansi.Strip(m.body()), "New due: 2026-10-14") {
 		t.Fatal("narrow Enter must show event details")
 	}
-	keys(m, "esc")
+	sendKeys(m, "esc")
 	if !m.activityOpen || m.activity.details {
 		t.Fatal("Esc must return to activity list")
 	}
-	keys(m, "enter", "enter")
+	sendKeys(m, "enter", "enter")
 	if m.activityOpen || !m.activityTicket || !m.focusReader {
 		t.Fatal("second Enter must open ticket")
 	}
@@ -128,24 +129,24 @@ func TestActivityIgnoresStaleLoadsAndKeepsOldResultsOnError(t *testing.T) {
 
 func TestActivityPeriodChangeDoesNotRelabelOldResults(t *testing.T) {
 	m := activityModel(t, 160)
-	keys(m, "D", "j", "j", "enter")
+	sendKeys(m, "D", "j", "j", "enter")
 	if m.activity.days != 30 || !m.activity.loading || len(m.activity.visible) != 0 || !m.activity.report.Until.IsZero() {
 		t.Fatalf("period = %+v", m.activity)
 	}
 }
 
 func TestActivityNavigationPanelAndProjectSwitch(t *testing.T) {
-	m := wideModel(t, 160)
-	keys(m, "0", "j", "enter")
+	m := wideModel(t, 200)
+	sendKeys(m, "0", "j", "enter")
 	if !m.activityOpen {
 		t.Fatal("sidebar Activity did not open")
 	}
 	m.Update(activityMsg{seq: m.activity.seq, report: activity.Report{}})
-	keys(m, "0", "enter")
+	sendKeys(m, "0", "enter")
 	if !m.activityOpen {
 		t.Fatal("selecting active Activity should keep the view open")
 	}
-	keys(m, "0", "j", "enter") // Activity, then recent Mobile project.
+	sendKeys(m, "0", "j", "enter") // Activity, then recent Mobile project.
 	if m.activityOpen || m.activityTicket || gidOf(m.viewProject) != "p2" {
 		t.Fatalf("project switch = %+v", m.viewProject)
 	}
@@ -179,5 +180,58 @@ func TestActivityTextCannotInjectTerminalControls(t *testing.T) {
 	m.filterActivity()
 	if strings.Contains(m.activity.reader.GetContent(), "\x1b]52;") || strings.Contains(m.activityList(50, 30), "\x1b]52;") || strings.Contains(m.activity.reader.GetContent(), "\x1b[2J") {
 		t.Fatal("untrusted activity emitted terminal controls")
+	}
+}
+
+func TestActivityUsesConfiguredKeys(t *testing.T) {
+	m := activityModel(t, 200)
+	var err error
+	keys, err = keymap.Resolve(map[string]map[string][]string{"activity": {"next_mode": {"M"}}, "main": {"down": {"J"}, "copy_link": {"W"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { keys = keymap.Default() })
+	sendKeys(m, "]")
+	if m.activity.mode != "Both" {
+		t.Fatal("old mode key still active")
+	}
+	sendKeys(m, "J")
+	if m.activity.cursor != 1 {
+		t.Fatal("configured movement ignored")
+	}
+	sendKeys(m, "M")
+	if m.activity.mode != "Mine" {
+		t.Fatal("configured mode ignored")
+	}
+	if help := ansi.Strip(m.activityHelp()); !strings.Contains(help, "M") || !strings.Contains(help, "W") {
+		t.Fatal("help ignores configured keys")
+	}
+}
+
+func TestActivityPreviewAndSidebarRemainIndependent(t *testing.T) {
+	m := activityModel(t, 200)
+	sendKeys(m, "z")
+	if !m.readerHidden || !m.showNav() || m.activity.automated {
+		t.Fatal("preview toggle changed sidebar or automated filter")
+	}
+	for _, focus := range []bool{false, true} {
+		m.activity.details = focus
+		lines := strings.Split(m.View().Content, "\n")
+		if len(lines) != m.height {
+			t.Fatalf("height = %d, want %d", len(lines), m.height)
+		}
+		for _, line := range lines {
+			if ansi.StringWidth(line) > m.width {
+				t.Fatal("activity exceeds terminal width with hidden preview")
+			}
+		}
+	}
+	sendKeys(m, "Z")
+	if m.showNav() || !m.readerHidden {
+		t.Fatal("sidebar toggle changed preview")
+	}
+	sendKeys(m, "z")
+	if m.readerHidden || m.showNav() {
+		t.Fatal("preview toggle restored sidebar")
 	}
 }

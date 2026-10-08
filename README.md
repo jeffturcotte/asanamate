@@ -1,13 +1,48 @@
 # asanamate
 
-A terminal UI for reading Asana tickets and running your own commands on them.
-Browse My Tasks or any project, read a ticket with its fields, comments, and
-attachments, then press a key to start a coding agent in the ticket's repo with
-the ticket as context. Agents and scripts report back with `asanamate comment`,
-`move`, and `field`.
+An Asana client for the terminal, built for the Asana work you do every day:
+read your tickets, update them, and create new ones without leaving the
+keyboard. It fits the way you already use your terminal, full screen or in a
+tmux pane, sidebar, or popup ([Layout](#layout), [tmux](#tmux)). Your own
+commands extend it, and its CLI offers every write the TUI makes, so scripts
+and coding agents can do what you can. macOS and Linux only.
 
-asanamate runs in any terminal and works well in tmux panes, windows, and popups.
-macOS and Linux only.
+## What it does
+
+- **Browse** My Tasks or any project: filter, group, sort, pin tickets, and
+  save views. See [Filtering](#filtering).
+- **Read** a ticket's fields, description, subtasks, comments, reactions, and
+  attachments, with images inline in kitty-graphics terminals. See
+  [Layout](#layout).
+- **Edit** a ticket: comment (with images), move it to a section, assign or
+  unassign it, set its due date or a custom field, add or remove projects, and
+  mark it complete or reopen it. See [Keys](#keys).
+- **Create** a ticket in a project or My Tasks, or a subtask. See
+  [Keys](#keys).
+- **Script** every edit and create from the CLI: `asanamate comment`, `move`,
+  `field`, `assign`, `due`, `project`, `complete`, and `create`. See
+  [Writing back to Asana](#writing-back-to-asana).
+- **Act** on a ticket: run your own commands with the ticket as context, such
+  as starting a coding agent in its repo. See [Actions](#actions).
+- **Show agents** (optional): coding agents running in ccmux or any other tool
+  appear next to their tickets. See [Agents](#agents-optional).
+- **Track time** (optional): log time to Harvest from a ticket. See
+  [Time tracking](#time-tracking-optional).
+- **Suggest links** (optional): preselect each project's repo and Harvest
+  project from imarc's Hub or another source. See
+  [Project links](#project-links-optional).
+
+**Extending asanamate.** External commands plug in at five points:
+[actions](docs/extensions.md#actions),
+[agent sources](docs/extensions.md#agent-sources),
+[time tracking providers](docs/extensions.md#time-tracking),
+[repo sources](docs/extensions.md#repo-sources), and
+[project links](docs/extensions.md#project-links).
+[docs/extensions.md](docs/extensions.md) documents each protocol.
+
+**Left to Asana.** asanamate does not rename or delete tickets, change a
+description after creating a ticket, edit or delete comments, set tags,
+followers, or dependencies, or create or change projects and sections.
 
 **Early release.** asanamate is pre-1.0: expect breaking changes, including to
 config keys, before 1.0. Release notes call out each one.
@@ -37,6 +72,18 @@ mkdir -p ~/.local/bin && mv asanamate ~/.local/bin/
 asanamate version
 ```
 
+The archive also holds three optional binaries: `asanamate-hrvst`, the Harvest
+provider for [Time tracking](#time-tracking-optional), `asanamate-ccmux`,
+the ccmux adapter for [Agents](#agents-optional), and `asanamate-hub`, the Hub
+provider for [Project links](#project-links-optional). Extract and move the
+ones you use the same way:
+
+```sh
+tar -xzf "$archive" asanamate-hrvst && mv asanamate-hrvst ~/.local/bin/
+tar -xzf "$archive" asanamate-ccmux && mv asanamate-ccmux ~/.local/bin/
+tar -xzf "$archive" asanamate-hub && mv asanamate-hub ~/.local/bin/
+```
+
 If `asanamate version` is not found, add `~/.local/bin` to your `PATH` in your
 shell's startup file (`~/.zshrc`, `~/.bashrc`), then open a new shell:
 
@@ -50,6 +97,9 @@ quarantine flag once:
 
 ```sh
 xattr -d com.apple.quarantine ~/.local/bin/asanamate
+xattr -d com.apple.quarantine ~/.local/bin/asanamate-hrvst   # if you use it
+xattr -d com.apple.quarantine ~/.local/bin/asanamate-ccmux   # if you use it
+xattr -d com.apple.quarantine ~/.local/bin/asanamate-hub     # if you use it
 ```
 
 ### From source
@@ -58,6 +108,9 @@ Needs Go 1.26 or later.
 
 ```sh
 go install github.com/sadmachine/asanamate/cmd/asanamate@latest
+go install github.com/sadmachine/asanamate/cmd/asanamate-hrvst@latest   # Harvest time tracking
+go install github.com/sadmachine/asanamate/cmd/asanamate-ccmux@latest   # ccmux agents
+go install github.com/sadmachine/asanamate/cmd/asanamate-hub@latest     # Hub project links
 ```
 
 This installs to `$(go env GOBIN)`, else `$(go env GOPATH)/bin` (usually
@@ -69,7 +122,8 @@ Upgrade the way you installed: replace the binary with a newer archive, or
 rerun `go install`. Upgrades never touch
 your config, actions, or state.
 
-To uninstall, delete the binary. Your
+To uninstall, delete the binaries (`asanamate`, plus `asanamate-hrvst`,
+`asanamate-ccmux`, and `asanamate-hub` if you installed them). Your
 files stay until you delete them yourself: the config and actions in
 `~/.config/asanamate`, the state, ticket exports, and logs in
 `~/.local/state/asanamate`, and the Codex hook, if you added it, in
@@ -82,10 +136,9 @@ files stay until you delete them yourself: the config and actions in
 2. Run `asanamate setup`. It checks the token, asks for your workspace and, optionally, the
    directory that holds your git repositories (`-` skips it), and writes
    `~/.config/asanamate/config.toml` with every default explained, plus a
-   pager action and a Claude example in `~/.config/asanamate/actions/`. When
-   Codex is installed, it also offers to add asanamate's agent status hook (see
-   [Agent status](#agent-status)). It warns when the pager action's pager
-   (`$PAGER`, else `less`) is not installed.
+   pager action and a Claude example in `~/.config/asanamate/actions/`. It
+   warns when the pager action's pager (`$PAGER`, else `less`) is not
+   installed.
 3. Run `asanamate`. `asanamate doctor` checks the setup if something fails.
 
 ### Token
@@ -115,9 +168,11 @@ Browsing needs none of these. Each one affects only its own feature, and
 | Repo picker | a directory of clones | `repo_source.root` or `repo_source.command` | leave both empty | `repo_source` | type a repo path when an action asks |
 | Open in browser (`o`, `f`) | macOS `open`; Linux [xdg-utils](https://www.freedesktop.org/wiki/Software/xdg-utils/) and a desktop browser | always on | not needed | `browser` | the status line shows the error and the URL to copy |
 | Copy link or comment (`c`, `y`) | terminal OSC 52 support; in tmux, `set -g set-clipboard on` | always on | not needed | not checked | nothing is copied; asanamate cannot detect this |
+| Paste image into comment (`alt+v`) | macOS `osascript` (built in); Linux `wl-clipboard` (Wayland) or `xclip` (X11). On macOS the terminal must send Option as Alt (kitty `macos_option_as_alt`, Ghostty `macos-option-as-alt`, iTerm2 "Esc+") | always on | not needed | not checked | the comment box shows why; type the image's Markdown yourself |
 | Paste into input (`Ctrl+V`) | macOS `pbpaste`; Linux `xclip` or `xsel` (X11) or `wl-clipboard` (Wayland) | always on | not needed | not checked | the input shows why, and your terminal's paste still works |
-| Agent status | a supported agent tool; see [Agents](#agents-optional) | `[agents]` | remove `[agents]` keys | `agents`, `codex_hook` | off |
-| Time tracking | [hrvst](https://github.com/kgajera/hrvst-cli) 3.x; see [Time tracking](#time-tracking-optional) | `[time_tracking]` | remove `[time_tracking]` keys | `time_tracking` | off |
+| Agent status | an agents command, such as `asanamate-ccmux` for ccmux; see [Agents](#agents-optional) | `agents.command` | remove `[agents]` keys | `agents` | off |
+| Time tracking | `asanamate-hrvst` and [hrvst](https://github.com/kgajera/hrvst-cli) 3.x, or your own provider; see [Time tracking](#time-tracking-optional) | `[time_tracking]` | remove `[time_tracking]` keys | `time_tracking` | off |
+| Project link suggestions | a project links command, such as `asanamate-hub` for imarc's Hub; see [Project links](#project-links-optional) | `project_links.command` | remove `project_links.command` | `project_links` | no suggestions |
 | Inline images | a kitty-graphics terminal ([kitty](https://sw.kovidgoyal.net/kitty/), [Ghostty](https://ghostty.org)); in tmux, `set -g allow-passthrough on` | `images.mode = "auto"` (default) | `images.mode = "off"` | not checked | links shown instead |
 | Nerd Font symbols | a [Nerd Font](https://www.nerdfonts.com) | `symbols = "nerd"` | `symbols = "unicode"` or `"ascii"` | not checked | unicode or ascii symbols |
 | Follow OS reduced motion | macOS `defaults`; GNOME `gsettings` | leave `reduced_motion` unset | set `reduced_motion` | not checked | set `reduced_motion` yourself |
@@ -132,7 +187,9 @@ back to `vi`) and reports any errors in it after you save.
 
 `asanamate config update` rewrites the config from the current template so it
 picks up new settings and comments, keeping every value you set. The previous
-file is saved as `config.toml.bak`; copy any comments of your own back from it.
+file is saved beside it as a timestamped backup, such as
+`config.toml.2026-10-06--14-30-05.bak`; copy any comments of your own back
+from it.
 Actions live in their own files, so updates never touch them.
 
 ## Layout
@@ -143,8 +200,27 @@ to fit full ticket titles, but leaves the reader at least 80 columns and cuts
 titles that no longer fit. At 160 columns
 and wider, a views panel on the left lists My Tasks, recent projects, the
 groupings, sorting, and running agents: press `0`, move with `j`/`k`, and open one
-with `enter`. In a reader at least 90 columns wide, the cards view puts the
-agents and subtasks beside the details card.
+with `enter`. Press `Z` to show or hide this panel independently of the reader.
+It hides automatically below 160 columns. In a reader at least 90 columns wide,
+the cards view puts the agents and subtasks beside the details card. In narrower terminals the list
+fills the screen and `enter` opens the reader in its place.
+
+Fit asanamate to its spot with the `[layout]` table in `config.toml`:
+
+- `reader = false` starts with the reader hidden, such as for a tmux
+  sidebar. Press `z` to show or hide the reader for the session; hiding it
+  moves reader focus to the list. `--hide-preview` also starts with the reader
+  hidden; `z` still toggles it.
+- `list_width = 60` fixes the list at 60 columns, borders included, and gives
+  the reader the rest of the width. `=` and the automatic fitting leave it
+  alone. When fewer than 30 columns would be left for the reader beside the
+  list and the views panel, the reader hides, as in narrow terminals.
+
+```toml
+[layout]
+reader = true
+list_width = 60
+```
 
 Select `+ Add project` below the ticket's project rows and press `enter` to
 add it to another project. The picker excludes projects already on the ticket.
@@ -163,39 +239,69 @@ key press.
 | `g`/`G` | first/last ticket; in the reader, jump to its top or bottom (in cards view, selecting the first or last field, section, or comment) |
 | `ctrl+d`/`ctrl+u` | half page down/up in the list, or scroll the reader half a page |
 | `ctrl+f`/`ctrl+b` (or pgdown/pgup) | page down/up in the list, or scroll the reader a page |
-| `tab` / `shift+tab` | focus the next/previous pane: the views panel (wide screens), the list, and the reader; in the cards view, entering the reader selects its first editable row |
-| `enter` (reader, editable row selected) | edit the selected row, skipping the `e` menu; Add comment opens the comment editor |
-| `esc` (reader) | return focus to the list |
+| `tab`/`shift+tab`, `l`/`h` | focus the next/previous pane: the views panel (wide screens), the list, and the reader; in the cards view, entering the reader selects its first editable row |
+| `enter` | in the list, open the ticket in the reader; in the reader, edit the selected row (Add comment opens the comment editor) |
+| `esc` | return focus to the list |
 | `0` / `1` / `2` | focus the views panel (wide screens) / the list / the reader |
-| `/` | edit the filter (available fields appear while editing; `?` opens the filter guide; Enter or Esc to finish) |
+| `/` | edit the filter (available fields appear while editing; `ctrl+/` opens the filter guide; `enter` keeps the filter, `esc` restores the previous one) |
 | `p` | switch project (recent first) |
 | `I` | open Activity: your actions and changes directly related to you |
 | `H` | ticket history: the last 10 tickets focused in the reader, most recent first; picking one selects it (keeping it in the Viewing section when the view doesn't show it) and focuses the reader |
 | `L` | repo links: link, relink, or unlink each project's repo (starts on the viewed project), or give the selected ticket its own repo that overrides its projects' links without changing them |
 | `space`, `a` | run an action on the selected ticket |
-| `ctrl+a` | create or edit action files (also available in Settings) |
+| `A` | create or edit action files (also available in Settings) |
 | `P` | pin / unpin the selected ticket; pins persist locally per project or My Tasks, above filtered tickets |
-| `e` | edit the selected ticket: add a comment, move it to a section (of a project, or of My Tasks when it is yours), add or remove a project, set a custom field (text, number, date, single- or multi-select, people), assign it, or set its branch (saved locally, overrides `branch_field`; empty removes it) |
-| `C` | add a comment to the selected ticket, from the list or the reader |
-| `d` / `m` / `A` | set the due date / move to a section / assign, skipping the `e` menu |
+| `e` | edit the selected ticket: add a comment, move it to a section (of a project, or of My Tasks when it is yours), add or remove a project, set a custom field (text, number, date, single- or multi-select, people), assign it, mark it complete or reopen it, or set its branch (saved locally, overrides `branch_field`; empty removes it) |
+| `c` | add a comment to the selected ticket, from the list or the reader; in the comment box, `alt+v` pastes a clipboard image (see [Writing back to Asana](#writing-back-to-asana)) |
+| `d` / `m` / `@` | set the due date / move to a section / assign, skipping the `e` menu |
+| `x` | mark the selected ticket complete, or reopen it when it is complete; a ticket the filter now hides stays in Viewing until you move away, so `x` again undoes it |
+| `n` | create a ticket from a title: in the viewed project (in the selected ticket's section when the list is grouped by section), or in My Tasks assigned to you; then select it in the reader (under Viewing when the filter hides it). Set other fields with the edit keys |
+| `N` | create a subtask of the selected ticket from a title, then show the ticket in the reader |
 | `.` | run the last picked action again on the selected ticket |
 | `t` | log completed time for the selected ticket (only when time tracking is configured) |
 | `f` | attachments: view images inline (`j`/`k` step between them) or open in the browser |
 | `b` | group the list by a field (built-ins, `list.fields`, or a custom field on the loaded tickets) |
 | `B` | sort by field and direction, or restore Asana order |
-| `=` | fit the list pane to its content (also on project, grouping, sorting, and filter changes) |
+| `=` | fit the list pane to its content (also on project, grouping, sorting, and filter changes); does nothing while `layout.list_width` is set |
 | `v` | switch the reader between the cards and markdown views |
+| `z` | show or hide the reader for the session (see [Layout](#layout)) |
+| `Z` | show or hide the views sidebar; automatically hidden below 160 columns |
 | `V` | recall or manage saved views |
 | `]` / `[` | apply the next/previous saved view, in name order |
 | `ctrl+s` | save the current filter, grouping, and sorting under a name |
-| `s` | settings: separators, header spacing, reader view, and auto-update interval; changes persist between sessions |
+| `s` | settings: separators, header spacing, reader view, auto-update interval, and project list columns; changes persist between sessions |
 | `o` | open the ticket in the browser |
-| `c` | copy the selected ticket's link to the clipboard (requires terminal OSC 52 support) |
-| `y` | copy the targeted comment as Markdown in the cards reader (requires terminal OSC 52 support); does nothing on other targets |
+| `y` | copy the selected ticket's link to the clipboard (requires terminal OSC 52 support) |
+| `Y` | copy the targeted comment as Markdown in the cards reader (requires terminal OSC 52 support); does nothing on other targets |
 | `r` | reload tickets and clear the inline image cache (including failed loads) |
 | `R` | set the automatic reload interval (persists between sessions) |
 | `?` | show every key |
 | `q` | quit |
+
+Pickers start in browse mode: `j`/`k` move, `/` searches, `enter` picks, and
+`esc` stops searching or closes. Multi-select pickers check items with `space`
+or `tab` and confirm with `enter`. In the repo picker, `ctrl+s` (or the
+`Use "<path>"` row) uses the typed path. Set `picker.type_first = true` to
+open pickers in search mode.
+
+The action menu, the `e` edit menu, and the settings menu work differently:
+each item has its own key, shown in brackets, which picks it at once. They
+have no search; arrows and `ctrl+n`/`ctrl+p` move, and `esc` closes. Action
+keys come from each action file; edit and settings menu keys are fixed.
+
+Every key above can be changed in the `[keys]` tables of `config.toml`; see
+[Configuration](#configuration).
+
+In text editors (comments, field values, action input, and action builder text),
+press `ctrl+e` to edit the current draft in `$VISUAL`, then `$EDITOR`, or `vim`
+if neither is set. Remap it with `keys.input.external_editor`,
+`keys.form.external_editor`, and `keys.form_field.external_editor`.
+For example, launch with `VISUAL=nvim asanamate`.
+Editor settings may include flags, such as `VISUAL='vim -f'`.
+Save and quit (`:wq` in Vim) to return to the same draft; `ctrl+s` still submits.
+Quit without saving (`:q!`) to keep the previous draft. Editor failures also keep
+the previous draft and show an error. The private temporary buffer is deleted
+when the editor exits. Search and filter inputs keep their inline controls.
 
 Inline images are cached by attachment for the current session. Manual reload
 downloads the displayed ticket's images again; automatic reload keeps the cache.
@@ -271,7 +377,7 @@ reassigned to someone else. It stores activity only in memory.
   keys work; `Esc` returns to Activity. On narrow screens, the first `Enter`
   shows the event, and the next opens the ticket. In list-only mode, opening
   a ticket selects it in the ticket list instead.
-- `z` includes or hides automated updates and reminders. These never count
+- `!` includes or hides automated updates and reminders. These never count
   as your actions, even when Asana attributes a reminder to your user ID.
 - `r` refreshes from the API. Activity scans run on opening the view or manual
   refresh, rather than the ticket auto-update timer. `I` or `Esc` from the
@@ -285,8 +391,22 @@ as current context, not proof of who owned a task when an older event occurred.
 
 ## List-only mode and scripting
 
-- `asanamate --no-preview` shows only the ticket list at full width. It is handy
-  in a small popup: pick a ticket, press `space` or `a`, and run an action.
+`--no-preview` remains a deprecated alias for `--hide-preview`. See the
+[deprecated features list](docs/deprecated.md) for compatibility and removal plans.
+
+- `asanamate --hide-preview` starts with the preview hidden, whatever
+  `[layout]` says; `z` shows or hides it for the session. It is handy in a small
+  popup or a tmux sidebar: pick a ticket, press `space` or `a`, and run an
+  action. The views sidebar is independent: `Z` toggles it, and it hides
+  automatically below 160 columns (see [Layout](#layout)).
+
+  ```tmux
+  # Sidebar: the list only, 50 columns down the left of the window
+  bind-key S split-window -hbf -l 50 "asanamate --hide-preview"
+  # Popup: pick a ticket, run an action, and close
+  bind-key T display-popup -E -w 60% -h 60% "asanamate --hide-preview --exit-on-action"
+  ```
+
 - `--exit-on-action` runs `background` actions like `exit` ones: asanamate
   quits, then runs the action, so a popup closes once the action finishes.
   `foreground` actions still return to the list.
@@ -309,22 +429,79 @@ Pick a ticket with fzf:
 asanamate list | fzf --delimiter '\t' --with-nth 2,4 --preview 'asanamate show {1}' | cut -f1
 ```
 
+## Upgrading to v0.2.0
+
+v0.2.0 moves the color settings. The updater also migrates the earlier
+`display`, `list.filter`, and `repo` settings. Run `asanamate config update` to rewrite
+your config; it keeps your values and saves the old file as a timestamped
+`config.toml.<time>.bak`. Until then, asanamate names the first moved key and stops.
+
+| v0.1.0 | v0.2.0 |
+|---|---|
+| `theme` | `theme.name` |
+| `accent_color` | `colors.accent` |
+| `list.header.color` | `colors.header` |
+| `list.pinned.color` | `colors.pinned` |
+| `list.viewing.color` | `colors.viewing` |
+| `list.selection.color` | `colors.selection` |
+| `display.symbols` | `symbols` |
+| `display.reduced_motion` | `reduced_motion` |
+| `list.filter` | `default_filter` |
+| `repo.root` | `repo_source.root` |
+| `repo.command` | `repo_source.command` |
+| `repo.branch_field` | `branch_field` |
+
+The Harvest time tracking provider moved out of asanamate into its own
+binary, `asanamate-hrvst`, in the same release archive (see [Install](#install)).
+Install it, then run `asanamate config update`: it rewrites
+`time_tracking.command = "asanamate time-provider hrvst --task-id <id>"` to
+`"asanamate-hrvst --task-id <id>"`, keeping the flags. Until then, asanamate
+names the old command and stops. `asanamate doctor` no longer checks hrvst;
+run `asanamate-hrvst check` instead.
+
+Default keys changed too: `enter` in the list opens the reader; `c` adds a
+comment (was `C`); `y` copies the link (was `c`); `Y` copies the targeted
+comment (was `y`); `@` assigns (was `A`); `A` opens the action builder (was
+`ctrl+a`); `ctrl+/` opens the filter guide (was `?`), and `esc` in the filter
+restores the previous filter. Pickers start in browse mode; press `/` to
+search, or set `picker.type_first = true`.
+
+The ccmux agent source moved out of asanamate into the `asanamate-ccmux`
+adapter, which ships in the same archive. Install it next to `asanamate` (see
+[Agents](#agents-optional)); `asanamate config update` rewrites the preset:
+
+| v0.1.0 | v0.2.0 |
+|---|---|
+| `agents.preset = "ccmux"` | `agents.command = "asanamate-ccmux"` |
+| `asanamate setup hooks` | `asanamate-ccmux setup` |
+| `asanamate hook codex` (Codex hook) | `asanamate-ccmux hook codex` |
+
+Codex hooks that run `asanamate hook codex` keep working in v0.2.0, and
+`doctor` warns about them in its `codex_hook` row; v0.3.0 drops that command.
+Run `asanamate-ccmux setup` to replace the hook.
+
 ## Configuration
 
-`~/.config/asanamate/config.toml` (or `$XDG_CONFIG_HOME/asanamate/config.toml`):
+`~/.config/asanamate/config.toml` (or `$XDG_CONFIG_HOME/asanamate/config.toml`).
+Changes to `config.toml`, theme files, and action files take effect the next
+time asanamate starts; actions saved with the action builder (`A`) apply at
+once. Run `asanamate doctor` to check a change without starting the TUI.
 
 | Key | Default | Meaning |
 |---|---|---|
 | `workspace` | set by setup | Asana workspace gid |
-| `theme` | `"dark"` | reading pane style: `dark` or `light` |
-| `accent_color` | `"4"` | accent for reader card headings, group headers, and the selection marker: an ANSI color number (`0`–`255`) or `#rrggbb` |
+| `theme.name` | `"auto"` | color theme: `auto` (follow the terminal background), `dark`, `light`, or a file in `themes/`; see [Themes](#themes) |
+| `theme.dark` / `theme.light` | `"dark"` / `"light"` | themes `auto` uses on dark and light backgrounds |
+| `colors.*` | the theme's | per-role overrides on top of the theme: a color (`0`–`255`, `#rgb`, or `#rrggbb`) or a style table `{ fg, bg, bold, italic, underline, faint, reverse }`; see [Themes](#themes) |
 | `default_filter` | `"is:open"` | filter applied at startup |
 | `confirm_writes` | `true` | write-back subcommands ask before writing |
+| `layout.reader` | `true` | start with the reader beside the list; `z` shows or hides it for the session; `--hide-preview` starts with it hidden. See [Layout](#layout) |
+| `layout.list_width` | `0` | fix the list pane at this many columns (at least 30), borders included, and give the reader the rest; the reader hides when fewer than 30 columns remain for it; `0` sizes the list automatically. See [Layout](#layout) |
 | `list.layout` | `"single"` | `single` (one line per ticket) or `multi` (title, then fields on a second line) |
 | `list.refresh_interval` | `"30s"` | automatic list reload interval, at least `1s`; durations such as `"15s"` or `"1m"`; `R` or the `s` settings menu overrides it and the override persists, `ctrl+s` applies it; the statusline shows the interval, and an automatic reload marks the list border yellow instead of opening the loading modal |
-| `list.fields` | `["section", "due"]` | values shown with the title, in aligned columns (`single` layout); due dates show relative to today and are colored by urgency |
+| `list.fields` | `["section", "due"]` | default values shown with the title, in aligned columns (`single` layout); `s`, then `c` overrides columns per project; due dates show relative to today and are colored by urgency |
 | `branch_field` | `""` | custom field holding the ticket's git branch (`$ASANAMATE_BRANCH`); empty uses the ticket's ID field, else the title slug |
-| `agents.preset` / `agents.command` | unset (off) | opt-in agent tracking; see [Agents](#agents-optional) |
+| `agents.command` | unset (off) | opt-in agent tracking, such as `"asanamate-ccmux"`; see [Agents](#agents-optional) |
 | `symbols` | `unicode` on UTF-8, else `ascii` | `unicode`, `nerd`, or `ascii` for ticket markers and agent states |
 | `reduced_motion` | OS setting | `true` shows static agent symbols instead of the spinner |
 | `list.separator` | `false` | frame each ticket with lines above and below; neighbours share one; the `s` settings menu toggles it and the choice persists |
@@ -333,18 +510,17 @@ asanamate list | fzf --delimiter '\t' --with-nth 2,4 --preview 'asanamate show {
 | `list.sort.direction` | `"asc"` | `asc` (earliest dates / A–Z) or `desc` (latest dates / Z–A); missing values always last |
 | `list.header.style` | `"rule"` | group headers: `rule` (`── Label (n) ───`) or `bar` (reversed bar) |
 | `list.header.spacing` | `false` | `true` adds a blank line above and below each group header; the `s` settings menu toggles it and the choice persists |
-| `list.header.color` | `accent_color` | group header color, same format as `accent_color` |
-| `list.pinned.color` | `"208"` (orange) | header color of the Pinned section for tickets manually pinned with `P`; same format as `accent_color`, empty uses it |
-| `list.viewing.color` | `"5"` (magenta) | header color of the Viewing section for a ticket temporarily kept outside the filter; same format as `accent_color`, empty uses it |
 | `list.selection.style` | `"marker"` | selected ticket: `marker` (bold title with a left `▌`) or `bar` (reversed row; agent badges swap colors) |
-| `list.selection.color` | `accent_color` | selection marker color, same format as `accent_color` |
 | `reader.view` | `"cards"` | reader's starting view: `cards` (details card, titled sections, one box per comment) or `markdown` (the rendered ticket Markdown); `v` switches and the choice persists |
 | `images.mode` | `"auto"` | kitty graphics: `auto`, `kitty` (force on), or `off` |
 | `images.inline` | `false` | cards view: draw images in descriptions and comments in place of their links (needs `images.mode` on and a terminal with kitty Unicode placeholders, such as kitty or Ghostty) |
+| `picker.type_first` | `false` | open pickers in search mode, so typing filters at once; `esc` leaves search for browse mode |
+| `keys.<scope>.<name>` | see the template | key bindings: a list of keys per binding, such as `[keys.main] quit = ["q", "ctrl+q"]`; `[]` unbinds. Scopes: `main`, `activity`, `views`, `filter`, `picker`, `form`, `form_field`, `input`, `builder`, `notice`. Keys are a character (`"j"`, `"?"`) or a key name with modifiers (`"ctrl+d"`, `"shift+tab"`, `"enter"`, `"space"`, `"pgdown"`); a letter with `ctrl` or `alt` is lower case, plus `shift` for the capital (`"ctrl+shift+q"`, not `"ctrl+Q"`); `ctrl+c` always quits and can't be bound. `asanamate setup` and `asanamate config update` write every binding, commented, with its default |
 | `reader.max_text_width` | `0` | cards view: wrap description and comment text at this many columns (words are kept whole); `0` wraps at the pane width |
 | `repo_source.root` | your setup directory, or empty | directory whose direct children with a `.git` entry (clones and worktrees) fill the repo picker; absolute or starting with `~`; empty: type a path |
-| `repo_source.command` | unset | prints one repo path per line; replaces `repo_source.root` when set |
-| `time_tracking.id` / `time_tracking.command` | unset (off) | provider ID for saved choices and command implementing the time tracking JSON protocol |
+| `repo_source.command` | unset | prints one repo path per line; replaces `repo_source.root` when set; see [Repo sources](docs/extensions.md#repo-sources) |
+| `time_tracking.id` / `time_tracking.command` | unset (off) | provider ID for saved choices and command implementing the [time tracking JSON protocol](docs/extensions.md#time-tracking) |
+| `project_links.command` | unset (off) | command implementing the [project links JSON protocol](docs/extensions.md#project-links); its links preselect the repo picker and time form |
 
 The title is always shown. `list.fields` picks the other columns and their
 order: the built-ins `section`, `due`, `assignee`, `initials` (the assignee's
@@ -352,6 +528,21 @@ initials as a colored badge, handy in shared projects), `project`, `tags`, and
 `completed` (open/done). Any other name is matched to a custom field, ignoring
 case and surrounding spaces. A column shows only when some visible ticket has
 a value for it.
+
+Open settings with `s`, then press `c` to choose columns for the current
+project (or My Tasks). Press `space` or `tab` to toggle a column,
+`ctrl+up`/`ctrl+down` to change its order, and `enter` to save. Press `/` to
+search; clear the search before reordering. `esc` clears search or cancels.
+`ctrl+r` removes the project's override and restores the `list.fields` defaults. The title and agent badge remain independent of these
+choices. Column choices persist across restarts and stay with the project
+when applying named views.
+
+The picker offers common fields and the custom fields attached to the project,
+including fields with no values and fields on empty projects. My Tasks offers
+custom fields from its loaded tasks. Selected custom fields are remembered by
+Asana ID, so renames and duplicate names do not change which value is shown.
+An unavailable selected field stays in the picker so it can be removed; its
+column has no value on tasks where the field is absent.
 
 `list.group_by` takes the same names and puts a `Value (count)` header above
 each group. Groups keep Asana's order (first seen), with tickets missing
@@ -393,23 +584,73 @@ To pick repos from sesh or zoxide instead:
 command = "sesh list -z"
 ```
 
+### Themes
+
+`[theme] name` picks a built-in theme (`dark`, `light`), a theme file, or
+`auto`, which asks the terminal for its background color and uses
+`theme.dark` or `theme.light`. Built-in themes use ANSI color numbers, so they
+follow your terminal's color scheme.
+
+A theme file is `themes/<name>.toml` next to `config.toml`; the names `dark`,
+`light`, and `auto` are reserved. Setup and `asanamate config update` write
+`themes/example.toml.example` to start from:
+
+```toml
+base = "dark"            # built-in theme for every color this file leaves out
+
+[colors]
+accent = "#7aa2f7"
+selection = { fg = "#bb9af7", bold = true }
+
+[colors.mode]
+normal = { fg = "#1a1b26", bg = "#7aa2f7", bold = true }
+
+[colors.markdown]
+link = { fg = "#7dcfff", underline = true }
+```
+
+Colors layer in order: the built-in base, the theme file, then `[colors]` in
+`config.toml`. Each style field (fg, bg, bold, ...) layers on its own, so
+`accent = "#ffffff"` keeps the theme's bold. Unset `header`, `selection`, and
+`mode.normal` use `accent`; unset `mode.filter` uses `warn`. A mode pill
+without a background is drawn reversed.
+
+| Role | Used for |
+|---|---|
+| `accent` | reader headings, focused panel border, NORMAL and VIEWS pills |
+| `border` | unfocused panel and card borders |
+| `muted` | secondary text such as distant due dates |
+| `highlight` | bar selection and the views panel cursor |
+| `ok`, `warn`, `error` | status messages and due-date urgency |
+| `working` | working coding agents |
+| `header`, `selection` | group headers, selection marker |
+| `pinned`, `viewing` | Pinned and Viewing section headers |
+| `reacted` | comment reactions you made, drawn as pills |
+| `authors` | comment author names, cycled |
+| `mode.normal`, `mode.filter`, `mode.read`, `mode.edit` | statusline mode pills |
+| `markdown.text`, `.heading`, `.h1`, `.link`, `.code`, `.code_block`, `.quote`, `.rule` | reading pane Markdown, on top of glamour's dark or light style |
+
 ### Time tracking (optional)
 
-Harvest support uses [hrvst](https://github.com/kgajera/hrvst-cli) 3.x
+Harvest support is a separate provider binary, `asanamate-hrvst`, shipped
+with asanamate (see [Install](#install)). It uses
+[hrvst](https://github.com/kgajera/hrvst-cli) 3.x
 (`npm install -g hrvst-cli`), which needs Node.js 20 or later. Set it up:
 
-1. Run `hrvst login` and authorize your Harvest account. hrvst stores the
-   credentials in `~/.hrvst/config.json`; asanamate reads them from there to
-   create entries with the Asana link, and never stores them itself.
-2. Find the numeric ID of the Harvest task you log time to. Run
+1. Install `asanamate-hrvst` on your `PATH`.
+2. Run `hrvst login` and authorize your Harvest account. hrvst stores the
+   credentials in `~/.hrvst/config.json`; `asanamate-hrvst` reads them from
+   there to create entries with the Asana link, and never stores them itself.
+   `asanamate-hrvst check` confirms hrvst is installed and logged in.
+3. Find the numeric ID of the Harvest task you log time to. Run
    `hrvst users project-assignments me --output=json` and pick the `task.id`
    under `task_assignments`.
-3. Add to the config:
+4. Add to the config:
 
 ```toml
 [time_tracking]
 id = "hrvst"
-command = "asanamate time-provider hrvst --task-id YOUR_TASK_ID"
+command = "asanamate-hrvst --task-id YOUR_TASK_ID"
 ```
 
 To turn time tracking off, remove the `[time_tracking]` keys.
@@ -433,48 +674,60 @@ summary refreshes with ticket details and after a successful log. Loading,
 zero logged time, unsupported retrieval, and unavailable retrieval are distinct;
 a lookup failure does not prevent reading the ticket or logging time.
 
-Other trackers can implement same command protocol. Command runs through
-`/bin/sh -c` and reads one JSON request from stdin. For `{"operation":"form"}`
-return a form spec, such as:
+Other trackers can implement the same protocol: the command reads one JSON
+request (`form`, `log`, or an optional `summary`) on stdin and prints a JSON
+reply. See [Time tracking](docs/extensions.md#time-tracking) for the request
+and reply formats. Use a different provider `id` when changing trackers so
+saved choices stay separate.
 
-```json
-{"fields":[
-  {"id":"project_id","label":"Project","type":"select","remember":true,
-   "options":[{"id":"123","name":"Web"}]},
-  {"id":"hours","label":"Hours","type":"hours"}
-]}
+### Project links (optional)
+
+A project links command tells asanamate where an Asana project lives in other
+systems: its git repository and its time tracking project. When the repo
+picker opens for a project without a linked repo, local repos whose remote
+matches come first, marked `suggested`, with the cursor on the first; Enter
+links it as if you had picked it. The time form preselects the suggested
+tracker project unless you chose another one before. asanamate only reads
+these links; it never writes them back. A lookup failure shows in the picker
+or status line, and the picker and form work without suggestions.
+
+imarc's [Hub](https://hub.imarc.net) support is a separate binary,
+`asanamate-hub`, shipped with asanamate (see [Install](#install)). Set it up:
+
+1. Install `asanamate-hub` on your `PATH`.
+2. Create a Hub service account at
+   `https://hub.imarc.net/admin/service-accounts`; a read-only one is enough.
+   Export its client ID and secret in your shell's startup file, so
+   asanamate's child processes see them. `asanamate-hub check` confirms both
+   are set.
+
+   ```sh
+   export HUB_CLIENT_ID=...
+   export HUB_CLIENT_SECRET=...
+   ```
+
+3. Add to the config:
+
+```toml
+[project_links]
+command = "asanamate-hub"
 ```
 
-Fields are required. IDs use snake_case. Select option IDs must be stable;
-`remember` saves a select choice per Asana project. Time forms need exactly
-one `hours` field. The `log` request contains `values` keyed by field ID and
-an `asana` object with `task_gid`, `project_gid`, `title`, and `url`. Exit zero
-only after creating entry. Failed logs are never retried automatically. Use a
-different provider `id` when changing trackers so saved choices stay separate.
+Hub projects whose `Asana Project` link equals the Asana project's GID supply
+their `Git Repository` links and `Harvest Project` links (the current
+contract's first), skipping links outside their dates; `asanamate-hrvst`
+preselects that Harvest project. `--url` points at another Hub.
 
-Providers can also handle an optional `summary` operation. The request contains
-`asana.task_gid` and `asana.url`; no project selection or form values are needed:
-
-```json
-{"operation":"summary","asana":{"task_gid":"123","url":"https://app.asana.com/0/1/123"}}
-```
-
-Return `{"total_seconds":13500}` for 3 hours 45 minutes, or
-`{"total_seconds":0}` when no linked stopped entries exist. `total_seconds`
-must be a nonnegative integer representing all-time, unrounded duration from
-stopped entries visible to the account, across projects for the exact ticket.
-Normalize provider units to seconds; do not match by ticket title. Retrieve
-all pages before returning a total. On retrieval failure, exit nonzero; never
-return a partial total. Providers without retrieval can return
-`{"unsupported":true}`. Older providers that reject `summary` show unavailable
-time while their existing form and logging operations continue to work.
+Other systems can implement the same protocol: the command reads one JSON
+request on stdin and prints the project's links. See
+[Project links](docs/extensions.md#project-links) for the formats.
 
 ## Actions
 
-Press `ctrl+a`, or choose **Build / edit actions** in Settings (`s`, then `a`).
+Press `A`, or choose **Build / edit actions** in Settings (`s`, then `a`).
 Choose **Create action** or an existing action. The builder provides every
 standard action setting, including ordered form fields and select options.
-Use j/k, arrows, or Tab to move, Enter to edit, and Ctrl+S to accept a text
+Use j/k or arrows to move, Enter to edit, and Ctrl+S to accept a text
 edit. Press `/` to search the current menu; Escape clears search and returns
 to navigation. Outside search, Escape returns or discards the draft.
 Help below the list starts with `nf-fa-circle_info` (`\uf05a`) for Nerd Font
@@ -517,24 +770,10 @@ Commands run with `/bin/sh -c`. Ticket data is available only through
 environment variables and files. Always reference the variables, and never
 paste ticket text into the command, because ticket content is untrusted.
 
-| Variable | Value |
-|---|---|
-| `ASANAMATE_GID`, `ASANAMATE_TITLE`, `ASANAMATE_URL` | task gid, name, permalink |
-| `ASANAMATE_SLUG` | branch-friendly title, e.g. `fix-login-bug` |
-| `ASANAMATE_COMPLETED`, `ASANAMATE_ASSIGNEE`, `ASANAMATE_DUE`, `ASANAMATE_TAGS` | task details |
-| `ASANAMATE_MY_SECTION` | My Tasks section |
-| `ASANAMATE_PROJECT`, `ASANAMATE_PROJECT_GID`, `ASANAMATE_SECTION` | active project and the ticket's section in it |
-| `ASANAMATE_REPO` | resolved repo (`repo = true` actions) |
-| `ASANAMATE_WORKTREE` | the repo's worktree with `$ASANAMATE_BRANCH` checked out, the main one included; empty when none has it |
-| `ASANAMATE_BRANCH` | the ticket's branch: the one saved for it, else `branch_field`'s value, else the ID field, else the title slug |
-| `ASANAMATE_AGENT_STATE`, `ASANAMATE_AGENT_STATUS`, `ASANAMATE_AGENT_PATH`, `ASANAMATE_AGENT_TARGET`, `ASANAMATE_AGENT_TITLE` | the agent the action is about (the chosen one for `agent = true`, else the most urgent): normalized state, raw status, directory, jump id, title. Empty without agents |
-| `ASANAMATE_AGENT_TARGETS` | every linked agent, one `target<TAB>state<TAB>path<TAB>title` line each |
-| `ASANAMATE_COMMENT_GID`, `ASANAMATE_COMMENT_AUTHOR`, `ASANAMATE_COMMENT_AUTHOR_GID`, `ASANAMATE_COMMENT_DATE`, `ASANAMATE_COMMENT_TEXT` | the highlighted comment when the menu opened: story gid, author name and gid, `created_at` timestamp, and body as Markdown. Empty when no comment is highlighted |
-| `ASANAMATE_TICKET_JSON`, `ASANAMATE_TICKET_MD` | full ticket as JSON / Markdown |
-| `ASANAMATE_INPUT_FILE` | text typed into the `input` box, possibly empty. Empty path for actions without `input` |
-| `ASANAMATE_PARAM_<ID>` | selected action form value, with its field ID uppercased |
-| `ASANAMATE_FIELD_<NAME>` | custom field display values, e.g. `ASANAMATE_FIELD_BRANCH_NAME` |
-| `ASANAMATE_CONFIRM_WRITES` | `1`/`0`, read by the write-back subcommands |
+Common variables are `$ASANAMATE_GID`, `$ASANAMATE_TITLE`,
+`$ASANAMATE_BRANCH`, `$ASANAMATE_REPO`, and `$ASANAMATE_TICKET_MD` (the full
+ticket as Markdown). [Actions](docs/extensions.md#actions) lists every
+variable, the ticket files, and how output and exit status are handled.
 
 Modes:
 
@@ -610,7 +849,8 @@ Otherwise it is the project you are viewing (if the ticket is in it), or the
 ticket's only project.
 
 Repo resolution: the first time a project's ticket runs a `repo = true` action,
-you pick a repo from `repo_source` or type any path (Tab). asanamate
+you pick a repo from `repo_source` or type any path (`/`, the path, then
+`ctrl+s`). asanamate
 remembers it. Tickets in several projects always ask which project to use.
 A ticket given its own repo with `L` (**This ticket only**) uses that repo
 instead, skips the project question, and leaves every project link as it is.
@@ -641,17 +881,25 @@ command = 'sesh connect "$ASANAMATE_REPO"'
 
 asanamate can show coding agents that another tool is running, such as
 [ccmux](https://github.com/motherskitchenblr2/ccmux), next to their tickets.
-It is off until you pick a source:
+It is off until you set a command that lists them. For ccmux, use the
+`asanamate-ccmux` adapter:
 
 ```toml
 branch_field = "Branch Name"
 
 [agents]
-preset = "ccmux"   # reads `ccmux show --json` directly
+command = "asanamate-ccmux"   # runs `ccmux show --json`
 ```
 
+`asanamate-ccmux` ships in the release archive next to `asanamate`; extract it
+with `tar -xzf "$archive" asanamate-ccmux` and move it to `~/.local/bin/` too
+(see [Install](#install)). It must be on the `PATH` asanamate runs with.
+It does not install ccmux; without ccmux, the status line and `doctor` show
+`ccmux not installed` with a link to it.
+
 Or use any tool with a command that prints `<path>\t<status>[\t<target>[\t<title>]]`
-per agent, plus a mapping from its statuses to asanamate's states:
+per agent ([Agent sources](docs/extensions.md#agent-sources) has the details),
+plus a mapping from its statuses to asanamate's states:
 
 ```toml
 [agents]
@@ -664,38 +912,41 @@ completed = ["done", "finished"]
 idle      = ["sleeping"]   # anything unmapped is "unknown"
 ```
 
-The sources run every 5 seconds. With the ccmux preset, a session that finished
-a turn you have not looked at yet counts as `completed`, and an agent's title is
-ccmux's session summary, else its first prompt (one line, cut to 60
-characters), else its pane title.
+The command runs every 5 seconds. With `asanamate-ccmux`, a session that
+finished a turn you have not looked at yet counts as `completed`, and an
+agent's title is ccmux's session summary, else its first prompt (one line, cut
+to 60 characters), else its pane title. Agents link by the branch and repo
+ccmux reports, so a session in a nested repo links to the project around it.
 
 ### Agent status
 
-ccmux can report a busy session as `idle`, Codex sessions most of all. With the
-ccmux preset, an `idle` session therefore takes the state its agent last
+ccmux can report a busy session as `idle`, Codex sessions most of all.
+`asanamate-ccmux` therefore gives an `idle` session the state its agent last
 reported itself, when that report is newer than ccmux's:
 
 - **Claude Code** keeps a file per running session in
-  `$CLAUDE_CONFIG_DIR/sessions/` (else `~/.claude/sessions/`). asanamate reads
-  it as is; nothing to install.
-- **Codex** reports through a hook. `asanamate setup` offers to add
-  `asanamate hook codex` to `$CODEX_HOME/hooks.json` (else
-  `~/.codex/hooks.json`), saving the old file as `hooks.json.bak`; run
-  `asanamate setup hooks` to add it later. Codex asks you to trust the new
+  `$CLAUDE_CONFIG_DIR/sessions/` (else `~/.claude/sessions/`). The adapter
+  reads it as is; nothing to install.
+- **Codex** reports through a hook. `asanamate-ccmux setup` adds
+  `asanamate-ccmux hook codex` to `$CODEX_HOME/hooks.json` (else
+  `~/.codex/hooks.json`), after asking, saving the old file as a timestamped
+  `hooks.json.<time>.bak`. Codex asks you to trust the new
   hooks on its next start, and needs hooks on (`[features] hooks = true`). The
   hook writes one file per session in `$XDG_STATE_HOME/asanamate/agents/`
   (else `~/.local/state/asanamate/agents/`).
   Without it, Codex states fall back to the Codex pane title, and are
   inaccurate or wrong when the title format changes.
 
-  The hook runs asanamate by its full path. After you move or reinstall
-  asanamate somewhere else, `asanamate setup hooks` finds the old hook, and
-  `doctor` reports it in its `codex_hook` row; answer yes to replace it with
-  the current path. Your other hooks stay, and the old file is saved as
-  `hooks.json.bak` again. To remove the hook, delete the entries whose command
-  ends in `hook codex` from `hooks.json`.
+  The hook runs `asanamate-ccmux` by its full path. After you move or
+  reinstall it somewhere else, run `asanamate-ccmux setup` again: it finds the
+  old hook, including one that runs `asanamate hook codex` from before
+  v0.2.0, and offers to replace it with the current path. Your other hooks
+  stay, and the old file is saved as a timestamped `hooks.json.<time>.bak`
+  again. To remove the hook, delete the entries whose command ends in
+  `hook codex` from `hooks.json`.
 
-Any status other than `idle` from ccmux is kept as is.
+Any status other than `idle` from ccmux is passed on as is, so
+`[agents.states]` can map it.
 
 **Linking.** A ticket matches every agent whose working directory has
 `$ASANAMATE_BRANCH` checked out, in the ticket's own repo when set, else a
@@ -774,8 +1025,38 @@ steer the agent. Be careful combining this with auto-approved tools.
 ```sh
 asanamate comment [--yes] <gid> "Opened PR https://..."   # "-" reads stdin
 asanamate move    [--yes] [--project <gid>] <gid> "In Review"
+asanamate move    [--yes] --my-tasks <gid> "Later"          # a section of your My Tasks
 asanamate field   [--yes] [--project <gid>] <gid> "Branch Name" feature/fix-login
+asanamate assign  [--yes] <gid> "Ann Lee"                   # or me; "" unassigns
+asanamate due     [--yes] <gid> 2026-10-01                  # "" clears the date
+asanamate project add    [--yes] <gid> <project-gid>
+asanamate project remove [--yes] <gid> <project-gid>
+asanamate complete [--yes] [--reopen] <gid>                 # --reopen marks it incomplete
+asanamate create  [--yes] [--project <gid> [--section "To Do"] | --parent <gid>] \
+                  [--assignee "Ann Lee"] [--due 2026-10-01] [--notes <markdown | ->] "Fix login"
 ```
+
+The TUI's edits run the same code, so each one is also a command here.
+
+`asanamate create` prints only the new ticket's gid, so scripts can chain it
+(`gid=$(asanamate create --yes "Fix login")`). Without `--project` or
+`--parent`, the ticket goes to your My Tasks, assigned to you. `--parent`
+makes a subtask and cannot be combined with `--project`. `--assignee` takes a
+name or `me` like `asanamate assign`, and `--notes` takes the description in
+Markdown like a comment (`-` reads stdin), without image uploads.
+
+`asanamate assign` takes a workspace user's full name (case-insensitive), or
+`me` for yourself, and refuses a name two users share. `asanamate due` takes
+`YYYY-MM-DD` only. `asanamate move --my-tasks` works only on tickets assigned
+to you, since Asana shows a ticket's My Tasks section only to its assignee.
+Wherever a command takes a name (a section, field, option, or user), a gid
+works too.
+
+`asanamate field` takes the value as typed for text fields, a number, a date
+as `YYYY-MM-DD`, or an option name (case-insensitive). Multi-select and people
+fields take a comma-separated list of option names or users' full names, such
+as `"Frontend, Backend"`; the list replaces the field's current value. `""`
+clears any field.
 
 Each command asks on the terminal before writing unless `--yes` is given,
 `ASANAMATE_CONFIRM_WRITES=0` is set, or `confirm_writes = false`. With no
@@ -807,9 +1088,18 @@ COMMENT
 ```
 
 Code and link text do not expand `@Full Name` mentions. Raw HTML stays literal.
-Asana comments do not support headings, images, or tables: headings become bold,
-images retain their alt text, and table syntax stays text. Lists inside quotes
-and code blocks or quotes inside lists are flattened to supported formatting.
+Asana comments do not support headings or tables: headings become bold and
+table syntax stays text. Lists inside quotes and code blocks or quotes inside
+lists are flattened to supported formatting.
+
+A local image, `![](~/Desktop/shot.png)`, is attached to the task and shown
+inline in the comment; a comment can be only an image. Paths are relative to
+the working directory, `~/` is your home directory, and a path with spaces
+needs angle brackets: `![](<~/My Shots/a.png>)`. Only image files qualify, up
+to 100 MB each. The confirmation lists the files to upload, and each upload
+also adds an "attached" entry to the task's activity. Images on the web
+(`https://...`) keep only their alt text. In the TUI comment box, `alt+v`
+saves the clipboard image to a temporary file and inserts its Markdown.
 
 User mentions display their names without profile links. Other links stay intact.
 Fenced code blocks preserve whitespace but do not add syntax highlighting.
@@ -826,7 +1116,7 @@ matches no one or two people with the same name, stays as plain text.
 # Popup (pair with exit-mode actions)
 bind-key A display-popup -E -w 90% -h 90% asanamate
 # Quick-pick popup: list only
-bind-key T display-popup -E -w 60% -h 60% "asanamate --no-preview --exit-on-action"
+bind-key T display-popup -E -w 60% -h 60% "asanamate --hide-preview --exit-on-action"
 # Pane (pair with background actions)
 bind-key a split-window -h asanamate
 # Needed for inline images inside tmux
@@ -843,6 +1133,11 @@ feature, without running actions or writing anything:
 - `warning` lines name a missing tool and the feature that needs it.
 - `off` features are not configured; `unchecked` ones run your own commands,
   which `doctor` does not run.
+- An `agents` warning ending in `exit status 127` means the shell cannot
+  find the agents command, such as `asanamate-ccmux`: install it on your
+  `PATH` (see [Agents](#agents-optional)).
+- A `codex_hook` warning means Codex still runs `asanamate hook codex`, which
+  v0.3.0 drops; run `asanamate-ccmux setup` to replace it.
 
 With a ticket gid, it also explains why each agent links to that ticket or not.
 
@@ -852,7 +1147,7 @@ With a ticket gid, it also explains why each agent links to that ticket or not.
 2. Set `ASANA_ACCESS_TOKEN` there the same way as before (see [Token](#token)).
    Never copy the token inside a file with the others; create a new token at
    <https://app.asana.com/0/my-apps> if you prefer.
-3. Copy `~/.config/asanamate/` (config and actions). If a path in it differs
+3. Copy `~/.config/asanamate/` (config, actions, and themes). If a path in it differs
    on the new machine, such as `repo_source.root`, edit it; paths starting
    with `~` carry over.
 4. Optionally copy `~/.local/state/asanamate/state.toml` to keep repo links,
@@ -862,7 +1157,7 @@ With a ticket gid, it also explains why each agent links to that ticket or not.
 5. Install the tools your own actions use, and the optional tools you had on
    (see [Optional features](#optional-features)). Run `hrvst login` again for
    time tracking.
-6. Run `asanamate setup hooks` if you use the Codex hook; it adds or repairs
+6. Run `asanamate-ccmux setup` if you use the Codex hook; it adds or repairs
    the hook for the new path.
 7. Run `asanamate doctor` and fix what it reports.
 
@@ -875,7 +1170,8 @@ is no need to copy them.
 
 - Config: `~/.config/asanamate/config.toml`
 - Actions: `~/.config/asanamate/actions/*.toml`
-- State (repo links, saved branches, saved views, recent projects, ticket history): `~/.local/state/asanamate/state.toml`
+- Themes: `~/.config/asanamate/themes/*.toml`
+- State (repo links, saved branches, saved views, recent projects, the cached project list, ticket history): `~/.local/state/asanamate/state.toml`
 - Ticket exports: `~/.local/state/asanamate/tickets/<gid>/`
 - Background action log: `~/.local/state/asanamate/actions.log`
 

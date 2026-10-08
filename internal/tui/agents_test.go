@@ -264,3 +264,36 @@ func TestReaderListsAgentsAndKeepsScroll(t *testing.T) {
 		t.Fatalf("refresh must update the section and keep scroll (offset %d)", m.reader.YOffset())
 	}
 }
+
+func TestAgentsOnOtherBranchesHideUntilShown(t *testing.T) {
+	other := func(target, branch string) agents.Agent {
+		a := onBranch(agents.Idle, target)
+		a.Branch, a.Path = branch, "/code/web/"+target
+		return a
+	}
+	for _, width := range []int{260, 70} {
+		for _, linked := range []bool{false, true} {
+			m := agentModel(t, config.SymbolsUnicode, true)
+			m.Update(tea.WindowSizeMsg{Width: width, Height: 40})
+			m.Update(detailMsg{gid: "1", ticket: ticket.Ticket{Task: agentTask("feat/x")}})
+			list := []agents.Agent{other("o1", "feat/y"), other("o2", "feat/z")}
+			if linked {
+				list = append(list, onBranch(agents.Working, "w1"))
+			}
+			m.Update(agentsMsg{list: list})
+			if content := ansi.Strip(m.reader.GetContent()); strings.Contains(content, "o1 is on") || !strings.Contains(content, "+ Show 2 agents on other branches") {
+				t.Fatalf("width %d, linked %v: other-branch agents must start hidden:\n%s", width, linked, content)
+			}
+			m.focusReader, m.fieldKey = true, otherAgentsKey
+			m.renderDetail(true)
+			lines := strings.Split(ansi.Strip(m.reader.GetContent()), "\n")
+			if line := lines[m.fieldLines[otherAgentsKey]]; !strings.Contains(line, "+ Show 2 agents") {
+				t.Fatalf("width %d, linked %v: Show row is not on line %d: %q", width, linked, m.fieldLines[otherAgentsKey], line)
+			}
+			press(m, "enter")
+			if content := ansi.Strip(m.reader.GetContent()); !strings.Contains(content, "o1 is on feat/y, not feat/x") || strings.Contains(content, "+ Show") || m.fieldKey != "section:agents" {
+				t.Fatalf("width %d, linked %v: enter must show the agents and select the section (field %q):\n%s", width, linked, m.fieldKey, content)
+			}
+		}
+	}
+}

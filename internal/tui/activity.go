@@ -144,7 +144,7 @@ func (m *Model) layoutActivity() {
 	a := m.activity
 	_, width, split := m.paneWidths()
 	if !split {
-		width = m.width
+		width = m.width - m.navWidth()
 	}
 	a.reader.SetWidth(max(width, 1))
 	a.reader.SetHeight(max(m.bodyHeight()-3, 1))
@@ -188,7 +188,7 @@ func (m *Model) renderActivityDetail(keepScroll bool) {
 	if e.Story.Assignee != nil {
 		lines = append(lines, "", "Assigned to: "+ticket.OneLine(e.Story.Assignee.Name))
 	}
-	lines = append(lines, "", dimStyle.Render(ansi.Wrap("Event: "+ticket.OneLine(e.Story.ResourceSubtype), width, "")), "", dimStyle.Render("Enter: open ticket · Esc: activity list"))
+	lines = append(lines, "", dimStyle.Render(ansi.Wrap("Event: "+ticket.OneLine(e.Story.ResourceSubtype), width, "")), "", dimStyle.Render(keyLabel("main", "open")+": open ticket · "+keyLabel("main", "focus_list")+": activity list"))
 	before := a.reader.YOffset()
 	a.reader.SetContent(strings.Join(lines, "\n"))
 	if keepScroll {
@@ -214,26 +214,32 @@ func activityDue(d *asana.StoryDates) string {
 func (m *Model) handleActivityKey(msg tea.KeyPressMsg) tea.Cmd {
 	a, k := m.activity, msg.String()
 	if a.filtering {
-		if k == "enter" || k == "esc" {
+		if name := keys.Name("filter", k); name == "done" || name == "cancel" {
 			a.filtering = false
 			a.query.Blur()
 			return nil
 		}
 		return m.updateActivitySearch(msg)
 	}
-	if m.focusNav && slices.Contains(navKeys, k) {
-		return m.updateNav(k)
+	if m.focusNav {
+		if name := keys.Name("views", k); name != "" {
+			return m.updateNav(name)
+		}
+	}
+	name := keys.Name("activity", k)
+	if name == "" {
+		name = keys.Name("main", k)
 	}
 	move := 0
-	switch k {
-	case "q":
+	switch name {
+	case "quit":
 		m.closeActivity()
 		return tea.Quit
-	case "I":
+	case "activity":
 		m.closeActivity()
 		m.layout()
 		return nil
-	case "esc":
+	case "focus_list":
 		if m.focusNav {
 			m.focusNav = false
 		} else if a.details {
@@ -242,36 +248,41 @@ func (m *Model) handleActivityKey(msg tea.KeyPressMsg) tea.Cmd {
 			m.closeActivity()
 			m.layout()
 		}
-	case "[", "]":
+	case "prev_mode", "next_mode":
 		i := slices.Index(activityModes, a.mode)
-		if k == "[" {
+		if name == "prev_mode" {
 			i += 2
 		} else {
 			i++
 		}
 		a.mode = activityModes[i%len(activityModes)]
 		m.filterActivity()
-	case "z":
+	case "toggle_reader":
+		if !m.readerHidden {
+			a.details = false
+		}
+		return m.toggleReader()
+	case "toggle_sidebar":
+		return m.toggleSidebar()
+	case "automated":
 		a.automated = !a.automated
 		m.filterActivity()
-	case "r":
+	case "reload":
 		return m.reloadActivity()
-	case "D":
+	case "period":
 		m.openActivityPeriod()
-	case "/":
+	case "filter":
 		a.filtering = true
 		return a.query.Focus()
-	case "0":
+	case "focus_views":
 		if m.showNav() {
 			m.focusNav = true
 			m.focusNavPanel()
 		}
-	case "1":
-		m.focusNav, a.details = false, false
-	case "2", "tab", "shift+tab":
+	case "focus_reader", "next_pane", "prev_pane":
 		m.focusNav = false
 		a.details = !a.details
-	case "enter":
+	case "open":
 		if _, _, split := m.paneWidths(); !split && !a.details {
 			a.details = true
 			return nil
@@ -287,49 +298,52 @@ func (m *Model) handleActivityKey(msg tea.KeyPressMsg) tea.Cmd {
 			}
 			return cmd
 		}
-	case "o":
+	case "open_browser":
 		if e, ok := a.selected(); ok {
 			return openURL(e.Task.PermalinkURL)
 		}
-	case "c":
+	case "copy_link":
 		if e, ok := a.selected(); ok {
 			m.status = "link sent to clipboard"
 			return tea.SetClipboard(e.Task.PermalinkURL)
 		}
-	case "p":
+	case "projects":
 		return m.requestProjects(func() tea.Cmd { m.openProjectPicker(); return nil })
-	case "?":
+	case "help":
 		m.help = true
-	case "j", "down":
+	case "down", "scroll_down":
 		move = 1
-	case "k", "up":
+	case "up", "scroll_up":
 		move = -1
-	case "g", "home":
+	case "top":
 		if a.details {
 			a.reader.GotoTop()
 			return nil
 		}
 		move = -len(a.visible)
-	case "G", "end":
+	case "bottom":
 		if a.details {
 			a.reader.GotoBottom()
 			return nil
 		}
 		move = len(a.visible)
-	case "ctrl+d":
+	case "half_page_down":
 		move = max(a.reader.Height()/6, 1)
-	case "ctrl+u":
+	case "half_page_up":
 		move = -max(a.reader.Height()/6, 1)
-	case "ctrl+f", "pgdown":
+	case "page_down":
 		move = max(a.reader.Height()/3, 1)
-	case "ctrl+b", "pgup":
+	case "page_up":
 		move = -max(a.reader.Height()/3, 1)
 	}
 	if move != 0 {
 		if a.details {
-			var cmd tea.Cmd
-			a.reader, cmd = a.reader.Update(msg)
-			return cmd
+			if move > 0 {
+				a.reader.ScrollDown(move)
+			} else {
+				a.reader.ScrollUp(-move)
+			}
+			return nil
 		}
 		a.cursor = max(0, min(a.cursor+move, len(a.visible)-1))
 		m.renderActivityDetail(false)
@@ -354,7 +368,7 @@ func (m *Model) openActivityPeriod() {
 		m.renderActivityDetail(false)
 		return m.reloadActivity()
 	}), "Activity period", items)
-	m.modal.browseFirst = true
+	m.modal.searching = false
 	m.modal.input.Blur()
 	m.modal.cursor = slices.Index([]int{1, 7, 30}, m.activity.days)
 }
@@ -446,7 +460,7 @@ func (m *Model) activityPanes(h int) string {
 		coverage = fmt.Sprintf("%d/%d tickets scanned · %s · consolidated history", a.report.Scanned, a.report.Total, a.report.Until.Local().Format("15:04 MST"))
 	}
 	if a.loading {
-		coverage = "Loading workspace activity… · r restarts · I returns"
+		coverage = "Loading workspace activity… · " + keyLabel("main", "reload") + " restarts · " + keyLabel("main", "activity") + " returns"
 		if len(m.sym.spinner) > 0 {
 			coverage = m.sym.spinner[m.frame%len(m.sym.spinner)] + " " + coverage
 		}
@@ -457,7 +471,7 @@ func (m *Model) activityPanes(h int) string {
 		coverage = "Partial: " + ticket.OneLine(a.report.Warning)
 	}
 	if a.err == "" && a.report.Warning == "" && !a.loading {
-		coverage += " · r refresh"
+		coverage += " · " + keyLabel("main", "reload") + " refresh"
 	}
 	if a.automated {
 		coverage += " · automated included"
@@ -470,6 +484,10 @@ func (m *Model) activityPanes(h int) string {
 		body := m.activityList(listW, height)
 		if a.details {
 			body = a.reader.View()
+		}
+		if m.showNav() {
+			nav := m.panel("[0] Views", "", m.navView(navW-panelFrame, max(height-panelFrame, 1)), navW, height, m.focusColor(m.focusNav))
+			return header + lipgloss.JoinHorizontal(lipgloss.Top, nav, lipgloss.NewStyle().Width(listW).Height(height).Render(body))
 		}
 		return header + lipgloss.NewStyle().Width(m.width).Height(height).Render(body)
 	}
@@ -490,16 +508,16 @@ func (m *Model) activityPanes(h int) string {
 
 func (m *Model) activityStatusline() string {
 	a := m.activity
-	left := m.accentStyle.Reverse(true).Render(" ACTIVITY ") + fmt.Sprintf(" %s · %d events", a.mode, len(a.visible))
-	right := "j/k move  [/] filter  D period  / search  r refresh  ? keys"
+	left := normalPill.Render(" ACTIVITY ") + fmt.Sprintf(" %s · %d events", a.mode, len(a.visible))
+	right := keyLabel("main", "down", "up") + " move  " + keyLabel("activity", "prev_mode", "next_mode") + " filter  " + keyLabel("activity", "period") + " period  " + keyLabel("main", "filter") + " search  " + keyLabel("main", "reload") + " refresh  " + keyLabel("main", "help") + " keys"
 	if a.details {
-		right = "j/k scroll  enter ticket  esc list"
+		right = keyLabel("main", "down", "up") + " scroll  " + keyLabel("main", "open") + " ticket  " + keyLabel("main", "focus_list") + " list"
 	}
 	if a.filtering {
-		right = "enter/esc done · words match ticket, actor, and activity"
+		right = keyLabel("filter", "done", "cancel") + " done · words match ticket, actor, and activity"
 	}
 	if m.focusNav {
-		right = "j/k move  enter open  esc activity"
+		right = keyLabel("views", "down", "up") + " move  " + keyLabel("views", "open") + " open  " + keyLabel("main", "focus_list") + " activity"
 	}
 	if m.status != "" {
 		right = ticket.OneLine(m.status)
@@ -512,17 +530,29 @@ func (m *Model) activityStatusline() string {
 }
 
 func (m *Model) activityHelp() string {
-	return m.accentStyle.Render("Activity") + "\n\n" +
-		"I / Esc     return to tickets\n" +
-		"[ / ]       Both / Mine / Related\n" +
-		"D           last 24 hours / 7 days / 30 days\n" +
-		"/           search ticket, actor, and activity text\n" +
-		"z           include / hide automated reminders\n" +
-		"j / k       move; scroll when event reader has focus\n" +
-		"Tab / 2     focus event reader (also on narrow screens)\n" +
-		"Enter       open ticket; narrow list first shows event\n" +
-		"Esc         event list; from opened ticket, Activity\n" +
-		"r           refresh from API\n" +
-		"o / c       open ticket in browser / copy link\n\n" +
-		dimStyle.Render("Workspace search requires paid Asana access.\nCurrent ownership/mentions are labelled as current context.\nAsana consolidates stories; this is not an exhaustive audit log.\nActivity stays in memory; no local activity history.\n\nAny key closes")
+	rows := [][3]string{
+		{"main", "activity", "return to tickets"},
+		{"activity", "prev_mode", "previous filter: Both / Mine / Related"},
+		{"activity", "next_mode", "next filter: Both / Mine / Related"},
+		{"activity", "period", "last 24 hours / 7 days / 30 days"},
+		{"main", "filter", "search ticket, actor, and activity text"},
+		{"activity", "automated", "include / hide automated reminders"},
+		{"main", "down", "move down; scroll event reader"},
+		{"main", "up", "move up; scroll event reader"},
+		{"main", "next_pane", "focus event reader / list"},
+		{"main", "open", "open ticket; narrow list first shows event"},
+		{"main", "focus_list", "event list; from opened ticket, Activity"},
+		{"main", "toggle_reader", "show / hide preview"},
+		{"main", "toggle_sidebar", "show / hide views panel"},
+		{"main", "reload", "refresh from API"},
+		{"main", "open_browser", "open ticket in browser"},
+		{"main", "copy_link", "copy ticket link"},
+	}
+	lines := []string{m.accentStyle.Render("Activity"), ""}
+	for _, row := range rows {
+		if label := keyLabel(row[0], row[1]); label != "" {
+			lines = append(lines, m.accentStyle.Width(12).Render(label)+row[2])
+		}
+	}
+	return strings.Join(lines, "\n") + "\n\n" + dimStyle.Render("Workspace search requires paid Asana access.\nCurrent ownership/mentions are labelled as current context.\nAsana consolidates stories; this is not an exhaustive audit log.\nActivity stays in memory; no local activity history.\n\nAny key closes")
 }

@@ -1,4 +1,4 @@
-package timetracking
+package main
 
 import (
 	"bytes"
@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/sadmachine/asanamate/internal/form"
+	"github.com/sadmachine/asanamate/internal/timetracking"
 )
 
 const assignmentJSON = `[{"is_active":true,"project":{"id":123,"name":"Web"},"task_assignments":[{"is_active":true,"task":{"id":456,"name":"Development"}}]},` +
@@ -48,12 +49,20 @@ func TestHarvestAdapterUsesExternalReference(t *testing.T) {
 	}
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 	var out bytes.Buffer
-	if err := RunHarvest(context.Background(), strings.NewReader(`{"operation":"form"}`), &out, "456"); err != nil {
+	if err := runHarvest(context.Background(), strings.NewReader(`{"operation":"form"}`), &out, "456", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	var spec form.Spec
 	if err := json.Unmarshal(out.Bytes(), &spec); err != nil || len(spec.Fields) != 3 || spec.Fields[0].Options[0].ID != "123" || spec.Fields[1].Options[0] != (form.Option{ID: "456", Name: "Development"}) || !spec.Fields[0].Remember || !spec.Fields[1].Remember {
 		t.Fatalf("response = %s, err = %v", out.String(), err)
+	}
+	out.Reset()
+	// The first suggested Harvest project that is offered becomes the default.
+	if err := runHarvest(context.Background(), strings.NewReader(`{"operation":"form","links":[{"type":"harvest_project","value":"999"},{"type":"harvest_project","value":"123"}]}`), &out, "456", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(out.Bytes(), &spec); err != nil || spec.Fields[0].Default != "123" || spec.Fields[1].Default != "" {
+		t.Fatalf("suggested response = %s, err = %v", out.String(), err)
 	}
 	projectArgs, _ := os.ReadFile(projectCall)
 	if string(projectArgs) != "users\nproject-assignments\nme\n--output=json\n--page=all\n" {
@@ -107,7 +116,7 @@ func TestHarvestRejectsCreatedEntryWithoutAsanaLink(t *testing.T) {
 		w.Write([]byte(`{"id":987,"external_reference":null}`))
 	}))
 	defer server.Close()
-	err := createHarvestEntry(context.Background(), credentials, server.URL, "123", "456", 1.25, Asana{TaskGID: "1", ProjectGID: "2", URL: "https://app.asana.com/0/2/1"})
+	err := createHarvestEntry(context.Background(), credentials, server.URL, "123", "456", 1.25, timetracking.Asana{TaskGID: "1", ProjectGID: "2", URL: "https://app.asana.com/0/2/1"})
 	if err == nil || !strings.Contains(err.Error(), "without the Asana link") || !strings.Contains(err.Error(), "do not submit again") {
 		t.Fatalf("missing link error = %v", err)
 	}
@@ -200,5 +209,16 @@ func TestHarvestSummaryZeroAndUnitConversion(t *testing.T) {
 		if err != nil || summary.TotalSeconds != tc.seconds {
 			t.Fatalf("summary = %+v, err = %v; want %d seconds", summary, err, tc.seconds)
 		}
+	}
+}
+
+// The provider follows the protocol rule it documents: it ignores
+// the version and any request fields it does not know.
+func TestHarvestIgnoresVersionAndUnknownFields(t *testing.T) {
+	var out bytes.Buffer
+	request := `{"version":1,"operation":"nope","future":{"x":1}}`
+	err := runHarvest(context.Background(), strings.NewReader(request), &out, "", "", "")
+	if err == nil || !strings.Contains(err.Error(), `unknown time provider operation "nope"`) {
+		t.Fatalf("error = %v", err)
 	}
 }

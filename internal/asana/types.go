@@ -204,6 +204,8 @@ type Story struct {
 	Assignee        *Ref        `json:"assignee,omitempty"`
 	OldDates        *StoryDates `json:"old_dates,omitempty"`
 	NewDates        *StoryDates `json:"new_dates,omitempty"`
+	// Reactions are the story's emoji reactions, one per emoji.
+	Reactions []Reaction `json:"reaction_summary,omitempty"`
 }
 
 // StoryDates is the date state before or after a task's date change.
@@ -211,6 +213,13 @@ type StoryDates struct {
 	DueOn   *string `json:"due_on"`
 	DueAt   *string `json:"due_at"`
 	StartOn *string `json:"start_on"`
+}
+
+// Reaction counts the reactions on a story with one emoji.
+type Reaction struct {
+	Emoji   string `json:"variant"`
+	Count   int    `json:"count"`
+	Reacted bool   `json:"reacted"` // the authenticated user reacted with Emoji
 }
 
 // Attachment is a file attached to a task.

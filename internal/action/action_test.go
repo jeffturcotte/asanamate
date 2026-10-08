@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -156,17 +157,63 @@ func TestRunBackgroundLogsOutput(t *testing.T) {
 	}
 }
 
-func TestRunBackgroundStartsNewSession(t *testing.T) {
-	cmd := exec.Command("/bin/sh", "-c", "sleep 1")
-	done := make(chan error, 1)
-	go func() { done <- RunBackground(cmd, filepath.Join(t.TempDir(), "actions.log")) }()
-	for i := 0; i < 100 && cmd.Process == nil; i++ {
-		time.Sleep(10 * time.Millisecond)
+// TestCommandFixture runs testdata/action.sh, the minimal action
+// docs/extensions.md describes, the way a background action runs, so a change
+// to the variables, files, working directory, or exit status fails here.
+func TestCommandFixture(t *testing.T) {
+	script, err := filepath.Abs("testdata/action.sh")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if cmd.Process == nil {
+	repo, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tk := ticket.Ticket{Task: asana.Task{GID: "42", Name: "Fix login"}}
+	files, err := WriteFiles(t.TempDir(), tk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := Context{Ticket: tk, Project: &asana.Ref{GID: "7", Name: "Web"}, Repo: repo, Branch: "fix-login", Files: files}
+	logPath := filepath.Join(t.TempDir(), "actions.log")
+
+	if err := RunBackground(Command(config.Action{Command: "/bin/sh '" + script + "'"}, c), logPath); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(logPath)
+	for _, want := range []string{"gid=42\n", "branch=fix-login\n", "project=7\n", "dir=" + repo + "\n", "# Fix login\n"} {
+		if !strings.Contains(string(data), want) {
+			t.Fatalf("log = %q; missing %q", data, want)
+		}
+	}
+
+	err = RunBackground(Command(config.Action{Command: "/bin/sh '" + script + "' 3"}, c), logPath)
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 3 {
+		t.Fatalf("err = %v, want exit status 3", err)
+	}
+}
+
+func TestRunBackgroundStartsNewSession(t *testing.T) {
+	// The child logs its own pid: cmd.Process belongs to RunBackground's
+	// goroutine, so reading it here would race.
+	cmd := exec.Command("/bin/sh", "-c", "echo pid=$$; sleep 1")
+	logPath := filepath.Join(t.TempDir(), "actions.log")
+	done := make(chan error, 1)
+	go func() { done <- RunBackground(cmd, logPath) }()
+	pid := 0
+	for i := 0; i < 100 && pid == 0; i++ {
+		time.Sleep(10 * time.Millisecond)
+		data, _ := os.ReadFile(logPath)
+		// The log header repeats the command, so take the last pid=.
+		if at := strings.LastIndex(string(data), "pid="); at >= 0 {
+			pid, _ = strconv.Atoi(strings.TrimSpace(string(data[at+len("pid="):])))
+		}
+	}
+	if pid == 0 {
 		t.Fatal("process did not start")
 	}
-	child, err := unix.Getsid(cmd.Process.Pid)
+	child, err := unix.Getsid(pid)
 	if err != nil {
 		t.Fatal(err)
 	}

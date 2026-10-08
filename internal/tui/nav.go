@@ -28,9 +28,6 @@ const maxNavProjects = 8
 // maxNavSavedViews caps named views; V offers the full list.
 const maxNavSavedViews = 5
 
-// navKeys are the keys the views panel handles while it has focus.
-var navKeys = []string{"j", "k", "down", "up", "g", "G", "home", "end", "enter", "l"}
-
 // navItem is one row of the views panel: a project or saved view to open, a grouping or sort to
 // pick, or, with neither, a heading or an agent count.
 type navItem struct {
@@ -52,7 +49,7 @@ func (it navItem) selectable() bool {
 
 // showNav reports whether the layout has room for the views panel.
 func (m *Model) showNav() bool {
-	return !m.deps.NoPreview && m.width >= wideWidth
+	return !m.navHidden && m.width >= wideWidth
 }
 
 // navWidth is the width the views panel takes, 0 when it is hidden.
@@ -71,7 +68,7 @@ func (m *Model) navItems() []navItem {
 	if m.viewProject == nil && !m.activityOpen {
 		items[0].right = count
 	}
-	items = append(items, navItem{label: "Activity", right: "I", activity: true, active: m.activityOpen})
+	items = append(items, navItem{label: "Activity", right: keyLabel("main", "activity"), activity: true, active: m.activityOpen})
 	named := m.recentSavedViewNames()
 	if len(named) > 0 {
 		items = append(items, navItem{label: "Saved views", right: "V", heading: true})
@@ -119,7 +116,7 @@ func (m *Model) navItems() []navItem {
 	}
 
 	if m.activityOpen && m.activity != nil {
-		items = append(items, navItem{label: "Activity filter", right: "]/[", heading: true})
+		items = append(items, navItem{label: "Activity filter", right: keyLabel("activity", "next_mode", "prev_mode"), heading: true})
 		for _, mode := range activityModes {
 			items = append(items, navItem{label: mode, activityMode: mode, active: mode == m.activity.mode})
 		}
@@ -261,8 +258,8 @@ func (m *Model) focusNavPanel() {
 	}
 }
 
-// updateNav handles a key while the views panel has focus.
-func (m *Model) updateNav(k string) tea.Cmd {
+// updateNav runs a [keys.views] binding while the views panel has focus.
+func (m *Model) updateNav(name string) tea.Cmd {
 	items := m.navItems()
 	var selectable []navItem
 	for _, it := range items {
@@ -273,16 +270,16 @@ func (m *Model) updateNav(k string) tea.Cmd {
 	// The rows can shrink under the cursor, such as when a grouping by a
 	// custom field is dropped.
 	m.navCursor = min(m.navCursor, len(selectable)-1)
-	switch k {
-	case "j", "down":
+	switch name {
+	case "down":
 		m.navCursor = min(m.navCursor+1, len(selectable)-1)
-	case "k", "up":
+	case "up":
 		m.navCursor = max(m.navCursor-1, 0)
-	case "g", "home":
+	case "top":
 		m.navCursor = 0
-	case "G", "end":
+	case "bottom":
 		m.navCursor = len(selectable) - 1
-	case "enter", "l":
+	case "open":
 		it := selectable[m.navCursor]
 		m.focusNav = false
 		if it.activity {

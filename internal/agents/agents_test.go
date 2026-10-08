@@ -2,12 +2,10 @@ package agents
 
 import (
 	"context"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 func git(t *testing.T, args ...string) {
@@ -46,6 +44,55 @@ func TestListResolvesBranchAndRepo(t *testing.T) {
 		{Path: wt, Status: "running", Target: "s1", Branch: "fix-login", Repo: repo, Title: "Fix login"},
 		{Path: repo, Status: "idle", Branch: "main", Repo: repo},
 		{Path: plain, Status: "waiting"},
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("agent %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+
+	// Branch and repo columns: both set skip git; a branch alone is kept
+	// only where git finds none.
+	cmd = "printf '%s\\tidle\\t\\t\\tfeat\\t/outer\\n%s\\tidle\\t\\t\\tother\\t\\n/nowhere\\tidle\\t\\t\\tmain\\t\\n' '" + plain + "' '" + wt + "'"
+	if got, err = List(context.Background(), cmd); err != nil {
+		t.Fatal(err)
+	}
+	want = []Agent{
+		{Path: plain, Status: "idle", Branch: "feat", Repo: "/outer"},
+		{Path: wt, Status: "idle", Branch: "fix-login", Repo: repo},
+		{Path: "/nowhere", Status: "idle", Branch: "main"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %+v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("agent %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+// TestCommandFixture runs testdata/agents.sh, the minimal agents source
+// docs/extensions.md describes, through Fetch, so a format change fails here.
+func TestCommandFixture(t *testing.T) {
+	script, err := filepath.Abs("testdata/agents.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := realpath(t, t.TempDir())
+	states := map[string][]string{"working": {"busy"}, "waiting": {"permission"}}
+	got, err := Fetch(context.Background(), "/bin/sh '"+script+"' '"+dir+"'", states)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Agent{
+		{Path: dir, Status: "busy", Target: "s1", Title: "Fix login", State: Working},
+		{Path: dir, Status: "permission", Target: "s2", State: Waiting},
+		{Path: dir, Status: "mystery", State: Unknown},
+		{Path: dir, Status: "idle", Target: "s3", Branch: "fix-login", Repo: dir, State: Idle},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %+v", got)
 	}
 	for i := range want {
 		if got[i] != want[i] {
@@ -92,122 +139,11 @@ func TestClassify(t *testing.T) {
 	}
 }
 
-// Trimmed from real `ccmux show --json` output (ccmux 1.4.1).
-const ccmuxJSON = `[
- {"id":"d48f","cwd":"/r/.claude/worktrees/wicpa","status":"idle","attentionState":"unread",
-  "gitBranch":"update/3068","mainRepoRoot":"/r","isWorktree":true,"tmuxTarget":"amagent:1.0",
-  "summary":"Fix license headings","prompts":["first prompt"],"paneTitle":"claude"},
- {"id":"e19a","cwd":"/nowhere","status":"working","attentionState":null,"gitBranch":"main","mainRepoRoot":null,
-  "summary":null,"prompts":["  Fix the queue\ntimeout  "],"paneTitle":"claude"},
- {"id":"f2c0","cwd":"/r","status":"idle","attentionState":"seen","gitBranch":"main","mainRepoRoot":"/r",
-  "prompts":[],"paneTitle":"✳ Claude Code"},
- {"id":"codex_pane1","agentType":"codex","trackingMode":"pane","cwd":"/r","status":"idle","gitBranch":"main",
-  "mainRepoRoot":"/r","prompts":[],"paneTitle":"[ ! ] Action Required | Fix editor | r"},
- {"id":"codex_pane2","agentType":"codex","trackingMode":"pane","cwd":"/r","status":"idle","gitBranch":"main",
-  "mainRepoRoot":"/r","prompts":[],"paneTitle":"⠼ Fix editor | r"},
- {"id":"codex_pane3","agentType":"codex","trackingMode":"pane","cwd":"/r","status":"idle","gitBranch":"main",
-  "mainRepoRoot":"/r","prompts":[],"paneTitle":"Fix editor | r"},
- {"id":"codex_pane4","agentType":"codex","trackingMode":"pane","cwd":"/r","status":"waiting","gitBranch":"main",
-  "mainRepoRoot":"/r","prompts":[],"paneTitle":"⠼ Fix editor | r"},
- {"id":"codex_pane5","agentType":"codex","trackingMode":"pane","nativeSessionId":"n5","cwd":"/r","status":"idle",
-  "statusChangedAt":"2026-01-01T00:00:00.000Z","gitBranch":"main","mainRepoRoot":"/r","prompts":[],"paneTitle":"⠼ Fix editor | r"},
- {"id":"n6","nativeSessionId":"n6","cwd":"/r","status":"idle","statusChangedAt":"2026-01-01T00:00:00.000Z",
-  "gitBranch":"main","mainRepoRoot":"/r","prompts":[],"paneTitle":"claude"}
-]`
-
-func TestParseCCMux(t *testing.T) {
-	changed := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	reported := map[string]live{
-		"n5": {State: Idle, At: changed.Add(time.Minute)},     // newer than ccmux: wins over the pane title
-		"n6": {State: Working, At: changed.Add(-time.Minute)}, // older than ccmux: ignored
-	}
-	got, err := parseCCMux(context.Background(), []byte(ccmuxJSON), reported)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []Agent{
-		{Path: "/r/.claude/worktrees/wicpa", Status: "completed", Target: "d48f", Branch: "update/3068", Repo: "/r", Title: "Fix license headings"},
-		{Path: "/nowhere", Status: "working", Target: "e19a", Branch: "main", Title: "Fix the queue timeout"},
-		{Path: "/r", Status: "idle", Target: "f2c0", Branch: "main", Repo: "/r", Title: "✳ Claude Code"},
-		{Path: "/r", Status: "waiting", Target: "codex_pane1", Branch: "main", Repo: "/r", Title: "Fix editor | r"},
-		{Path: "/r", Status: "working", Target: "codex_pane2", Branch: "main", Repo: "/r", Title: "Fix editor | r"},
-		{Path: "/r", Status: "idle", Target: "codex_pane3", Branch: "main", Repo: "/r", Title: "Fix editor | r"},
-		{Path: "/r", Status: "waiting", Target: "codex_pane4", Branch: "main", Repo: "/r", Title: "Fix editor | r"},
-		{Path: "/r", Status: "idle", Target: "codex_pane5", Branch: "main", Repo: "/r", Title: "Fix editor | r"},
-		{Path: "/r", Status: "idle", Target: "n6", Branch: "main", Repo: "/r", Title: "claude"},
-	}
-	if len(got) != len(want) {
-		t.Fatalf("got %+v", got)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("session %d = %+v, want %+v", i, got[i], want[i])
-		}
-	}
-	if _, err := parseCCMux(context.Background(), []byte("not json"), nil); err == nil {
-		t.Fatal("want a parse error")
-	}
-}
-
 func TestTitleIsOneShortLine(t *testing.T) {
-	if got := title(strings.Repeat("a", 100)); got != strings.Repeat("a", maxTitle-1)+"…" {
+	if got := Title(strings.Repeat("a", 100)); got != strings.Repeat("a", maxTitle-1)+"…" {
 		t.Fatalf("got %q", got)
 	}
-	if got := title(" a\tb\n\nc \x1b[31m"); got != "a b c [31m" {
+	if got := Title(" a\tb\n\nc \x1b[31m"); got != "a b c [31m" {
 		t.Fatalf("got %q", got)
-	}
-}
-
-func TestHookRecordsSessionState(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "agents")
-	hook := func(event, id string) {
-		t.Helper()
-		if err := WriteHook(strings.NewReader(`{"hook_event_name":"`+event+`","session_id":"`+id+`"}`), dir); err != nil {
-			t.Fatal(err)
-		}
-	}
-	state := func(id string) State {
-		got := map[string]live{}
-		readHookFiles(dir, got)
-		return got[id].State
-	}
-	hook("UserPromptSubmit", "s1")
-	if got := state("s1"); got != Working {
-		t.Fatalf("after prompt = %q", got)
-	}
-	hook("PermissionRequest", "s1")
-	if got := state("s1"); got != Waiting {
-		t.Fatalf("after permission request = %q", got)
-	}
-	hook("PostCompact", "s1") // untracked: no change
-	hook("Stop", "s1")
-	if got := state("s1"); got != Idle {
-		t.Fatalf("after stop = %q", got)
-	}
-	hook("SessionEnd", "s1")
-	hook("SessionEnd", "s1") // already gone: no error
-	if got := state("s1"); got != "" {
-		t.Fatalf("after session end = %q", got)
-	}
-	hook("UserPromptSubmit", "../escape")
-	if entries, _ := os.ReadDir(filepath.Dir(dir)); len(entries) != 1 {
-		t.Fatalf("unsafe session id wrote outside dir: %v", entries)
-	}
-}
-
-func TestReadClaudeSessions(t *testing.T) {
-	dir := t.TempDir()
-	write := func(name, body string) {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write("1.json", `{"sessionId":"a","status":"busy","statusUpdatedAt":1790000000000}`)
-	write("2.json", `{"sessionId":"b","status":"something-new"}`)
-	write("3.json", `not json`)
-	got := map[string]live{}
-	readClaudeSessions(dir, got)
-	if len(got) != 1 || got["a"].State != Working || !got["a"].At.Equal(time.UnixMilli(1790000000000)) {
-		t.Fatalf("got %+v", got)
 	}
 }

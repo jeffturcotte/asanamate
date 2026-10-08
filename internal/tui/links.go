@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/sadmachine/asanamate/internal/asana"
+	"github.com/sadmachine/asanamate/internal/projectlinks"
 	"github.com/sadmachine/asanamate/internal/ticket"
 )
 
@@ -76,10 +77,21 @@ func (m *Model) openLinks() tea.Cmd {
 	return nil
 }
 
-// pickedLink loads candidates for the chosen link's repo picker.
+// pickedLink loads candidates for the chosen link's repo picker, with
+// suggestions for a project link.
 func (m *Model) pickedLink(target linkTarget) tea.Cmd {
 	m.modal = nil
-	return loadCandidates(m.deps.Config.RepoSource, &target)
+	projectGID := target.ref.GID
+	if target.ticket {
+		projectGID = ""
+	}
+	return m.wait("Loading repos…", loadCandidates(m.deps.Config.RepoSource, &target, m.projectLinks(), projectGID))
+}
+
+// projectLinks returns the configured project links provider; it is off
+// when no command is set.
+func (m *Model) projectLinks() projectlinks.Provider {
+	return projectlinks.Provider{Command: m.deps.Config.ProjectLinks.Command}
 }
 
 // openLinkRepoPicker opens the repo picker for msg.link, offering to unlink

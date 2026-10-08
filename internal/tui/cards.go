@@ -47,8 +47,28 @@ func (m *Model) renderCards(t ticket.Ticket, width int) string {
 	for _, a := range m.viewAgents(t.Task) {
 		agentLines = append(agentLines, m.agentLabel(a, stateStyles[a.State].Bold(true))+dimStyle.Render(" — "+ticket.OneLine(filepath.Base(a.Path))))
 	}
-	for _, n := range m.agentNotes(t.Task) {
+	notes, hidden := m.agentNotes(t.Task)
+	for _, n := range notes {
 		agentLines = append(agentLines, dimStyle.Render(ticket.OneLine(n)))
+	}
+	if hidden > 0 {
+		style := dimStyle.Italic(true)
+		if m.fieldKey == otherAgentsKey {
+			style = m.fieldStyle()
+		}
+		agentLines = append(agentLines, style.Render("+ Show "+otherAgents(hidden)))
+	}
+	// markOthers records the Show agents row, the Agents body's last line, for
+	// a body that starts on line and wraps at width.
+	markOthers := func(line, width int) {
+		if hidden == 0 {
+			return
+		}
+		if above := agentLines[:len(agentLines)-1]; len(above) > 0 {
+			line += lipgloss.Height(wrap(strings.Join(above, "\n"), width))
+		}
+		m.fieldLines[otherAgentsKey] = line
+		m.cardTargets = append(m.cardTargets, otherAgentsKey)
 	}
 	subtaskTitle, subtasks := m.subtasks(t)
 
@@ -76,6 +96,7 @@ func (m *Model) renderCards(t ticket.Ticket, width int) string {
 			card := m.card(m.sym.robot+"   Agents", wrap(strings.Join(agentLines, "\n"), rightW-4), rightW, m.fieldKey == key)
 			side = append(side, card)
 			m.fieldEnds[key] = sideLine + lipgloss.Height(card) - 1
+			markOthers(sideLine+1, rightW-4)
 			sideLine += lipgloss.Height(card) + 1
 		}
 		if subtasks != "" {
@@ -92,6 +113,7 @@ func (m *Model) renderCards(t ticket.Ticket, width int) string {
 	} else {
 		blocks = []string{head, m.card("Details", m.detailsBody(t, width-4, top), width, false)}
 		add("section:agents", "Agents", wrap(strings.Join(agentLines, "\n"), width))
+		markOthers(m.fieldLines["section:agents"]+1, width)
 		add("section:description", "Description", m.renderRich(t.HTMLNotes, width))
 		add("section:subtasks", subtaskTitle, wrap(subtasks, width))
 	}
@@ -230,21 +252,50 @@ func (m *Model) comment(c asana.Story, width int, selected bool) string {
 	}
 	gutter := gutterStyle.Render("│") + " "
 	lines := strings.Split(body, "\n")
+	if r := m.reactions(c.Reactions); r != "" {
+		lines = append(lines, ansi.Truncate(r, width-2, "…"))
+	}
 	for i, l := range lines {
 		lines[i] = gutter + l
 	}
 	return head + "\n" + strings.Join(lines, "\n")
 }
 
-// authorColors tell comment authors apart: ANSI blue, magenta, cyan, green,
-// yellow, and red.
-var authorColors = []string{"4", "5", "6", "2", "3", "1"}
+// reactions renders a comment's reactions as each emoji with its count, the
+// user's own as pills, or as a total count when the symbol set has no emoji;
+// "" when it has none.
+func (m *Model) reactions(rs []asana.Reaction) string {
+	var parts []string
+	total := 0
+	for _, r := range rs {
+		if r.Count <= 0 {
+			continue
+		}
+		total += r.Count
+		style := dimStyle
+		if r.Reacted {
+			style = reactedStyle
+		}
+		// One space each side pads the pill; plain reactions get the same
+		// space so they line up with it.
+		parts = append(parts, style.Render(fmt.Sprintf(" %s %d ", ticket.OneLine(r.Emoji), r.Count)))
+	}
+	switch {
+	case total == 0:
+		return ""
+	case total == 1 && !m.sym.emoji:
+		return dimStyle.Render("1 reaction")
+	case !m.sym.emoji:
+		return dimStyle.Render(fmt.Sprintf("%d reactions", total))
+	}
+	return strings.Join(parts, " ")
+}
 
-// authorStyle colors an author the same way every time.
+// authorStyle colors an author the same way every time, from colors.authors.
 func authorStyle(name string) lipgloss.Style {
 	h := fnv.New32a()
 	h.Write([]byte(name))
-	return lipgloss.NewStyle().Foreground(lipgloss.Color(authorColors[h.Sum32()%uint32(len(authorColors))]))
+	return authorStyles[h.Sum32()%uint32(len(authorStyles))]
 }
 
 // shortDate shows a date as "Sep 26", with the year when it is not this year's.

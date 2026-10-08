@@ -6,7 +6,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
+	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -61,6 +64,27 @@ type Service struct {
 	Users []asana.Ref
 }
 
+// users returns s.Users, or loads the workspace's users when it is nil.
+func (s Service) users(ctx context.Context) ([]asana.Ref, error) {
+	if s.Users != nil || s.Workspace == "" {
+		return s.Users, nil
+	}
+	return s.Client.WorkspaceUsers(ctx, s.Workspace)
+}
+
+// mentionable returns the users Markdown text can @mention, loading them only
+// when the text has an @.
+func (s Service) mentionable(ctx context.Context, text string) ([]asana.Ref, error) {
+	if !strings.Contains(text, "@") {
+		return s.Users, nil
+	}
+	users, err := s.users(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("loading people to mention: %w", err)
+	}
+	return users, nil
+}
+
 func (s Service) confirm(question string) error {
 	if s.Confirm == nil {
 		return nil
@@ -76,20 +100,27 @@ func (s Service) confirm(question string) error {
 }
 
 // Comment posts Markdown as a rich-text comment on the task. Each @Name matching a
-// workspace user becomes a mention that notifies them.
+// workspace user becomes a mention that notifies them. Each local image,
+// ![alt](path), is attached to the task and shown inline.
 func (s Service) Comment(ctx context.Context, gid, text string) error {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return errors.New("comment text is empty")
 	}
-	users := s.Users
-	if users == nil && s.Workspace != "" && strings.Contains(text, "@") {
-		var err error
-		if users, err = s.Client.WorkspaceUsers(ctx, s.Workspace); err != nil {
-			return fmt.Errorf("loading people to mention: %w", err)
-		}
+	users, err := s.mentionable(ctx, text)
+	if err != nil {
+		return err
 	}
-	html, mentioned := CommentHTML(text, users)
+	paths := LocalImages(text)
+	files := make([][]byte, len(paths))
+	for i, p := range paths {
+		data, err := readImage(p)
+		if err != nil {
+			return fmt.Errorf("comment image %s: %w", p, err)
+		}
+		files[i] = data
+	}
+	html, mentioned := CommentHTML(text, users, nil)
 	if s.Confirm != nil {
 		t, err := s.Client.Task(ctx, gid)
 		if err != nil {
@@ -103,9 +134,23 @@ func (s Service) Comment(ctx context.Context, gid, text string) error {
 			}
 			question += "Mentions: " + strings.Join(names, ", ") + "\n"
 		}
+		if len(paths) > 0 {
+			question += "Uploads: " + strings.Join(paths, ", ") + "\n"
+		}
 		if err := s.confirm(question); err != nil {
 			return err
 		}
+	}
+	if len(paths) > 0 {
+		images := make(map[string]string, len(paths))
+		for i, p := range paths {
+			a, err := s.Client.UploadAttachment(ctx, gid, filepath.Base(p), files[i])
+			if err != nil {
+				return fmt.Errorf("uploading %s: %w", p, err)
+			}
+			images[p] = a.GID
+		}
+		html, _ = CommentHTML(text, users, images)
 	}
 	if html == "<body>"+escapeHTML.Replace(text)+"</body>" {
 		return s.Client.AddComment(ctx, gid, text)
@@ -113,31 +158,315 @@ func (s Service) Comment(ctx context.Context, gid, text string) error {
 	return s.Client.AddCommentHTML(ctx, gid, html)
 }
 
-// Move puts the task in the named section of one of its projects.
-func (s Service) Move(ctx context.Context, gid, sectionName, projectGID string) error {
+// maxImageSize is Asana's attachment size limit.
+const maxImageSize = 100 << 20
+
+// readImage reads a comment image path; a leading ~/ is the home directory.
+// Only regular files whose content is an image qualify, so a comment cannot
+// upload other local files.
+func readImage(path string) ([]byte, error) {
+	if rest, ok := strings.CutPrefix(path, "~/"); ok {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
+		path = filepath.Join(home, rest)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() > maxImageSize {
+		return nil, errors.New("not a regular file of at most 100 MB")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if !strings.HasPrefix(http.DetectContentType(data), "image/") {
+		return nil, errors.New("not an image")
+	}
+	return data, nil
+}
+
+// MyTasks, passed to Move as the project, moves the task within My Tasks
+// instead of a project.
+const MyTasks = "my_tasks"
+
+// Move puts the task in a section, by name or gid, of one of its projects, or
+// of My Tasks when projectGID is MyTasks.
+func (s Service) Move(ctx context.Context, gid, section, projectGID string) error {
 	t, err := s.Client.Task(ctx, gid)
 	if err != nil {
 		return err
 	}
-	project, err := pickProject(t, projectGID)
+	list, err := s.sectionList(ctx, t, projectGID)
 	if err != nil {
 		return err
 	}
-	sections, err := s.Client.Sections(ctx, project.GID)
+	sec, err := s.findSection(ctx, list, section)
 	if err != nil {
 		return err
+	}
+	if err := s.confirm(fmt.Sprintf("Move %q to %s / %s?", t.Name, ticket.Clean(list.Name), ticket.Clean(sec.Name))); err != nil {
+		return err
+	}
+	if projectGID == MyTasks {
+		return s.Client.SetMyTasksSection(ctx, gid, sec.GID)
+	}
+	return s.Client.AddToSection(ctx, sec.GID, gid)
+}
+
+// findSection finds the section of list whose gid is section, or named
+// section ignoring case and surrounding space.
+func (s Service) findSection(ctx context.Context, list asana.Ref, section string) (asana.Ref, error) {
+	sections, err := s.Client.Sections(ctx, list.GID)
+	if err != nil {
+		return asana.Ref{}, err
 	}
 	var names []string
 	for _, sec := range sections {
-		if strings.EqualFold(strings.TrimSpace(sec.Name), strings.TrimSpace(sectionName)) {
-			if err := s.confirm(fmt.Sprintf("Move %q to %s / %s?", t.Name, ticket.Clean(project.Name), ticket.Clean(sec.Name))); err != nil {
-				return err
-			}
-			return s.Client.AddToSection(ctx, sec.GID, gid)
+		if sec.GID == section || strings.EqualFold(strings.TrimSpace(sec.Name), strings.TrimSpace(section)) {
+			return sec, nil
 		}
 		names = append(names, ticket.Clean(sec.Name))
 	}
-	return fmt.Errorf("no section %q in %s; sections: %s", sectionName, ticket.Clean(project.Name), strings.Join(names, ", "))
+	return asana.Ref{}, fmt.Errorf("no section %q in %s; sections: %s", section, ticket.Clean(list.Name), strings.Join(names, ", "))
+}
+
+// sectionList is the list whose sections Move picks from: one of the task's
+// projects, or the user's My Tasks for MyTasks.
+func (s Service) sectionList(ctx context.Context, t asana.Task, projectGID string) (asana.Ref, error) {
+	if projectGID != MyTasks {
+		return pickProject(t, projectGID)
+	}
+	// Asana returns a task's My Tasks section only to its assignee.
+	if t.AssigneeSection == nil {
+		return asana.Ref{}, errors.New("task is not in your My Tasks; only its assignee can move it there")
+	}
+	list, err := s.Client.MyTaskList(ctx, s.Workspace)
+	if err != nil {
+		return asana.Ref{}, err
+	}
+	list.Name = "My Tasks"
+	return list, nil
+}
+
+// confirmTask asks question, a format whose first verb is the task's name. It
+// loads the task only when there is someone to ask.
+func (s Service) confirmTask(ctx context.Context, gid, question string, args ...any) error {
+	if s.Confirm == nil {
+		return nil
+	}
+	t, err := s.Client.Task(ctx, gid)
+	if err != nil {
+		return err
+	}
+	return s.confirm(fmt.Sprintf(question, append([]any{t.Name}, args...)...))
+}
+
+// Assign assigns the task to a workspace user, by full name or gid, or to
+// "me", the token's owner. An empty user unassigns it.
+func (s Service) Assign(ctx context.Context, gid, user string) error {
+	user = strings.TrimSpace(user)
+	if user == "" {
+		if err := s.confirmTask(ctx, gid, "Unassign %q?"); err != nil {
+			return err
+		}
+		return s.Client.SetAssignee(ctx, gid, "")
+	}
+	u, err := s.assignee(ctx, user)
+	if err != nil {
+		return err
+	}
+	if err := s.confirmTask(ctx, gid, "Assign %q to %s?", ticket.Clean(u.Name)); err != nil {
+		return err
+	}
+	return s.Client.SetAssignee(ctx, gid, u.GID)
+}
+
+// assignee resolves user, a full name or gid, to a workspace user, or "me"
+// to the token's owner, whose gid is "me" and name is "you".
+func (s Service) assignee(ctx context.Context, user string) (asana.Ref, error) {
+	if strings.EqualFold(user, "me") {
+		return asana.Ref{GID: "me", Name: "you"}, nil
+	}
+	users, err := s.users(ctx)
+	if err != nil {
+		return asana.Ref{}, fmt.Errorf("loading people: %w", err)
+	}
+	return findUser(users, user)
+}
+
+// SetDue sets the task's due date as YYYY-MM-DD; an empty date clears it.
+func (s Service) SetDue(ctx context.Context, gid, date string) error {
+	date = strings.TrimSpace(date)
+	question, args := "Clear the due date of %q?", []any{}
+	if date != "" {
+		if _, err := time.Parse(time.DateOnly, date); err != nil {
+			return fmt.Errorf("due date needs YYYY-MM-DD, got %q", date)
+		}
+		question, args = "Set the due date of %q to %s?", []any{date}
+	}
+	if err := s.confirmTask(ctx, gid, question, args...); err != nil {
+		return err
+	}
+	return s.Client.SetDueOn(ctx, gid, date)
+}
+
+// Complete marks the task complete, or reopens it when done is false.
+func (s Service) Complete(ctx context.Context, gid string, done bool) error {
+	question := "Reopen %q?"
+	if done {
+		question = "Mark %q complete?"
+	}
+	if err := s.confirmTask(ctx, gid, question); err != nil {
+		return err
+	}
+	return s.Client.SetCompleted(ctx, gid, done)
+}
+
+// AddProject adds the task to a project, keeping its other projects.
+func (s Service) AddProject(ctx context.Context, gid, projectGID string) error {
+	if projectGID == "" {
+		return errors.New("project gid is empty")
+	}
+	if s.Confirm != nil {
+		p, err := s.Client.Project(ctx, projectGID)
+		if err != nil {
+			return err
+		}
+		if err := s.confirmTask(ctx, gid, "Add %q to project %s?", ticket.Clean(p.Name)); err != nil {
+			return err
+		}
+	}
+	return s.Client.AddToProject(ctx, gid, projectGID)
+}
+
+// RemoveProject removes the task from one of its projects.
+func (s Service) RemoveProject(ctx context.Context, gid, projectGID string) error {
+	if projectGID == "" {
+		return errors.New("project gid is empty")
+	}
+	if s.Confirm != nil {
+		t, err := s.Client.Task(ctx, gid)
+		if err != nil {
+			return err
+		}
+		p, err := pickProject(t, projectGID)
+		if err != nil {
+			return err
+		}
+		if err := s.confirm(fmt.Sprintf("Remove %q from project %s?", t.Name, ticket.Clean(p.Name))); err != nil {
+			return err
+		}
+	}
+	return s.Client.RemoveFromProject(ctx, gid, projectGID)
+}
+
+// NewTicket is a ticket for Create to make. Empty fields are left unset.
+type NewTicket struct {
+	Name     string
+	Notes    string // Markdown, as Comment reads it, without image uploads
+	Parent   string // a task gid; makes the ticket its subtask
+	Project  string // a project gid
+	Section  string // a section of Project, by name or gid
+	Assignee string // a full name, gid, or "me"
+	Due      string // YYYY-MM-DD
+}
+
+// Create makes a ticket and returns it: a subtask of Parent, a ticket in
+// Project (and Section), or else a ticket in My Tasks, assigned to the user
+// unless Assignee names someone else.
+func (s Service) Create(ctx context.Context, nt NewTicket) (asana.Task, error) {
+	task := asana.NewTask{Name: strings.TrimSpace(nt.Name), Project: nt.Project, DueOn: strings.TrimSpace(nt.Due)}
+	switch {
+	case task.Name == "":
+		return asana.Task{}, errors.New("title is empty")
+	case strings.ContainsAny(task.Name, "\r\n"):
+		return asana.Task{}, errors.New("title must be one line")
+	case nt.Parent != "" && nt.Project != "":
+		return asana.Task{}, errors.New("a subtask goes under its parent; pass a parent or a project, not both")
+	case nt.Section != "" && nt.Project == "":
+		return asana.Task{}, errors.New("a section needs a project")
+	case nt.Parent == "" && nt.Project == "" && s.Workspace == "":
+		return asana.Task{}, errors.New("no workspace to create the ticket in")
+	}
+	if task.DueOn != "" {
+		if _, err := time.Parse(time.DateOnly, task.DueOn); err != nil {
+			return asana.Task{}, fmt.Errorf("due date needs YYYY-MM-DD, got %q", task.DueOn)
+		}
+	}
+	assignee := strings.TrimSpace(nt.Assignee)
+	if assignee == "" && nt.Parent == "" && nt.Project == "" {
+		assignee = "me"
+	}
+	var details string
+	if assignee != "" {
+		u, err := s.assignee(ctx, assignee)
+		if err != nil {
+			return asana.Task{}, err
+		}
+		task.Assignee, details = u.GID, "Assignee: "+ticket.Clean(u.Name)+"\n"
+	}
+	if task.DueOn != "" {
+		details += "Due: " + task.DueOn + "\n"
+	}
+	if notes := strings.TrimSpace(nt.Notes); notes != "" {
+		users, err := s.mentionable(ctx, notes)
+		if err != nil {
+			return asana.Task{}, err
+		}
+		task.HTMLNotes, _ = CommentHTML(notes, users, nil)
+		details += "Notes:\n" + notes + "\n"
+	}
+	where, err := s.placeNew(ctx, &task, nt)
+	if err != nil {
+		return asana.Task{}, err
+	}
+	if err := s.confirm(fmt.Sprintf("Create %q %s?\n%s", task.Name, where, details)); err != nil {
+		return asana.Task{}, err
+	}
+	if nt.Parent != "" {
+		return s.Client.CreateSubtask(ctx, nt.Parent, task)
+	}
+	return s.Client.CreateTask(ctx, task)
+}
+
+// placeNew sets where task goes: its section gid in a project, or the
+// workspace of a My Tasks ticket. It returns where that is for the
+// confirmation, loading names only when there is someone to ask.
+func (s Service) placeNew(ctx context.Context, task *asana.NewTask, nt NewTicket) (string, error) {
+	switch {
+	case nt.Parent != "":
+		if s.Confirm == nil {
+			return "", nil
+		}
+		parent, err := s.Client.Task(ctx, nt.Parent)
+		return fmt.Sprintf("as a subtask of %q", parent.Name), err
+	case nt.Project == "":
+		task.Workspace = s.Workspace
+		if task.Assignee == "me" {
+			return "in My Tasks", nil
+		}
+		return "in the assignee's My Tasks", nil
+	}
+	project := asana.Ref{GID: nt.Project, Name: "project " + nt.Project}
+	if s.Confirm != nil {
+		var err error
+		if project, err = s.Client.Project(ctx, nt.Project); err != nil {
+			return "", err
+		}
+	}
+	where := "in " + ticket.Clean(project.Name)
+	if nt.Section != "" {
+		sec, err := s.findSection(ctx, project, nt.Section)
+		if err != nil {
+			return "", err
+		}
+		task.Section, where = sec.GID, where+" / "+ticket.Clean(sec.Name)
+	}
+	return where, nil
 }
 
 func pickProject(t asana.Task, projectGID string) (asana.Ref, error) {
@@ -159,9 +488,10 @@ func pickProject(t asana.Task, projectGID string) (asana.Ref, error) {
 	return asana.Ref{}, fmt.Errorf("task is in several projects; pass --project with one of: %s", strings.Join(choices, ", "))
 }
 
-// SetField sets a text, number, or enum custom field. An empty value clears it.
-// When the task has several fields with that name, projectGID picks the one
-// attached to that project.
+// SetField sets a custom field, named or by gid, from text, as FieldValue
+// reads it; a people field takes comma-separated full names or gids of
+// workspace users. An empty value clears it. When the task has several fields
+// with that name, projectGID picks the one attached to that project.
 func (s Service) SetField(ctx context.Context, gid, fieldName, value, projectGID string) error {
 	t, err := s.Client.Task(ctx, gid)
 	if err != nil {
@@ -171,7 +501,7 @@ func (s Service) SetField(ctx context.Context, gid, fieldName, value, projectGID
 	if err != nil {
 		return err
 	}
-	v, err := FieldValue(f, value)
+	v, err := s.fieldValue(ctx, f, value)
 	if err != nil {
 		return err
 	}
@@ -185,6 +515,11 @@ func (s Service) SetField(ctx context.Context, gid, fieldName, value, projectGID
 // same-named fields: they need the project that owns the intended one.
 func (s Service) resolveField(ctx context.Context, t asana.Task, name, projectGID string) (asana.CustomField, error) {
 	matches := t.FieldsNamed(name)
+	for _, f := range t.CustomFields {
+		if f.GID == name {
+			matches = []asana.CustomField{f}
+		}
+	}
 	switch {
 	case len(matches) == 0:
 		return asana.CustomField{}, fmt.Errorf("task has no custom field %q", name)
@@ -205,8 +540,87 @@ func (s Service) resolveField(ctx context.Context, t asana.Task, name, projectGI
 	return asana.CustomField{}, fmt.Errorf("none of the fields named %q is on project %s", name, projectGID)
 }
 
-// FieldValue converts typed text to the API value for a text, number, enum, or
-// date (YYYY-MM-DD) field. Empty text is nil, which clears the field.
+// fieldValue is FieldValue, plus people fields, whose names it resolves to
+// workspace users.
+func (s Service) fieldValue(ctx context.Context, f asana.CustomField, value string) (any, error) {
+	if f.ResourceSubtype != asana.FieldPeople || value == "" {
+		return FieldValue(f, value)
+	}
+	users, err := s.users(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("loading people: %w", err)
+	}
+	names, err := splitList(f, value)
+	if err != nil {
+		return nil, err
+	}
+	gids := make([]string, 0, len(names))
+	for _, name := range names {
+		u, err := findUser(users, name)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", ticket.FieldName(f), err)
+		}
+		gids = appendNew(gids, u.GID)
+	}
+	return gids, nil
+}
+
+// findUser finds the user whose gid is name, or the one user with that full
+// name (ignoring case), refusing a name several users share.
+func findUser(users []asana.Ref, name string) (asana.Ref, error) {
+	var match []asana.Ref
+	for _, u := range users {
+		if u.GID == name {
+			return u, nil
+		}
+		if strings.EqualFold(strings.TrimSpace(u.Name), name) {
+			match = append(match, u)
+		}
+	}
+	switch len(match) {
+	case 0:
+		return asana.Ref{}, fmt.Errorf("no user named %q", name)
+	case 1:
+		return match[0], nil
+	}
+	return asana.Ref{}, fmt.Errorf("several users are named %q", name)
+}
+
+// splitList splits comma-separated names, refusing empty ones.
+func splitList(f asana.CustomField, value string) ([]string, error) {
+	names := strings.Split(value, ",")
+	for i, n := range names {
+		if names[i] = strings.TrimSpace(n); names[i] == "" {
+			return nil, fmt.Errorf("%s: empty name in %q", ticket.FieldName(f), value)
+		}
+	}
+	return names, nil
+}
+
+func appendNew(list []string, s string) []string {
+	if slices.Contains(list, s) {
+		return list
+	}
+	return append(list, s)
+}
+
+// optionGID finds the enum option whose gid is name, or named name ignoring
+// case.
+func optionGID(f asana.CustomField, name string) (string, error) {
+	var options []string
+	for _, o := range f.EnumOptions {
+		if o.GID == name || strings.EqualFold(o.Name, name) {
+			return o.GID, nil
+		}
+		options = append(options, ticket.Clean(o.Name))
+	}
+	return "", fmt.Errorf("%s has no option %q; options: %s", ticket.FieldName(f), name, strings.Join(options, ", "))
+}
+
+// FieldValue converts typed text to the API value for a text, number, enum,
+// multi_enum (comma-separated option names), or date (YYYY-MM-DD) field.
+// Option gids work in place of names. Empty text is nil, which clears the
+// field.
 func FieldValue(f asana.CustomField, value string) (any, error) {
 	name := ticket.FieldName(f)
 	if value == "" {
@@ -222,14 +636,21 @@ func FieldValue(f asana.CustomField, value string) (any, error) {
 		}
 		return n, nil
 	case asana.FieldEnum:
-		var options []string
-		for _, o := range f.EnumOptions {
-			if strings.EqualFold(o.Name, value) {
-				return o.GID, nil
-			}
-			options = append(options, ticket.Clean(o.Name))
+		return optionGID(f, value)
+	case asana.FieldMultiEnum:
+		names, err := splitList(f, value)
+		if err != nil {
+			return nil, err
 		}
-		return nil, fmt.Errorf("%s has no option %q; options: %s", name, value, strings.Join(options, ", "))
+		gids := make([]string, 0, len(names))
+		for _, n := range names {
+			gid, err := optionGID(f, n)
+			if err != nil {
+				return nil, err
+			}
+			gids = appendNew(gids, gid)
+		}
+		return gids, nil
 	case asana.FieldDate:
 		if _, err := time.Parse(time.DateOnly, value); err != nil {
 			return nil, fmt.Errorf("%s needs a date as YYYY-MM-DD, got %q", name, value)

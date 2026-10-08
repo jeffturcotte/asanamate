@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/sadmachine/asanamate/internal/clipboard"
 	"github.com/sadmachine/asanamate/internal/config"
 )
 
@@ -154,5 +155,19 @@ func TestCommentBoxUsesAvailableWidth(t *testing.T) {
 		if m.input.area.Width() != min(width-4, 80)-2 || m.input.area.Height() != 8 {
 			t.Fatal("non-comment input dimensions changed")
 		}
+	}
+}
+
+func TestInputBoxInsertsPastedImage(t *testing.T) {
+	b := newInputBox("Comment", "")
+	b.images = true
+	b.area.SetValue("see ")
+	b.update(imagePasteMsg{path: "/tmp/a b.png"})
+	if got := b.area.Value(); got != "see ![](</tmp/a b.png>)" {
+		t.Fatalf("value = %q", got)
+	}
+	b.update(imagePasteMsg{err: clipboard.ErrNoImage})
+	if !strings.Contains(b.err, "no image") {
+		t.Fatalf("err = %q", b.err)
 	}
 }

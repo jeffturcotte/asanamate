@@ -6,7 +6,6 @@ import (
 	"math"
 	"slices"
 	"strings"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -27,6 +26,7 @@ const (
 	editAddProject
 	editRemoveProject
 	editBranch
+	editComplete
 )
 
 // myTasks stands for the My Tasks list among a ticket's projects.
@@ -38,7 +38,13 @@ type pendingEdit struct {
 	ticket  ticket.Ticket
 	field   *asana.CustomField // the field being set, once picked
 	due     bool               // editing the task's built-in due date
-	myTasks bool               // moving within My Tasks, not a project
+	project string             // the gid of the project to move within, or writeback.MyTasks
+}
+
+// writer is the TUI's writeback service. It has no Confirm: choosing a value
+// in the TUI is the go-ahead.
+func (m *Model) writer() writeback.Service {
+	return writeback.Service{Client: m.deps.Client, Workspace: m.deps.Config.Workspace, Users: m.users}
 }
 
 // startEdit begins an edit of the selected ticket, reporting whether its
@@ -75,6 +81,7 @@ func (m *Model) openEditMenu() {
 		{Label: "Add to project", Key: "p", Value: editAddProject},
 		{Label: "Remove from project", Key: "r", Value: editRemoveProject},
 		{Label: "Set branch", Key: "b", Value: editBranch},
+		{Label: completeLabel(t.Task), Key: "x", Value: editComplete},
 	})
 	p.keySelect = true
 	m.modal = p
@@ -90,6 +97,7 @@ func (m *Model) pickedEdit(op editOp) tea.Cmd {
 		m.input.area.MinHeight = 10
 		// Keep the viewport limit separate from the amount of text accepted.
 		m.input.area.MaxContentHeight = math.MaxInt
+		m.input.images = true
 	case editSection:
 		targets := m.sectionTargets(t.Task)
 		switch len(targets) {
@@ -120,8 +128,34 @@ func (m *Model) pickedEdit(op editOp) tea.Cmd {
 		m.openRemoveProjectPicker()
 	case editBranch:
 		m.openBranchInput(t.Task)
+	case editComplete:
+		return m.toggleComplete()
 	}
 	return nil
+}
+
+// completeLabel names the edit that toggles t: Complete when open, Reopen
+// when complete.
+func completeLabel(t asana.Task) string {
+	if t.Completed {
+		return "Reopen"
+	}
+	return "Complete"
+}
+
+// toggleComplete completes the ticket being edited, or reopens it when it is
+// complete.
+func (m *Model) toggleComplete() tea.Cmd {
+	t := m.edit.ticket
+	svc, gid, done := m.writer(), t.GID, !t.Completed
+	what, status := "reopen "+ticket.Clean(t.Name), "Reopened "+ticket.Clean(t.Name)
+	if done {
+		what, status = "complete "+ticket.Clean(t.Name), "Completed "+ticket.Clean(t.Name)
+	}
+	m.edit, m.status = nil, what+"…"
+	return request(func(ctx context.Context) tea.Msg {
+		return editDoneMsg{gid: gid, what: what, done: status, err: svc.Complete(ctx, gid, done)}
+	})
 }
 
 // openBranchInput edits the branch saved for t, which overrides its branch
@@ -188,17 +222,17 @@ func (m *Model) openRemoveProjectPicker() {
 
 func (m *Model) addToProject(project asana.Ref) tea.Cmd {
 	m.modal = nil
-	c, gid := m.deps.Client, m.edit.ticket.GID
+	svc, gid := m.writer(), m.edit.ticket.GID
 	return m.saveEdit("add to "+ticket.Clean(project.Name), func(ctx context.Context) error {
-		return c.AddToProject(ctx, gid, project.GID)
+		return svc.AddProject(ctx, gid, project.GID)
 	})
 }
 
 func (m *Model) removeFromProject(project asana.Ref) tea.Cmd {
 	m.modal = nil
-	c, gid := m.deps.Client, m.edit.ticket.GID
+	svc, gid := m.writer(), m.edit.ticket.GID
 	return m.saveEdit("remove from "+ticket.Clean(project.Name), func(ctx context.Context) error {
-		return c.RemoveFromProject(ctx, gid, project.GID)
+		return svc.RemoveProject(ctx, gid, project.GID)
 	})
 }
 
@@ -221,7 +255,10 @@ func (m *Model) sectionTargets(t asana.Task) []asana.Ref {
 
 func (m *Model) pickedEditProject(project asana.Ref) tea.Cmd {
 	m.modal = nil
-	m.edit.myTasks = project.GID == ""
+	m.edit.project = project.GID
+	if project.GID == "" {
+		m.edit.project = writeback.MyTasks
+	}
 	m.status = "loading sections…"
 	return loadSections(m.deps.Client, m.deps.Config.Workspace, project)
 }
@@ -246,7 +283,7 @@ func (m *Model) openSectionPicker(msg sectionsMsg) {
 	}
 	m.status = ""
 	current := m.edit.ticket.SectionIn(msg.project.GID)
-	if m.edit.myTasks {
+	if m.edit.project == writeback.MyTasks {
 		current = m.edit.ticket.AssigneeSection.Name
 	}
 	items := make([]pickItem, len(msg.sections))
@@ -261,12 +298,9 @@ func (m *Model) openSectionPicker(msg sectionsMsg) {
 
 func (m *Model) pickedSection(sec asana.Ref) tea.Cmd {
 	m.modal = nil
-	c, gid, mine := m.deps.Client, m.edit.ticket.GID, m.edit.myTasks
+	svc, gid, project := m.writer(), m.edit.ticket.GID, m.edit.project
 	return m.saveEdit("move to "+ticket.Clean(sec.Name), func(ctx context.Context) error {
-		if mine {
-			return c.SetMyTasksSection(ctx, gid, sec.GID)
-		}
-		return c.AddToSection(ctx, sec.GID, gid)
+		return svc.Move(ctx, gid, sec.GID, project)
 	})
 }
 
@@ -307,6 +341,10 @@ const addProjectKey = "add_project"
 
 // emptyFieldsKey is the field key of the cards view's Show empty fields row.
 const emptyFieldsKey = "empty_fields"
+
+// otherAgentsKey is the field key of the cards view's Show agents on other
+// branches row.
+const otherAgentsKey = "other_agents"
 
 // fieldTargets are the keys of the rows the cards view can tab to, in the
 // order they render: editable details rows, the Show empty fields row while
@@ -349,6 +387,13 @@ func (m *Model) showEmptyFields() {
 			break
 		}
 	}
+	m.showTarget()
+}
+
+// showOtherAgents reveals the selected ticket's agents on other branches and
+// selects the Agents section.
+func (m *Model) showOtherAgents() {
+	m.showOthers, m.fieldKey = true, "section:agents"
 	m.showTarget()
 }
 
@@ -418,7 +463,7 @@ func (m *Model) pickedField(f asana.CustomField) tea.Cmd {
 	}
 	items := []pickItem{{Label: "(none)", Hint: "clear", Value: ""}}
 	for _, o := range f.EnumOptions {
-		it := pickItem{Label: ticket.Clean(o.Name), Value: o.Name}
+		it := pickItem{Label: ticket.Clean(o.Name), Value: o.GID}
 		if o.Name == f.Value() {
 			it.Hint = "current"
 		}
@@ -428,17 +473,13 @@ func (m *Model) pickedField(f asana.CustomField) tea.Cmd {
 	return nil
 }
 
+// setField sets the field being edited to value, as writeback.FieldValue
+// reads it.
 func (m *Model) setField(value string) tea.Cmd {
 	m.modal = nil
-	f := *m.edit.field
-	v, err := writeback.FieldValue(f, value)
-	if err != nil {
-		m.edit, m.status = nil, err.Error()
-		return nil
-	}
-	c, gid := m.deps.Client, m.edit.ticket.GID
+	svc, gid, f := m.writer(), m.edit.ticket.GID, *m.edit.field
 	return m.saveEdit("set "+ticket.FieldName(f), func(ctx context.Context) error {
-		return c.SetCustomField(ctx, gid, f.GID, v)
+		return svc.SetField(ctx, gid, f.GID, value, "")
 	})
 }
 
@@ -446,15 +487,9 @@ func (m *Model) setField(value string) tea.Cmd {
 func (m *Model) typedEdit(text string) tea.Cmd {
 	m.input = nil
 	if m.edit.due {
-		if text != "" {
-			if _, err := time.Parse(time.DateOnly, text); err != nil {
-				m.edit, m.status = nil, "due date needs YYYY-MM-DD"
-				return nil
-			}
-		}
-		c, gid := m.deps.Client, m.edit.ticket.GID
+		svc, gid := m.writer(), m.edit.ticket.GID
 		return m.saveEdit("set due date", func(ctx context.Context) error {
-			return c.SetDueOn(ctx, gid, text)
+			return svc.SetDue(ctx, gid, text)
 		})
 	}
 	if m.edit.field != nil {
@@ -464,8 +499,7 @@ func (m *Model) typedEdit(text string) tea.Cmd {
 		m.edit, m.status = nil, "comment is empty; nothing posted"
 		return nil
 	}
-	svc := writeback.Service{Client: m.deps.Client, Workspace: m.deps.Config.Workspace, Users: m.users}
-	gid := m.edit.ticket.GID
+	svc, gid := m.writer(), m.edit.ticket.GID
 	return m.saveEdit("comment", func(ctx context.Context) error {
 		return svc.Comment(ctx, gid, text)
 	})
@@ -474,16 +508,11 @@ func (m *Model) typedEdit(text string) tea.Cmd {
 // pickedValues sets a multi_enum or people field to the checked option or
 // user gids; none checked clears it.
 func (m *Model) pickedValues(res pickResult) tea.Cmd {
-	m.modal = nil
-	f := *m.edit.field
 	gids := make([]string, len(res.items))
 	for i, it := range res.items {
 		gids[i] = it.Value.(string)
 	}
-	c, gid := m.deps.Client, m.edit.ticket.GID
-	return m.saveEdit("set "+ticket.FieldName(f), func(ctx context.Context) error {
-		return c.SetCustomField(ctx, gid, f.GID, gids)
-	})
+	return m.setField(strings.Join(gids, ","))
 }
 
 // openUserPicker lists the workspace users once they have loaded: to fill a
@@ -533,9 +562,9 @@ func (m *Model) pickedUser(u asana.Ref) tea.Cmd {
 	if u.GID != "" {
 		what = "assign to " + ticket.Clean(u.Name)
 	}
-	c, gid := m.deps.Client, m.edit.ticket.GID
+	svc, gid := m.writer(), m.edit.ticket.GID
 	return m.saveEdit(what, func(ctx context.Context) error {
-		return c.SetAssignee(ctx, gid, u.GID)
+		return svc.Assign(ctx, gid, u.GID)
 	})
 }
 

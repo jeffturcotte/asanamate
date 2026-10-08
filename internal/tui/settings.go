@@ -37,6 +37,7 @@ func (m *Model) openSettings(cursor int) {
 		}},
 	}
 	items = append(items, pickItem{Label: "Build / edit actions", Key: "a", Value: func() tea.Cmd { m.modal = nil; m.openActionBuilder(); return nil }})
+	items = append(items, pickItem{Label: "List columns for this project", Key: "c", Value: m.openColumns})
 	p := newPicker(pickValue(func(open func() tea.Cmd) tea.Cmd { return open() }), "Settings", items)
 	p.keySelect = true
 	p.cursor = cursor

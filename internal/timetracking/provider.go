@@ -3,15 +3,14 @@
 package timetracking
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os/exec"
-	"strings"
 
 	"github.com/sadmachine/asanamate/internal/form"
+	"github.com/sadmachine/asanamate/internal/jsoncmd"
+	"github.com/sadmachine/asanamate/internal/projectlinks"
 )
 
 // Asana identifies the selected ticket and its chosen Asana project.
@@ -22,11 +21,19 @@ type Asana struct {
 	URL        string `json:"url"`
 }
 
-// Request is sent as JSON on provider stdin.
+// ProtocolVersion is the time provider protocol version every request
+// carries. It changes only when existing providers would break; new optional
+// fields keep it, so providers must ignore request fields they do not know.
+const ProtocolVersion = 1
+
+// Request is sent as JSON on provider stdin. Links, on form requests, are the
+// chosen Asana project's links from the project links provider.
 type Request struct {
-	Operation string            `json:"operation"`
-	Values    map[string]string `json:"values,omitempty"`
-	Asana     *Asana            `json:"asana,omitempty"`
+	Version   int                 `json:"version"`
+	Operation string              `json:"operation"`
+	Values    map[string]string   `json:"values,omitempty"`
+	Asana     *Asana              `json:"asana,omitempty"`
+	Links     []projectlinks.Link `json:"links,omitempty"`
 }
 
 // Provider executes the configured command. Data goes through stdin, never
@@ -68,28 +75,14 @@ func (p Provider) Summary(ctx context.Context, asana Asana) (Summary, error) {
 }
 
 func (p Provider) call(ctx context.Context, req Request) ([]byte, error) {
-	input, err := json.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", p.Command)
-	cmd.Stdin = bytes.NewReader(input)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
-	if err != nil {
-		message := strings.TrimSpace(stderr.String())
-		if message != "" {
-			return nil, fmt.Errorf("time provider: %s: %w", message, err)
-		}
-		return nil, fmt.Errorf("time provider: %w", err)
-	}
-	return out, nil
+	req.Version = ProtocolVersion
+	return jsoncmd.Run(ctx, "time provider", p.Command, req)
 }
 
-// Form fetches fresh controls and choices for an entry.
-func (p Provider) Form(ctx context.Context) (form.Spec, error) {
-	out, err := p.call(ctx, Request{Operation: "form"})
+// Form fetches fresh controls and choices for an entry in asana's project;
+// links may suggest select defaults.
+func (p Provider) Form(ctx context.Context, asana Asana, links []projectlinks.Link) (form.Spec, error) {
+	out, err := p.call(ctx, Request{Operation: "form", Asana: &asana, Links: links})
 	if err != nil {
 		return form.Spec{}, err
 	}

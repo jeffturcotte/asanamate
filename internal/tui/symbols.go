@@ -21,6 +21,7 @@ type symbolSet struct {
 	barOff     string
 	codeWrap   string // marks a wrapped code-block continuation
 	info       string // leads descriptive modal help
+	emoji      bool   // the terminal draws emoji, such as comment reactions
 	states     map[agents.State]string
 	spinner    []string          // frames shown for working agents; nil means static
 	border     lipgloss.Border   // reading pane cards and section rules
@@ -42,18 +43,14 @@ const (
 )
 
 // Spinners use dense glyphs, so a working agent stands out at a glance.
-var (
-	braille = []string{"⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"}
-	// Nerd Font (Material Design) circle slices, filling like a clock.
-	pieSlices = []string{"\U000F0A9E", "\U000F0A9F", "\U000F0AA0", "\U000F0AA1", "\U000F0AA2", "\U000F0AA3", "\U000F0AA4", "\U000F0AA5"}
-)
+var braille = []string{"⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"}
 
 // Each set only sets what it changes: nerd falls back to unicode, unicode to
 // ascii, which defines everything.
 var (
 	asciiSymbols = symbolSet{open: "[ ]", done: "[x]", cursor: ">", robot: "@", barOn: "#", barOff: "-", codeWrap: ">", info: "(i)", icons: map[string]string{iconClock: "(time)"}, border: lipgloss.ASCIIBorder(), states: map[agents.State]string{
 		agents.Waiting: "(!)", agents.Working: "(~)", agents.Completed: "(+)", agents.Idle: "(-)", agents.Unknown: "(?)"}}
-	unicodeSymbols = asciiSymbols.with(symbolSet{open: "□", done: "✓", cursor: "▌", robot: "🤖", barOn: "▰", barOff: "▱", codeWrap: "↪", spinner: braille, icons: map[string]string{iconClock: "◷"}, border: lipgloss.RoundedBorder(), states: map[agents.State]string{
+	unicodeSymbols = asciiSymbols.with(symbolSet{open: "□", done: "✓", cursor: "▌", robot: "🤖", barOn: "▰", barOff: "▱", codeWrap: "↪", emoji: true, spinner: braille, icons: map[string]string{iconClock: "◷"}, border: lipgloss.RoundedBorder(), states: map[agents.State]string{
 		agents.Waiting: "⚠", agents.Working: "◐", agents.Completed: "●", agents.Idle: "○", agents.Unknown: "?"}})
 	// Nerd Font (Font Awesome) glyphs; needs a Nerd Font.
 	nerdSymbols = unicodeSymbols.with(symbolSet{open: "", done: "", robot: "󰚩", info: "\uf05a", states: map[agents.State]string{
@@ -74,6 +71,7 @@ func (s symbolSet) with(o symbolSet) symbolSet {
 	s.barOn, s.barOff = cmp.Or(o.barOn, s.barOn), cmp.Or(o.barOff, s.barOff)
 	s.codeWrap = cmp.Or(o.codeWrap, s.codeWrap)
 	s.info = cmp.Or(o.info, s.info)
+	s.emoji = s.emoji || o.emoji
 	s.border = cmp.Or(o.border, s.border)
 	if o.spinner != nil {
 		s.spinner = o.spinner

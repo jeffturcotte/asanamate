@@ -1,4 +1,4 @@
-package agents
+package ccmux
 
 import (
 	"encoding/json"
@@ -11,29 +11,32 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/sadmachine/asanamate/internal/agents"
+	"github.com/sadmachine/asanamate/internal/config"
 )
 
 // live is a state an agent reported itself, and when. It corrects ccmux,
 // which can leave a busy session "idle".
 type live struct {
-	State State
+	State agents.State
 	At    time.Time
 }
 
-// HookDir is where `asanamate hook` keeps one state file per session, under
-// asanamate's state directory.
+// HookDir is where `asanamate-ccmux hook codex` keeps one state file per
+// session, under asanamate's state directory.
 func HookDir(stateDir string) string { return filepath.Join(stateDir, "agents") }
 
 // hookStates maps Codex hook events to the state they leave a session in.
 // SessionEnd removes the session's file instead.
-var hookStates = map[string]State{
-	"SessionStart":      Idle,
-	"UserPromptSubmit":  Working,
-	"PreToolUse":        Working,
-	"PostToolUse":       Working,
-	"PermissionRequest": Waiting,
-	"Stop":              Idle,
-	"Interrupt":         Idle,
+var hookStates = map[string]agents.State{
+	"SessionStart":      agents.Idle,
+	"UserPromptSubmit":  agents.Working,
+	"PreToolUse":        agents.Working,
+	"PostToolUse":       agents.Working,
+	"PermissionRequest": agents.Waiting,
+	"Stop":              agents.Idle,
+	"Interrupt":         agents.Idle,
 }
 
 // HookEvents lists the hook events WriteHook records, for installing the hook.
@@ -85,6 +88,18 @@ func WriteHook(in io.Reader, dir string) error {
 	return os.Rename(tmp.Name(), path)
 }
 
+// RunHook serves `hook codex`: it records the Codex hook event on in. It
+// never fails: Codex runs it on every event, and a hook error must not get in
+// the agent's way.
+func RunHook(args []string, in io.Reader) {
+	if len(args) != 1 || args[0] != "codex" {
+		return
+	}
+	if stateDir, err := config.StateDir(); err == nil {
+		_ = WriteHook(in, HookDir(stateDir))
+	}
+}
+
 // validSessionID reports whether id is safe to use as a file name.
 func validSessionID(id string) bool {
 	if id == "" || len(id) > 128 {
@@ -122,7 +137,7 @@ func claudeDir() string {
 }
 
 // claudeStates maps the statuses Claude Code writes in its session files.
-var claudeStates = map[string]State{"busy": Working, "waiting": Waiting, "idle": Idle}
+var claudeStates = map[string]agents.State{"busy": agents.Working, "waiting": agents.Waiting, "idle": agents.Idle}
 
 // readClaudeSessions reads the <pid>.json files Claude Code keeps for each
 // running session. The format is Claude Code's own, so unreadable files are
@@ -160,7 +175,7 @@ func readHookFiles(dir string, into map[string]live) {
 		if err != nil || ierr != nil {
 			continue
 		}
-		if s := State(strings.TrimSpace(string(data))); s != Unknown && rank(s) < len(States) {
+		if s := agents.State(strings.TrimSpace(string(data))); s != agents.Unknown && slices.Contains(agents.States, s) {
 			into[e.Name()] = live{State: s, At: info.ModTime()}
 		}
 	}
