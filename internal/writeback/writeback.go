@@ -158,6 +158,56 @@ func (s Service) Comment(ctx context.Context, gid, text string) error {
 	return s.Client.AddCommentHTML(ctx, gid, html)
 }
 
+// ErrReactionIgnored means Asana accepted a reaction write but the story's
+// reactions did not change, as when the undocumented reactions field changes.
+var ErrReactionIgnored = errors.New("asana accepted the reaction but did not apply it")
+
+// React adds the user's emoji reaction to a comment, by story gid, or removes
+// it when reacted is false. It reads the comment back to check the change,
+// since Asana ignores a reaction field it does not know.
+func (s Service) React(ctx context.Context, storyGID, emoji string, reacted bool) error {
+	emoji = strings.TrimSpace(emoji)
+	if emoji == "" {
+		return errors.New("emoji is empty")
+	}
+	if s.Confirm != nil {
+		c, err := s.Client.Story(ctx, storyGID)
+		if err != nil {
+			return err
+		}
+		question := "React %s to %s's comment %q?"
+		if !reacted {
+			question = "Remove your %s from %s's comment %q?"
+		}
+		if err := s.confirm(fmt.Sprintf(question, ticket.OneLine(emoji), ticket.Author(c), snippet(c.Text))); err != nil {
+			return err
+		}
+	}
+	if err := s.Client.SetReaction(ctx, storyGID, emoji, reacted); err != nil {
+		return err
+	}
+	c, err := s.Client.Story(ctx, storyGID)
+	if err != nil {
+		return fmt.Errorf("checking the reaction: %w", err)
+	}
+	mine := slices.ContainsFunc(c.Reactions, func(r asana.Reaction) bool {
+		return r.Reacted && (r.Emoji == emoji || r.Base == emoji)
+	})
+	if mine != reacted {
+		return ErrReactionIgnored
+	}
+	return nil
+}
+
+// snippet shortens text to one line of at most 40 characters for a prompt.
+func snippet(text string) string {
+	runes := []rune(ticket.OneLine(strings.TrimSpace(text)))
+	if len(runes) <= 40 {
+		return string(runes)
+	}
+	return string(runes[:39]) + "…"
+}
+
 // maxImageSize is Asana's attachment size limit.
 const maxImageSize = 100 << 20
 

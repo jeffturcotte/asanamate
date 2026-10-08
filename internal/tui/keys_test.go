@@ -234,9 +234,10 @@ func TestCardsNavigateFieldsSectionsAndComments(t *testing.T) {
 		t.Fatalf("comment mode = %q", name)
 	}
 	press(m, "enter")
-	if m.modal != nil || m.input != nil {
-		t.Fatal("comment selection opened an editor")
+	if m.modal == nil || m.modal.items[0].Label != "React" || m.input != nil {
+		t.Fatal("enter on a comment must open the comment menu, not an editor")
 	}
+	m.modal = nil
 	press(m, "j")
 	if m.fieldKey != "assignee" || m.reader.YOffset() != 0 {
 		t.Fatalf("wrapped target = %q at offset %d, want the ticket's top", m.fieldKey, m.reader.YOffset())

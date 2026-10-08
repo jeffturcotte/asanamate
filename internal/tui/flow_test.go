@@ -474,9 +474,10 @@ func TestCommentActionsListFirstOnHighlightedComment(t *testing.T) {
 	m.focusReader = true
 	m.loading = false
 	m.Update(key("enter"))
-	if m.modal != nil {
-		t.Fatal("Enter on a comment must not open actions")
+	if p := m.modal; p == nil || len(p.items) != 1 || p.items[0].Label != "React" {
+		t.Fatal("Enter on a comment must open the comment menu, not actions")
 	}
+	m.modal = nil
 	m.Update(key(" "))
 	if p := m.modal; len(p.items) != 2 || p.items[0].Label != "Reply" {
 		t.Fatalf("on a comment, items = %+v", p.items)
@@ -502,5 +503,29 @@ func TestRepeatActionRunsLastPicked(t *testing.T) {
 	m.Update(key("."))
 	if cmd := m.ExitCommand(); cmd == nil || cmd.Dir != dir {
 		t.Fatalf("repeat did not rerun the action: %+v (status %q)", cmd, m.status)
+	}
+}
+
+func TestCommentMenuReacts(t *testing.T) {
+	m, _ := testModel(t, config.Config{})
+	tk := ticket.Ticket{Task: asana.Task{GID: "1", Name: "Fix"}, Comments: []asana.Story{{
+		GID: "9", CreatedBy: &asana.Ref{Name: "Bo"}, HTMLText: "<body>hi</body>",
+		Reactions: []asana.Reaction{{Emoji: "👍", Count: 2, Reacted: true}, {Emoji: "🚀", Count: 1}},
+	}}}
+	m.tasks, m.visible = []asana.Task{tk.Task}, []asana.Task{tk.Task}
+	m.details["1"] = tk
+	m.fieldKey, m.focusReader, m.loading = "comment:9", true, false
+
+	m.Update(key("enter"))
+	m.Update(key("r"))
+	p := m.modal
+	if p == nil || p.title != "React to Bo's comment" {
+		t.Fatalf("modal = %+v", p)
+	}
+	if first, last := p.items[0], p.items[len(p.items)-1]; first.Hint != "remove" || last.Value != "🚀" || last.Hint != "" {
+		t.Fatalf("first = %+v, last = %+v", first, last)
+	}
+	if _, cmd := m.Update(key("1")); cmd == nil || m.modal != nil || m.status != "remove 👍…" {
+		t.Fatalf("after 1: modal = %v, status = %q", m.modal, m.status)
 	}
 }
