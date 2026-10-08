@@ -8,6 +8,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/sadmachine/asanamate/internal/asana"
 	"github.com/sadmachine/asanamate/internal/config"
 )
 
@@ -196,5 +197,53 @@ filter = "is:open"
 	}
 	if s.CurrentSavedViews == nil || len(s.CurrentSavedViews) != 0 || len(s.RecentSavedViews) != 0 {
 		t.Fatalf("legacy saved view metadata = %+v", s)
+	}
+}
+
+func TestSeenTasks(t *testing.T) {
+	path := filepath.Join(t.TempDir(), FileName)
+	s, _ := Load(path)
+	a := asana.Task{GID: "1", ModifiedAt: "t1"}
+	b := asana.Task{GID: "2", ModifiedAt: "t1"}
+	if s.MarkSeen(a) || s.Changed(a) || s.Changed(b) {
+		t.Fatalf("before a baseline nothing is recorded or changed: %v", s.SeenTasks)
+	}
+	if !s.SyncSeen([]asana.Task{a}) || s.Changed(a) {
+		t.Fatalf("baseline did not record a: %v", s.SeenTasks)
+	}
+	if !s.Changed(b) {
+		t.Fatal("a task never seen counts as changed")
+	}
+	a.ModifiedAt = "t2"
+	if !s.Changed(a) {
+		t.Fatal("a newer modified_at counts as changed")
+	}
+	if !s.MarkSeen(a) || s.Changed(a) || s.MarkSeen(a) {
+		t.Fatalf("MarkSeen did not record a once: %v", s.SeenTasks)
+	}
+	if !s.SyncSeen([]asana.Task{b}) || !s.Changed(b) {
+		t.Fatalf("sync recorded the unseen task b: %v", s.SeenTasks)
+	}
+	if _, ok := s.SeenTasks["1"]; ok {
+		t.Fatalf("sync kept a task no longer listed: %v", s.SeenTasks)
+	}
+	if s.SyncSeen([]asana.Task{b}) {
+		t.Fatal("sync with nothing to prune reported a change")
+	}
+	if s.Changed(asana.Task{GID: "3"}) {
+		t.Fatal("a task without modified_at counts as changed")
+	}
+}
+
+func TestEmptySeenBaselineSurvivesSave(t *testing.T) {
+	path := filepath.Join(t.TempDir(), FileName)
+	s, _ := Load(path)
+	s.SyncSeen(nil)
+	if err := s.Save(); err != nil {
+		t.Fatal(err)
+	}
+	again, _ := Load(path)
+	if !again.Changed(asana.Task{GID: "1", ModifiedAt: "t1"}) {
+		t.Fatal("an empty baseline was lost, so new tasks would be seeded as seen")
 	}
 }
