@@ -1,5 +1,5 @@
 // Package state stores data asanamate learns while running: repo links, recent
-// projects and tickets, explicit pins, saved views, and each project's last list view.
+// projects and tickets, the project list, explicit pins, saved views, and each project's last list view.
 package state
 
 import (
@@ -34,6 +34,9 @@ type State struct {
 	// TaskBranches maps an Asana task gid to a git branch typed for that task,
 	// used in place of its branch field and the fallback.
 	TaskBranches map[string]string `toml:"task_branches"`
+	// Projects caches the projects the user is a member of, from the last
+	// load, so pickers open before a fresh list arrives.
+	Projects []Project `toml:"projects,omitempty"`
 	// RecentProjects holds project gids, most recently opened first.
 	RecentProjects []string `toml:"recent_projects"`
 	// RecentTickets holds the tickets last focused in the reader, most recent first.
@@ -42,6 +45,10 @@ type State struct {
 	PinnedTasks map[string][]string `toml:"pinned_tasks"`
 	// Views maps a project gid ("" for My Tasks) to the list view last used there.
 	Views map[string]View `toml:"views"`
+	// Columns maps a project gid ("" for My Tasks) to ordered list columns.
+	// An absent entry uses list.fields; an empty entry shows only the title.
+	// Columns belong to the project, independently of named views.
+	Columns map[string][]Column `toml:"columns,omitempty"`
 	// SavedViews maps a user-friendly name to a reusable grouping and filter.
 	SavedViews map[string]View `toml:"saved_views"`
 	// RecentSavedViews holds saved view names, most recently applied or saved first.
@@ -77,6 +84,20 @@ type View struct {
 	Filter  string      `toml:"filter"`
 }
 
+// Column identifies a list value. Field is a built-in or legacy custom field
+// name. GID, when set, identifies a custom field regardless of its name;
+// Field then keeps its last known name for the picker.
+type Column struct {
+	Field string `toml:"field"`
+	GID   string `toml:"gid,omitempty"`
+}
+
+// Project is a cached project's gid and name.
+type Project struct {
+	GID  string `toml:"gid"`
+	Name string `toml:"name"`
+}
+
 // RecentTicket is a ticket in the history, with the names its picker row shows.
 type RecentTicket struct {
 	GID     string `toml:"gid"`
@@ -101,6 +122,9 @@ func Load(path string) (*State, error) {
 	}
 	if s.Views == nil {
 		s.Views = map[string]View{}
+	}
+	if s.Columns == nil {
+		s.Columns = map[string][]Column{}
 	}
 	if s.SavedViews == nil {
 		s.SavedViews = map[string]View{}

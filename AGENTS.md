@@ -33,10 +33,23 @@ When a task changes what lives in `~/.config/asanamate` (a config key or
 value, an action key, a new file, or a new layout), finish the task, then ask
 the user whether to migrate their local config to it. On yes:
 
-- Copy each file you will change to a `.bak` sibling first.
+- Copy each file you will change to a timestamped sibling first, named
+  `<file>.yyyy-mm-dd--hh-mm-ss.bak` (`date +%Y-%m-%d--%H-%M-%S`), such as
+  `config.toml.2026-10-06--14-30-05.bak`. Never overwrite or delete an
+  existing backup. `asanamate config update` names its own backups this way.
 - Bring `config.toml` and `actions/` onto the new shape, keeping every value
   the user set. `asanamate config update` handles new template keys in
   `config.toml`; everything else is a hand edit.
 - Validate with the branch's build: `go run ./cmd/asanamate doctor` loads the
   config and actions and names the first bad file or key. Done when it runs
   clean; then report what changed and where the backups are.
+
+## Asana writes
+
+Every write to Asana goes through `writeback.Service`
+(`internal/writeback/writeback.go`), so the TUI and the CLI share one
+implementation. Add a new write there first, with tests, then expose it in
+both: a TUI edit that calls the `Service` method (with no `Confirm`), and a
+CLI subcommand in `cmd/asanamate/main.go` with `--yes`, its `usage` line, and
+the README "Writing back to Asana" section. The TUI never calls the Asana
+client's write methods directly.

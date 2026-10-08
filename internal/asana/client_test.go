@@ -21,7 +21,7 @@ func newTestClient(t *testing.T, h http.HandlerFunc) *Client {
 	t.Cleanup(srv.Close)
 	c := New("tok")
 	c.BaseURL = srv.URL
-	c.sleep = func(time.Duration) {}
+	c.sleep = func(context.Context, time.Duration) error { return nil }
 	return c
 }
 
@@ -72,10 +72,25 @@ func TestRetriesOnceAfter429(t *testing.T) {
 		}
 		io.WriteString(w, `{"data":{"gid":"1","name":"Me"}}`)
 	})
-	c.sleep = func(d time.Duration) { slept = d }
+	c.sleep = func(_ context.Context, d time.Duration) error { slept = d; return nil }
 	me, err := c.Me(ctx)
 	if err != nil || me.Name != "Me" || calls != 2 || slept != 2*time.Second {
 		t.Fatalf("me = %+v, err = %v, calls = %d, slept = %v", me, err, calls, slept)
+	}
+}
+
+func TestRateLimitWaitStopsWhenContextEnds(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "5")
+		w.WriteHeader(http.StatusTooManyRequests)
+	})
+	c.sleep = sleep
+	timeout, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := c.Me(timeout)
+	if !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > time.Second {
+		t.Fatalf("err = %v after %v; want the deadline error without waiting out Retry-After", err, time.Since(start))
 	}
 }
 
@@ -145,6 +160,31 @@ func TestWritesWrapBodyInData(t *testing.T) {
 	}
 }
 
+func TestUploadAttachmentSendsMultipart(t *testing.T) {
+	png := []byte("\x89PNG\r\n\x1a\nrest")
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/attachments" {
+			t.Errorf("%s %s", r.Method, r.URL.Path)
+		}
+		if r.FormValue("parent") != "1" {
+			t.Errorf("parent = %q", r.FormValue("parent"))
+		}
+		f, h, err := r.FormFile("file")
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, _ := io.ReadAll(f)
+		if h.Filename != "shot.png" || h.Header.Get("Content-Type") != "image/png" || string(data) != string(png) {
+			t.Errorf("file = %q %q %q", h.Filename, h.Header.Get("Content-Type"), data)
+		}
+		io.WriteString(w, `{"data":{"gid":"7","name":"shot.png"}}`)
+	})
+	a, err := c.UploadAttachment(ctx, "1", "shot.png", png)
+	if err != nil || a.GID != "7" {
+		t.Fatalf("attachment = %+v, err = %v", a, err)
+	}
+}
+
 func TestTaskUpdatesSendFields(t *testing.T) {
 	var got map[string]map[string]any
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
@@ -162,6 +202,8 @@ func TestTaskUpdatesSendFields(t *testing.T) {
 		{func() error { return c.SetAssignee(ctx, "1", "u1") }, map[string]any{"assignee": "u1"}},
 		{func() error { return c.SetAssignee(ctx, "1", "") }, map[string]any{"assignee": nil}},
 		{func() error { return c.SetMyTasksSection(ctx, "1", "s1") }, map[string]any{"assignee_section": "s1"}},
+		{func() error { return c.SetCompleted(ctx, "1", true) }, map[string]any{"completed": true}},
+		{func() error { return c.SetCompleted(ctx, "1", false) }, map[string]any{"completed": false}},
 	}
 	for i, tc := range cases {
 		if err := tc.write(); err != nil {
@@ -169,6 +211,43 @@ func TestTaskUpdatesSendFields(t *testing.T) {
 		}
 		if !reflect.DeepEqual(got["data"], tc.want) {
 			t.Errorf("case %d: body = %v, want %v", i, got["data"], tc.want)
+		}
+	}
+}
+
+func TestCreateTasksSendFields(t *testing.T) {
+	var path string
+	var got map[string]map[string]any
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Query().Get("opt_fields") == "" {
+			t.Errorf("%s %s", r.Method, r.URL)
+		}
+		path, got = r.URL.Path, nil
+		json.NewDecoder(r.Body).Decode(&got)
+		io.WriteString(w, `{"data":{"gid":"9","name":"New"}}`)
+	})
+	cases := []struct {
+		create   func() (Task, error)
+		wantPath string
+		want     map[string]any
+	}{
+		{func() (Task, error) {
+			return c.CreateTask(ctx, NewTask{Name: "New", Workspace: "w", Assignee: "me", DueOn: "2026-01-02", HTMLNotes: "<body>x</body>"})
+		}, "/tasks", map[string]any{"name": "New", "workspace": "w", "assignee": "me", "due_on": "2026-01-02", "html_notes": "<body>x</body>"}},
+		{func() (Task, error) { return c.CreateTask(ctx, NewTask{Name: "New", Project: "p1"}) },
+			"/tasks", map[string]any{"name": "New", "projects": []any{"p1"}}},
+		{func() (Task, error) { return c.CreateTask(ctx, NewTask{Name: "New", Project: "p1", Section: "s1"}) },
+			"/tasks", map[string]any{"name": "New", "projects": []any{"p1"}, "memberships": []any{map[string]any{"project": "p1", "section": "s1"}}}},
+		{func() (Task, error) { return c.CreateSubtask(ctx, "1", NewTask{Name: "New"}) },
+			"/tasks/1/subtasks", map[string]any{"name": "New"}},
+	}
+	for i, tc := range cases {
+		task, err := tc.create()
+		if err != nil || task.GID != "9" {
+			t.Fatalf("case %d: task = %+v, err = %v", i, task, err)
+		}
+		if path != tc.wantPath || !reflect.DeepEqual(got["data"], tc.want) {
+			t.Errorf("case %d: %s %v, want %s %v", i, path, got["data"], tc.wantPath, tc.want)
 		}
 	}
 }
@@ -209,5 +288,31 @@ func TestProjectFieldGIDs(t *testing.T) {
 	got, err := c.ProjectFieldGIDs(ctx, "9")
 	if err != nil || !got["f1"] || !got["f2"] || len(got) != 2 {
 		t.Fatalf("got %v, err %v", got, err)
+	}
+}
+
+func TestProjectFieldsReturnsNamesWithoutTaskValues(t *testing.T) {
+	for _, tc := range []struct {
+		name, data string
+		want       []Ref
+	}{
+		{"configured", `[{"custom_field":{"gid":"f1","name":"Priority"}},{"custom_field":{"gid":"f2","name":"Priority"}}]`, []Ref{{GID: "f1", Name: "Priority"}, {GID: "f2", Name: "Priority"}}},
+		{"no fields", `[]`, []Ref{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet || r.URL.Path != "/projects/9/custom_field_settings" {
+					t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+				}
+				if !strings.Contains(r.URL.Query().Get("opt_fields"), "custom_field.name") {
+					t.Error("metadata request lacks field names")
+				}
+				io.WriteString(w, `{"data":`+tc.data+`}`)
+			})
+			got, err := c.ProjectFields(ctx, "9")
+			if err != nil || !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("fields = %v, err = %v, want %v", got, err, tc.want)
+			}
+		})
 	}
 }

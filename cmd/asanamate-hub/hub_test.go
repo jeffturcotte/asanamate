@@ -1,4 +1,4 @@
-package projectlinks
+package main
 
 import (
 	"bytes"
@@ -86,11 +86,11 @@ func TestHubRejectsBadRequestsAndCredentials(t *testing.T) {
 func TestCheckHubNamesMissingCredentials(t *testing.T) {
 	t.Setenv(HubClientIDEnv, "id")
 	t.Setenv(HubClientSecretEnv, "")
-	if err := CheckHub(); err == nil || !strings.Contains(err.Error(), HubClientSecretEnv) || strings.Contains(err.Error(), HubClientIDEnv) {
+	if err := checkHub(); err == nil || !strings.Contains(err.Error(), HubClientSecretEnv) || strings.Contains(err.Error(), HubClientIDEnv) {
 		t.Fatalf("CheckHub = %v", err)
 	}
 	t.Setenv(HubClientSecretEnv, "secret")
-	if err := CheckHub(); err != nil {
+	if err := checkHub(); err != nil {
 		t.Fatal(err)
 	}
 }

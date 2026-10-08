@@ -86,12 +86,12 @@ func TestUnlinkedRepoPromptsAndSaves(t *testing.T) {
 		t.Fatalf("modal = %+v", m.modal)
 	}
 	m.modal.input.SetValue(t.TempDir())
-	m.Update(key("tab"))
+	m.Update(key("ctrl+s"))
 	if m.modal == nil || !strings.Contains(m.modal.err, "not a git repository") {
 		t.Fatalf("invalid path must keep the picker open with an error; modal = %+v", m.modal)
 	}
 	m.modal.input.SetValue(dir)
-	m.Update(key("tab"))
+	m.Update(key("ctrl+s"))
 	if m.modal != nil || m.ExitCommand() == nil || m.ExitCommand().Dir != dir {
 		t.Fatalf("modal = %+v, exit = %+v", m.modal, m.ExitCommand())
 	}
@@ -206,7 +206,7 @@ func TestInputActionCancels(t *testing.T) {
 func linksModel(t *testing.T) (*Model, *state.State) {
 	t.Helper()
 	m, st := testModel(t, config.Config{RepoSource: config.RepoSource{Command: `printf '/definitely/missing\n'`}})
-	m.projects = []asana.Project{{GID: "p3", Name: "Zed"}, {GID: "p1", Name: "Web"}, {GID: "p2", Name: "API"}}
+	m.projects, m.projectsLoaded = []asana.Project{{GID: "p3", Name: "Zed"}, {GID: "p1", Name: "Web"}, {GID: "p2", Name: "API"}}, true
 	m.viewProject, m.loading = &asana.Ref{GID: "p1", Name: "Web"}, false
 	return m, st
 }
@@ -270,7 +270,7 @@ func TestRepoLinksRelinkSaves(t *testing.T) {
 	}
 	m.linked = map[string][]agents.Agent{}
 	m.modal.input.SetValue(dir)
-	m.Update(key("tab"))
+	m.Update(key("ctrl+s"))
 	if m.modal != nil || m.linked != nil {
 		t.Fatalf("modal = %+v, linked = %v", m.modal, m.linked)
 	}
@@ -370,7 +370,7 @@ func TestRepoLinksSetTicketRepoWithoutLinkingProject(t *testing.T) {
 		t.Fatalf("modal = %+v", m.modal)
 	}
 	m.modal.input.SetValue(dir)
-	m.Update(key("tab"))
+	m.Update(key("ctrl+s"))
 	again, _ := state.Load(st.Path())
 	if again.TaskRepos["1"] != dir || len(again.Repos) != 0 {
 		t.Fatalf("task repos = %v, repos = %v", again.TaskRepos, again.Repos)

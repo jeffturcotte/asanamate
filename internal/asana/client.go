@@ -30,7 +30,7 @@ type Client struct {
 	BaseURL string
 	token   string
 	http    *http.Client
-	sleep   func(time.Duration)
+	sleep   func(context.Context, time.Duration) error
 }
 
 // New returns a client that authenticates with token.
@@ -39,7 +39,7 @@ func New(token string) *Client {
 		BaseURL: DefaultBaseURL,
 		token:   token,
 		http:    &http.Client{Timeout: 30 * time.Second},
-		sleep:   time.Sleep,
+		sleep:   sleep,
 	}
 }
 
@@ -53,13 +53,20 @@ func (e *APIError) Error() string { return fmt.Sprintf("asana: HTTP %d: %s", e.S
 
 func (c *Client) do(ctx context.Context, method, path string, query url.Values, body, out any) error {
 	var payload []byte
+	contentType := ""
 	if body != nil {
 		b, err := json.Marshal(map[string]any{"data": body})
 		if err != nil {
 			return err
 		}
-		payload = b
+		payload, contentType = b, "application/json"
 	}
+	return c.send(ctx, method, path, query, payload, contentType, out)
+}
+
+// send makes the request, retrying once on a short rate limit. A non-empty
+// contentType labels payload.
+func (c *Client) send(ctx context.Context, method, path string, query url.Values, payload []byte, contentType string, out any) error {
 	target := c.BaseURL + path
 	if len(query) > 0 {
 		target += "?" + query.Encode()
@@ -75,8 +82,8 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 		}
 		req.Header.Set("Authorization", "Bearer "+c.token)
 		req.Header.Set("Accept", "application/json")
-		if payload != nil {
-			req.Header.Set("Content-Type", "application/json")
+		if contentType != "" {
+			req.Header.Set("Content-Type", contentType)
 		}
 		resp, err := c.http.Do(req)
 		if err != nil {
@@ -89,7 +96,9 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 		}
 		if resp.StatusCode == http.StatusTooManyRequests && attempt == 0 {
 			if wait := retryAfter(resp.Header.Get("Retry-After")); wait <= maxRetryWait {
-				c.sleep(wait)
+				if err := c.sleep(ctx, wait); err != nil {
+					return err
+				}
 				continue
 			}
 		}
@@ -100,6 +109,18 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 			return nil
 		}
 		return json.Unmarshal(data, out)
+	}
+}
+
+// sleep waits for d, or until ctx ends.
+func sleep(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
 	}
 }
 

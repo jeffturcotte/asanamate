@@ -1,8 +1,12 @@
 package asana
 
 import (
+	"bytes"
 	"context"
+	"mime"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"time"
 )
@@ -80,7 +84,7 @@ func (c *Client) Task(ctx context.Context, gid string) (Task, error) {
 
 // Comments returns a task's comment stories, oldest first.
 func (c *Client) Comments(ctx context.Context, gid string) ([]Story, error) {
-	all, err := getAll[Story](ctx, c, "/tasks/"+gid+"/stories", fields("type,created_at,created_by.name,html_text"))
+	all, err := getAll[Story](ctx, c, "/tasks/"+gid+"/stories", fields("type,created_at,created_by.name,html_text,reaction_summary.variant,reaction_summary.count,reaction_summary.reacted"))
 	if err != nil {
 		return nil, err
 	}
@@ -105,6 +109,33 @@ func (c *Client) Attachments(ctx context.Context, taskGID string) ([]Attachment,
 	return getAll[Attachment](ctx, c, "/attachments", q)
 }
 
+// UploadAttachment attaches a file to a task.
+func (c *Client) UploadAttachment(ctx context.Context, taskGID, name string, data []byte) (Attachment, error) {
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+	if err := w.WriteField("parent", taskGID); err != nil {
+		return Attachment{}, err
+	}
+	part, err := w.CreatePart(textproto.MIMEHeader{
+		"Content-Disposition": {mime.FormatMediaType("form-data", map[string]string{"name": "file", "filename": name})},
+		"Content-Type":        {http.DetectContentType(data)},
+	})
+	if err != nil {
+		return Attachment{}, err
+	}
+	if _, err := part.Write(data); err != nil {
+		return Attachment{}, err
+	}
+	if err := w.Close(); err != nil {
+		return Attachment{}, err
+	}
+	var r struct {
+		Data Attachment `json:"data"`
+	}
+	err = c.send(ctx, http.MethodPost, "/attachments", nil, body.Bytes(), w.FormDataContentType(), &r)
+	return r.Data, err
+}
+
 // Attachment returns one attachment with a fresh download URL.
 func (c *Client) Attachment(ctx context.Context, gid string) (Attachment, error) {
 	return getOne[Attachment](ctx, c, "/attachments/"+gid, fields(attachmentFields))
@@ -120,17 +151,31 @@ func (c *Client) Sections(ctx context.Context, projectGID string) ([]Ref, error)
 	return getAll[Ref](ctx, c, "/projects/"+projectGID+"/sections", fields("name"))
 }
 
-// ProjectFieldGIDs returns the gids of the custom fields attached to a project.
-func (c *Client) ProjectFieldGIDs(ctx context.Context, projectGID string) (map[string]bool, error) {
+// ProjectFields returns the custom fields attached to a project, even when
+// the project has no tasks or the fields have no values.
+func (c *Client) ProjectFields(ctx context.Context, projectGID string) ([]Ref, error) {
 	settings, err := getAll[struct {
 		CustomField Ref `json:"custom_field"`
-	}](ctx, c, "/projects/"+projectGID+"/custom_field_settings", fields("custom_field.gid"))
+	}](ctx, c, "/projects/"+projectGID+"/custom_field_settings", fields("custom_field.gid,custom_field.name"))
 	if err != nil {
 		return nil, err
 	}
-	gids := make(map[string]bool, len(settings))
+	refs := make([]Ref, 0, len(settings))
 	for _, s := range settings {
-		gids[s.CustomField.GID] = true
+		refs = append(refs, s.CustomField)
+	}
+	return refs, nil
+}
+
+// ProjectFieldGIDs returns the gids of the custom fields attached to a project.
+func (c *Client) ProjectFieldGIDs(ctx context.Context, projectGID string) (map[string]bool, error) {
+	refs, err := c.ProjectFields(ctx, projectGID)
+	if err != nil {
+		return nil, err
+	}
+	gids := make(map[string]bool, len(refs))
+	for _, f := range refs {
+		gids[f.GID] = true
 	}
 	return gids, nil
 }
@@ -187,10 +232,57 @@ func (c *Client) SetDueOn(ctx context.Context, taskGID, date string) error {
 	return c.updateTask(ctx, taskGID, map[string]any{"due_on": dueOn})
 }
 
+// SetCompleted marks a task complete, or reopens it when done is false.
+func (c *Client) SetCompleted(ctx context.Context, taskGID string, done bool) error {
+	return c.updateTask(ctx, taskGID, map[string]any{"completed": done})
+}
+
 // SetMyTasksSection moves a task into a section of its assignee's My Tasks.
 // Only the assignee can do this.
 func (c *Client) SetMyTasksSection(ctx context.Context, taskGID, sectionGID string) error {
 	return c.updateTask(ctx, taskGID, map[string]any{"assignee_section": sectionGID})
+}
+
+// NewTask is a task to create. Empty fields are left out. Section, a gid,
+// needs Project. Workspace is needed when the task has no project or parent.
+type NewTask struct {
+	Name      string
+	HTMLNotes string
+	Workspace string
+	Project   string
+	Section   string
+	Assignee  string // a user gid or "me"
+	DueOn     string // YYYY-MM-DD
+}
+
+// CreateTask creates a task and returns it with its list fields.
+func (c *Client) CreateTask(ctx context.Context, t NewTask) (Task, error) {
+	return c.createTask(ctx, "/tasks", t)
+}
+
+// CreateSubtask creates a subtask of the parent task and returns it.
+func (c *Client) CreateSubtask(ctx context.Context, parentGID string, t NewTask) (Task, error) {
+	return c.createTask(ctx, "/tasks/"+parentGID+"/subtasks", t)
+}
+
+func (c *Client) createTask(ctx context.Context, path string, t NewTask) (Task, error) {
+	body := map[string]any{"name": t.Name}
+	for key, value := range map[string]string{"html_notes": t.HTMLNotes, "workspace": t.Workspace, "assignee": t.Assignee, "due_on": t.DueOn} {
+		if value != "" {
+			body[key] = value
+		}
+	}
+	if t.Project != "" {
+		body["projects"] = []string{t.Project}
+	}
+	if t.Section != "" {
+		body["memberships"] = []map[string]string{{"project": t.Project, "section": t.Section}}
+	}
+	var r struct {
+		Data Task `json:"data"`
+	}
+	err := c.do(ctx, http.MethodPost, path, fields(listFields), body, &r)
+	return r.Data, err
 }
 
 func (c *Client) updateTask(ctx context.Context, taskGID string, body map[string]any) error {

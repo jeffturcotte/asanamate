@@ -1,4 +1,4 @@
-package projectlinks
+package main
 
 import (
 	"context"
@@ -12,6 +12,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/sadmachine/asanamate/internal/projectlinks"
 )
 
 // Hub credential environment variables: a Hub service account's OAuth2
@@ -21,8 +23,8 @@ const (
 	HubClientSecretEnv = "HUB_CLIENT_SECRET"
 )
 
-// HubURL is imarc's Hub.
-const HubURL = "https://hub.imarc.net"
+// hubURL is imarc's Hub.
+const hubURL = "https://hub.imarc.net"
 
 // Hub link type names read from projects.
 const (
@@ -43,14 +45,8 @@ type hubProject struct {
 	ContractLinks []hubLink `json:"contract_links"`
 }
 
-// RunHub serves the provider protocol from Hub, read-only, with the service
-// account credentials in the environment.
-func RunHub(ctx context.Context, in io.Reader, out io.Writer, baseURL string) error {
-	return runHub(ctx, in, out, baseURL, os.Getenv(HubClientIDEnv), os.Getenv(HubClientSecretEnv), time.Now())
-}
-
-// CheckHub reports whether Hub credentials are set, without calling Hub.
-func CheckHub() error {
+// checkHub reports whether Hub credentials are set, without calling Hub.
+func checkHub() error {
 	var missing []string
 	for _, key := range []string{HubClientIDEnv, HubClientSecretEnv} {
 		if strings.TrimSpace(os.Getenv(key)) == "" {
@@ -63,8 +59,10 @@ func CheckHub() error {
 	return nil
 }
 
+// runHub serves one request of the project links protocol from Hub,
+// read-only.
 func runHub(ctx context.Context, in io.Reader, out io.Writer, baseURL, clientID, clientSecret string, now time.Time) error {
-	var req Request
+	var req projectlinks.Request
 	if err := json.NewDecoder(in).Decode(&req); err != nil {
 		return fmt.Errorf("project links request: %w", err)
 	}
@@ -76,7 +74,7 @@ func runHub(ctx context.Context, in io.Reader, out io.Writer, baseURL, clientID,
 		return errors.New("Hub lookup needs a numeric Asana project GID")
 	}
 	if strings.TrimSpace(clientID) == "" || strings.TrimSpace(clientSecret) == "" {
-		return CheckHub()
+		return checkHub()
 	}
 	base := strings.TrimRight(baseURL, "/")
 	token, err := hubToken(ctx, base, clientID, clientSecret)
@@ -97,7 +95,7 @@ func runHub(ctx context.Context, in io.Reader, out io.Writer, baseURL, clientID,
 		return fmt.Errorf("Hub projects: %w", err)
 	}
 	today := now.Format(time.DateOnly)
-	links := []Link{}
+	links := []projectlinks.Link{}
 	for _, result := range found.Data {
 		project := result.Project
 		// Find also returns partial and fuzzy matches; keep exact Asana links.
@@ -110,12 +108,12 @@ func runHub(ctx context.Context, in io.Reader, out io.Writer, baseURL, clientID,
 			if !l.activeOn(today) {
 				continue
 			}
-			link := Link{Value: strings.TrimSpace(l.Value)}
+			link := projectlinks.Link{Value: strings.TrimSpace(l.Value)}
 			switch l.Type {
 			case hubGitRepository:
-				link.Type = Git
+				link.Type = projectlinks.Git
 			case hubHarvestProject:
-				link.Type = HarvestProject
+				link.Type = projectlinks.HarvestProject
 			default:
 				continue
 			}
@@ -124,7 +122,7 @@ func runHub(ctx context.Context, in io.Reader, out io.Writer, baseURL, clientID,
 			}
 		}
 	}
-	return json.NewEncoder(out).Encode(map[string][]Link{"links": links})
+	return json.NewEncoder(out).Encode(map[string][]projectlinks.Link{"links": links})
 }
 
 // activeOn reports whether today, a YYYY-MM-DD date, is within the link's

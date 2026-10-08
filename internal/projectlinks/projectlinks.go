@@ -31,8 +31,14 @@ type Asana struct {
 	ProjectGID string `json:"project_gid"`
 }
 
+// ProtocolVersion is the project links protocol version every request
+// carries. It changes only when existing providers would break; new optional
+// fields keep it, so providers must ignore request fields they do not know.
+const ProtocolVersion = 1
+
 // Request is sent as JSON on provider stdin.
 type Request struct {
+	Version   int    `json:"version"`
 	Operation string `json:"operation"`
 	Asana     Asana  `json:"asana"`
 }
@@ -50,7 +56,7 @@ func (p Provider) Links(ctx context.Context, projectGID string) ([]Link, error) 
 	if projectGID == "" {
 		return nil, errors.New("project links need an Asana project")
 	}
-	out, err := jsoncmd.Run(ctx, "project links", p.Command, Request{Operation: "links", Asana: Asana{ProjectGID: projectGID}})
+	out, err := jsoncmd.Run(ctx, "project links", p.Command, Request{Version: ProtocolVersion, Operation: "links", Asana: Asana{ProjectGID: projectGID}})
 	if err != nil {
 		return nil, err
 	}

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -20,7 +21,9 @@ const taskJSON = `{"data":{"gid":"1","name":"Fix login",
   {"gid":"f1","name":"Branch Name ","resource_subtype":"text"},
   {"gid":"f2","name":"Points","resource_subtype":"number"},
   {"gid":"f3","name":"Stage","resource_subtype":"enum","enum_options":[{"gid":"o1","name":"Review"}]},
-  {"gid":"f4","name":"When","resource_subtype":"date"}]}}`
+  {"gid":"f4","name":"When","resource_subtype":"date"},
+  {"gid":"f5","name":"Areas","resource_subtype":"multi_enum","enum_options":[{"gid":"o2","name":"Frontend"},{"gid":"o3","name":"Backend"}]},
+  {"gid":"f6","name":"Reviewers","resource_subtype":"people"}]}}`
 
 type write struct {
 	method, path string
@@ -36,13 +39,29 @@ func fake(t *testing.T) (*asana.Client, *[]write) {
 			io.WriteString(w, taskJSON)
 		case r.Method == http.MethodGet && r.URL.Path == "/projects/p1/sections":
 			io.WriteString(w, `{"data":[{"gid":"s1","name":"To Do"},{"gid":"s2","name":"In Review"}]}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/tasks/2":
+			io.WriteString(w, `{"data":{"gid":"2","name":"Mine","assignee_section":{"gid":"m1","name":"Inbox"}}}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/users/me/user_task_list":
+			io.WriteString(w, `{"data":{"gid":"mt"}}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/projects/mt/sections":
+			io.WriteString(w, `{"data":[{"gid":"m1","name":"Inbox"},{"gid":"m2","name":"Later"}]}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/projects/p3":
+			io.WriteString(w, `{"data":{"gid":"p3","name":"Ops"}}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/attachments":
+			_, h, err := r.FormFile("file")
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			writes = append(writes, write{r.Method, r.URL.Path, map[string]any{"parent": r.FormValue("parent"), "name": h.Filename}})
+			io.WriteString(w, `{"data":{"gid":"a`+strconv.Itoa(len(writes))+`"}}`)
 		case r.Method != http.MethodGet:
 			var body struct {
 				Data map[string]any `json:"data"`
 			}
 			json.NewDecoder(r.Body).Decode(&body)
 			writes = append(writes, write{r.Method, r.URL.Path, body.Data})
-			io.WriteString(w, `{"data":{}}`)
+			io.WriteString(w, `{"data":{"gid":"new"}}`)
 		default:
 			http.NotFound(w, r)
 		}
@@ -128,6 +147,156 @@ func TestMoveMatchesSectionCaseInsensitively(t *testing.T) {
 	}
 }
 
+func TestMoveBySectionGID(t *testing.T) {
+	c, writes := fake(t)
+	if err := (Service{Client: c}).Move(ctx, "1", "s2", "p1"); err != nil {
+		t.Fatal(err)
+	}
+	if len(*writes) != 1 || (*writes)[0].path != "/sections/s2/addTask" {
+		t.Fatalf("writes = %+v", *writes)
+	}
+}
+
+func TestMoveWithinMyTasks(t *testing.T) {
+	c, writes := fake(t)
+	svc := Service{Client: c, Workspace: "w"}
+	if err := svc.Move(ctx, "2", "later", MyTasks); err != nil {
+		t.Fatal(err)
+	}
+	if len(*writes) != 1 || (*writes)[0].path != "/tasks/2" || (*writes)[0].body["assignee_section"] != "m2" {
+		t.Fatalf("writes = %+v", *writes)
+	}
+	if err := svc.Move(ctx, "2", "Someday", MyTasks); err == nil || !strings.Contains(err.Error(), "My Tasks; sections: Inbox, Later") {
+		t.Fatalf("unknown section: err = %v", err)
+	}
+	if err := svc.Move(ctx, "1", "Inbox", MyTasks); err == nil || !strings.Contains(err.Error(), "only its assignee") {
+		t.Fatalf("someone else's task: err = %v", err)
+	}
+	if len(*writes) != 1 {
+		t.Fatalf("writes = %+v", *writes)
+	}
+}
+
+func TestAssign(t *testing.T) {
+	users := []asana.Ref{{GID: "9", Name: "Ann Lee"}, {GID: "8", Name: "Bo"}}
+	for user, want := range map[string]any{"Bo": "8", " ann lee ": "9", "9": "9", "me": "me", "": nil} {
+		c, writes := fake(t)
+		if err := (Service{Client: c, Users: users}).Assign(ctx, "1", user); err != nil {
+			t.Fatalf("Assign(%q): %v", user, err)
+		}
+		if len(*writes) != 1 || (*writes)[0].path != "/tasks/1" || (*writes)[0].body["assignee"] != want {
+			t.Errorf("Assign(%q): writes = %+v, want assignee %v", user, *writes, want)
+		}
+	}
+}
+
+func TestAssignRejectsUnknownOrAmbiguousUsers(t *testing.T) {
+	c, writes := fake(t)
+	svc := Service{Client: c, Users: []asana.Ref{{GID: "9", Name: "Ann"}, {GID: "7", Name: "ann"}, {GID: "8", Name: "Bo"}}}
+	for user, want := range map[string]string{"Ann": "several", "Cy": "no user"} {
+		if err := svc.Assign(ctx, "1", user); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Assign(%q) = %v, want error containing %q", user, err, want)
+		}
+	}
+	if len(*writes) != 0 {
+		t.Fatalf("writes = %+v", *writes)
+	}
+}
+
+func TestSetDue(t *testing.T) {
+	for date, want := range map[string]any{"2026-10-01": "2026-10-01", " 2026-10-01\n": "2026-10-01", "": nil} {
+		c, writes := fake(t)
+		if err := (Service{Client: c}).SetDue(ctx, "1", date); err != nil {
+			t.Fatalf("SetDue(%q): %v", date, err)
+		}
+		if len(*writes) != 1 || (*writes)[0].path != "/tasks/1" || (*writes)[0].body["due_on"] != want {
+			t.Errorf("SetDue(%q): writes = %+v, want due_on %v", date, *writes, want)
+		}
+	}
+}
+
+func TestSetDueRejectsBadDates(t *testing.T) {
+	c, writes := fake(t)
+	for _, date := range []string{"tomorrow", "2026-02-30", "10/01/2026", "2026-1-1", "2026-10-01T10:00:00Z"} {
+		if err := (Service{Client: c}).SetDue(ctx, "1", date); err == nil || !strings.Contains(err.Error(), "YYYY-MM-DD") {
+			t.Errorf("SetDue(%q) = %v, want YYYY-MM-DD error", date, err)
+		}
+	}
+	if len(*writes) != 0 {
+		t.Fatalf("writes = %+v", *writes)
+	}
+}
+
+func TestComplete(t *testing.T) {
+	for _, done := range []bool{true, false} {
+		c, writes := fake(t)
+		if err := (Service{Client: c}).Complete(ctx, "1", done); err != nil {
+			t.Fatalf("Complete(%v): %v", done, err)
+		}
+		if len(*writes) != 1 || (*writes)[0].path != "/tasks/1" || (*writes)[0].body["completed"] != done {
+			t.Errorf("Complete(%v): writes = %+v", done, *writes)
+		}
+	}
+}
+
+func TestProjectMembership(t *testing.T) {
+	c, writes := fake(t)
+	svc := Service{Client: c}
+	if err := svc.AddProject(ctx, "1", "p3"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RemoveProject(ctx, "1", "p1"); err != nil {
+		t.Fatal(err)
+	}
+	want := []write{
+		{"POST", "/tasks/1/addProject", map[string]any{"project": "p3"}},
+		{"POST", "/tasks/1/removeProject", map[string]any{"project": "p1"}},
+	}
+	if !reflect.DeepEqual(*writes, want) {
+		t.Fatalf("writes = %+v", *writes)
+	}
+	if svc.AddProject(ctx, "1", "") == nil || svc.RemoveProject(ctx, "1", "") == nil {
+		t.Fatal("an empty project gid must fail")
+	}
+}
+
+func TestNewWritesConfirmWithNames(t *testing.T) {
+	c, writes := fake(t)
+	var asked []string
+	svc := Service{Client: c, Users: []asana.Ref{{GID: "8", Name: "Bo"}}, Confirm: func(p string) (bool, error) {
+		asked = append(asked, p)
+		return false, nil
+	}}
+	for _, err := range []error{
+		svc.Assign(ctx, "1", "Bo"),
+		svc.Assign(ctx, "1", ""),
+		svc.SetDue(ctx, "1", "2026-10-01"),
+		svc.Complete(ctx, "1", true),
+		svc.Complete(ctx, "1", false),
+		svc.AddProject(ctx, "1", "p3"),
+		svc.RemoveProject(ctx, "1", "p2"),
+	} {
+		if !errors.Is(err, ErrDeclined) {
+			t.Fatalf("err = %v", err)
+		}
+	}
+	want := []string{
+		`Assign "Fix login" to Bo?`,
+		`Unassign "Fix login"?`,
+		`Set the due date of "Fix login" to 2026-10-01?`,
+		`Mark "Fix login" complete?`,
+		`Reopen "Fix login"?`,
+		`Add "Fix login" to project Ops?`,
+		`Remove "Fix login" from project API?`,
+	}
+	if !reflect.DeepEqual(asked, want) || len(*writes) != 0 {
+		t.Fatalf("asked = %q, writes = %+v", asked, *writes)
+	}
+	if err := svc.RemoveProject(ctx, "1", "p3"); err == nil || !strings.Contains(err.Error(), "not in project") {
+		t.Fatalf("remove from a project the task is not in: err = %v", err)
+	}
+}
+
 func TestSetFieldValues(t *testing.T) {
 	cases := []struct {
 		field, value string
@@ -150,6 +319,45 @@ func TestSetFieldValues(t *testing.T) {
 				t.Errorf("%s=%q: sent %v, want %v", tc.field, tc.value, got, tc.want)
 			}
 		}
+	}
+}
+
+func TestSetFieldListValues(t *testing.T) {
+	users := []asana.Ref{{GID: "9", Name: "Ann Lee"}, {GID: "8", Name: "Bo"}}
+	cases := []struct {
+		field, value string
+		want         any
+	}{
+		{"areas", "backend, frontend", []any{"o3", "o2"}},
+		{"Areas", "Frontend,frontend", []any{"o2"}},
+		{"reviewers", "ann lee, Bo", []any{"9", "8"}},
+		{"Reviewers", "", nil},
+	}
+	for _, tc := range cases {
+		c, writes := fake(t)
+		if err := (Service{Client: c, Users: users}).SetField(ctx, "1", tc.field, tc.value, ""); err != nil {
+			t.Fatalf("%s=%q: %v", tc.field, tc.value, err)
+		}
+		fields := (*writes)[0].body["custom_fields"].(map[string]any)
+		if got := fields[map[string]string{"areas": "f5", "Areas": "f5", "reviewers": "f6", "Reviewers": "f6"}[tc.field]]; !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("%s=%q: sent %v, want %v", tc.field, tc.value, got, tc.want)
+		}
+	}
+}
+
+func TestSetFieldRejectsUnknownOrAmbiguousPeople(t *testing.T) {
+	c, writes := fake(t)
+	svc := Service{Client: c, Users: []asana.Ref{{GID: "9", Name: "Ann"}, {GID: "7", Name: "Ann"}, {GID: "8", Name: "Bo"}}}
+	for value, want := range map[string]string{"Ann": "several", "Cy": "no user", "Bo,": "empty"} {
+		if err := svc.SetField(ctx, "1", "Reviewers", value, ""); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("SetField(Reviewers, %q) = %v, want error containing %q", value, err, want)
+		}
+	}
+	if err := svc.SetField(ctx, "1", "Areas", "Frontend, Ops", ""); err == nil || !strings.Contains(err.Error(), "Backend") {
+		t.Errorf("unknown option err = %v, want list of options", err)
+	}
+	if len(*writes) != 0 {
+		t.Fatalf("writes = %+v", *writes)
 	}
 }
 
@@ -224,6 +432,32 @@ func TestSetFieldSameNameNeedsProject(t *testing.T) {
 	if err := svc.SetField(ctx, "1", "branch name", "x", "p2"); err != nil || len(puts) != 1 || puts[0] != "f5" {
 		t.Fatalf("err = %v, puts = %v", err, puts)
 	}
+	if err := svc.SetField(ctx, "1", "f1", "x", ""); err != nil || len(puts) != 2 || puts[1] != "f1" {
+		t.Fatalf("by gid: err = %v, puts = %v", err, puts)
+	}
+}
+
+func TestSetFieldTakesGIDs(t *testing.T) {
+	users := []asana.Ref{{GID: "9", Name: "Ann"}, {GID: "7", Name: "Ann"}}
+	cases := []struct {
+		field, value string
+		want         any
+	}{
+		{"f3", "o1", "o1"},
+		{"Areas", "o3,o2", []any{"o3", "o2"}},
+		{"Reviewers", "7", []any{"7"}},
+	}
+	for _, tc := range cases {
+		c, writes := fake(t)
+		if err := (Service{Client: c, Users: users}).SetField(ctx, "1", tc.field, tc.value, ""); err != nil {
+			t.Fatalf("%s=%q: %v", tc.field, tc.value, err)
+		}
+		for _, got := range (*writes)[0].body["custom_fields"].(map[string]any) {
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("%s=%q: sent %v, want %v", tc.field, tc.value, got, tc.want)
+			}
+		}
+	}
 }
 
 func TestCommentHTML(t *testing.T) {
@@ -245,7 +479,7 @@ func TestCommentHTML(t *testing.T) {
 		{"ask @Sam Lee or @Bad Gid", "<body>ask @Sam Lee or @Bad Gid</body>", nil},
 	}
 	for _, c := range cases {
-		html, mentioned := CommentHTML(c.text, users)
+		html, mentioned := CommentHTML(c.text, users, nil)
 		var gids []string
 		for _, u := range mentioned {
 			gids = append(gids, u.GID)
@@ -270,5 +504,67 @@ func TestCommentMentionsPostHTML(t *testing.T) {
 	}
 	if !strings.Contains(asked, "Mentions: Victoria Andersen") {
 		t.Fatalf("prompt = %q", asked)
+	}
+}
+
+func TestCreate(t *testing.T) {
+	cases := []struct {
+		name     string
+		nt       NewTicket
+		wantPath string
+		want     map[string]any
+	}{
+		{"my tasks by default", NewTicket{Name: " New "}, "/tasks",
+			map[string]any{"name": "New", "workspace": "w", "assignee": "me"}},
+		{"project and section", NewTicket{Name: "New", Project: "p1", Section: "in review", Due: "2026-01-02"}, "/tasks",
+			map[string]any{"name": "New", "projects": []any{"p1"}, "memberships": []any{map[string]any{"project": "p1", "section": "s2"}}, "due_on": "2026-01-02"}},
+		{"subtask", NewTicket{Name: "New", Parent: "1", Assignee: "amy", Notes: "**hi**"}, "/tasks/1/subtasks",
+			map[string]any{"name": "New", "assignee": "u1", "html_notes": "<body><strong>hi</strong></body>"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, writes := fake(t)
+			svc := Service{Client: c, Workspace: "w", Users: []asana.Ref{{GID: "u1", Name: "Amy"}}}
+			task, err := svc.Create(ctx, tc.nt)
+			if err != nil || task.GID != "new" {
+				t.Fatalf("task = %+v, err = %v", task, err)
+			}
+			if len(*writes) != 1 || (*writes)[0].path != tc.wantPath || !reflect.DeepEqual((*writes)[0].body, tc.want) {
+				t.Fatalf("writes = %+v", *writes)
+			}
+		})
+	}
+}
+
+func TestCreateRejects(t *testing.T) {
+	cases := []struct {
+		nt   NewTicket
+		want string
+	}{
+		{NewTicket{Name: "New", Parent: "1", Project: "p1"}, "not both"},
+		{NewTicket{Name: "New", Project: "p1", Section: "Later"}, `no section "Later" in project p1; sections: To Do, In Review`},
+		{NewTicket{Name: "New", Section: "To Do"}, "needs a project"},
+		{NewTicket{Name: " "}, "title is empty"},
+		{NewTicket{Name: "a\nb"}, "one line"},
+		{NewTicket{Name: "New", Due: "soon"}, "YYYY-MM-DD"},
+	}
+	for _, tc := range cases {
+		c, writes := fake(t)
+		_, err := (Service{Client: c, Workspace: "w"}).Create(ctx, tc.nt)
+		if err == nil || !strings.Contains(err.Error(), tc.want) || len(*writes) != 0 {
+			t.Errorf("%+v: err = %v, writes = %+v", tc.nt, err, *writes)
+		}
+	}
+}
+
+func TestCreateConfirmsPlacement(t *testing.T) {
+	c, writes := fake(t)
+	var asked string
+	svc := Service{Client: c, Confirm: func(p string) (bool, error) { asked = p; return false, nil }}
+	if _, err := svc.Create(ctx, NewTicket{Name: "New", Parent: "1", Due: "2026-01-02"}); !errors.Is(err, ErrDeclined) {
+		t.Fatalf("err = %v", err)
+	}
+	if len(*writes) != 0 || asked != "Create \"New\" as a subtask of \"Fix login\"?\nDue: 2026-01-02\n" {
+		t.Fatalf("writes = %+v, prompt = %q", *writes, asked)
 	}
 }

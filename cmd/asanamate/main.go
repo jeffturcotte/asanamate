@@ -20,21 +20,21 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/sadmachine/asanamate/internal/action"
 	"github.com/sadmachine/asanamate/internal/agents"
 	"github.com/sadmachine/asanamate/internal/asana"
 	"github.com/sadmachine/asanamate/internal/browser"
+	"github.com/sadmachine/asanamate/internal/ccmux"
 	"github.com/sadmachine/asanamate/internal/config"
 	"github.com/sadmachine/asanamate/internal/filter"
 	"github.com/sadmachine/asanamate/internal/kitty"
 	"github.com/sadmachine/asanamate/internal/listing"
-	"github.com/sadmachine/asanamate/internal/projectlinks"
 	"github.com/sadmachine/asanamate/internal/repo"
 	"github.com/sadmachine/asanamate/internal/setup"
 	"github.com/sadmachine/asanamate/internal/state"
 	"github.com/sadmachine/asanamate/internal/ticket"
-	"github.com/sadmachine/asanamate/internal/timetracking"
 	"github.com/sadmachine/asanamate/internal/tui"
 	"github.com/sadmachine/asanamate/internal/writeback"
 )
@@ -48,19 +48,26 @@ const usage = `usage:
                                                    print tickets (tsv: gid, section, due, title, url)
   asanamate show [--format md|json] <gid>          print one ticket
   asanamate setup                                  create the config file
-  asanamate setup hooks                            add the agent status hook to Codex
   asanamate config                                 edit the config file in $VISUAL or $EDITOR
   asanamate config update [--yes]                  refresh the config's comments and new defaults,
-                                                   keeping your values (old file saved as .bak)
+                                                   keeping your values (old file saved as .<time>.bak)
   asanamate comment [--yes] <gid> <text | ->       comment on a task ("-" reads stdin)
-  asanamate move    [--yes] [--project <gid>] <gid> <section>
+  asanamate move    [--yes] [--project <gid> | --my-tasks] <gid> <section>
   asanamate field   [--yes] [--project <gid>] <gid> <field> <value>
-                                                   set a custom field ("" clears it)
+                                                   set a custom field ("a, b" for multi-select
+                                                   and people; "" clears it)
+  asanamate assign  [--yes] <gid> <name | me | "">
+                                                   assign a task ("" unassigns it)
+  asanamate due     [--yes] <gid> <YYYY-MM-DD | "">
+                                                   set a task's due date ("" clears it)
+  asanamate project add|remove [--yes] <gid> <project-gid>
+                                                   add a task to a project or remove it
+  asanamate complete [--yes] [--reopen] <gid>        mark a task complete (--reopen reopens it)
+  asanamate create  [--yes] [--project <gid> [--section <name>] | --parent <gid>]
+                    [--assignee <name | me>] [--due <YYYY-MM-DD>] [--notes <markdown | ->] <title>
+                                                   create a ticket (default: in My Tasks, assigned
+                                                   to you) or a subtask; prints its gid
   asanamate doctor [<gid>]                         check setup and optional tools; for a ticket, why agents link (or not)
-  asanamate time-provider hrvst --task-id <id>     serve time tracking provider requests on stdin
-  asanamate links-provider hub [--url <url>]       serve project links requests on stdin from Hub
-  asanamate hook codex                             record a Codex hook event read on stdin
-                                                   (installed by setup)
   asanamate version
 `
 
@@ -79,6 +86,12 @@ func run(args []string) int {
 		err = runConfig(args[1:])
 	case "comment", "move", "field":
 		err = writeCommand(name, args[1:])
+	case "assign", "due", "project":
+		err = writeCommand(name, args[1:])
+	case "complete":
+		err = writeCommand(name, args[1:])
+	case "create":
+		err = runCreate(args[1:], os.Stdin, os.Stdout, newWriter)
 	case "version":
 		fmt.Println(currentVersion())
 		return 0
@@ -91,37 +104,9 @@ func run(args []string) int {
 		err = runShow(args[1:])
 	case "doctor":
 		err = runDoctor(args[1:])
-	case "hook":
-		runHook(args[1:])
+	case "hook": // hidden: keeps Codex hooks set up before asanamate-ccmux working; remove in v0.3.0
+		ccmux.RunHook(args[1:], os.Stdin)
 		return 0
-	case "time-provider":
-		if len(args) < 2 || args[1] != "hrvst" {
-			err = fmt.Errorf("usage: asanamate time-provider hrvst --task-id <id>")
-		} else {
-			fs := flag.NewFlagSet("time-provider hrvst", flag.ContinueOnError)
-			taskID := fs.String("task-id", "", "default Harvest task ID")
-			if err = fs.Parse(args[2:]); err == nil {
-				if len(fs.Args()) != 0 {
-					err = fmt.Errorf("unexpected time-provider arguments: %v", fs.Args())
-				} else {
-					err = timetracking.RunHarvest(context.Background(), os.Stdin, os.Stdout, *taskID)
-				}
-			}
-		}
-	case "links-provider":
-		if len(args) < 2 || args[1] != "hub" {
-			err = fmt.Errorf("usage: asanamate links-provider hub [--url <url>]")
-		} else {
-			fs := flag.NewFlagSet("links-provider hub", flag.ContinueOnError)
-			hubURL := fs.String("url", projectlinks.HubURL, "Hub base URL")
-			if err = fs.Parse(args[2:]); err == nil {
-				if len(fs.Args()) != 0 {
-					err = fmt.Errorf("unexpected links-provider arguments: %v", fs.Args())
-				} else {
-					err = projectlinks.RunHub(context.Background(), os.Stdin, os.Stdout, *hubURL)
-				}
-			}
-		}
 	default:
 		if name != "" && !strings.HasPrefix(name, "-") {
 			fmt.Fprint(os.Stderr, usage)
@@ -134,17 +119,6 @@ func run(args []string) int {
 		return 1
 	}
 	return 0
-}
-
-// runHook records an agent hook event. It never fails: an agent runs it on
-// every event, and a hook error must not get in the agent's way.
-func runHook(args []string) {
-	if len(args) != 1 || args[0] != "codex" {
-		return
-	}
-	if stateDir, err := config.StateDir(); err == nil {
-		_ = agents.WriteHook(os.Stdin, agents.HookDir(stateDir))
-	}
 }
 
 func currentVersion() string {
@@ -173,18 +147,53 @@ func newClient() (*asana.Client, error) {
 	return asana.New(token), nil
 }
 
+// newWriter returns the CLI's writeback service, which confirms on the
+// terminal unless yes, ASANAMATE_CONFIRM_WRITES, or the config turns it off.
+func newWriter(yes bool) (writeback.Service, error) {
+	cfg, err := loadConfig()
+	if err != nil {
+		return writeback.Service{}, err
+	}
+	client, err := newClient()
+	if err != nil {
+		return writeback.Service{}, err
+	}
+	svc := writeback.Service{Client: client, Workspace: cfg.Workspace}
+	if writeback.NeedsConfirm(yes, os.Getenv("ASANAMATE_CONFIRM_WRITES"), cfg.ConfirmWrites) {
+		svc.Confirm = writeback.TTYConfirm
+	}
+	return svc, nil
+}
+
 func writeCommand(name string, args []string) error {
+	if name == "project" {
+		if len(args) == 0 || (args[0] != "add" && args[0] != "remove") {
+			return fmt.Errorf("project: want add or remove\n%s", usage)
+		}
+		name, args = "project "+args[0], args[1:]
+	}
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	yes := fs.Bool("yes", false, "write without asking for confirmation")
 	project := new(string)
 	if name == "move" || name == "field" {
 		project = fs.String("project", os.Getenv("ASANAMATE_PROJECT_GID"), "project gid; picks the project (move) or the project's field (field) when ambiguous; defaults to $ASANAMATE_PROJECT_GID")
 	}
+	myTasks := new(bool)
+	if name == "move" {
+		myTasks = fs.Bool("my-tasks", false, "move within your My Tasks instead of a project")
+	}
+	reopen := new(bool)
+	if name == "complete" {
+		reopen = fs.Bool("reopen", false, "reopen a completed task instead")
+	}
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	rest := fs.Args()
-	want := map[string]int{"comment": 2, "move": 2, "field": 3}[name]
+	want := map[string]int{"comment": 2, "move": 2, "field": 3, "assign": 2, "due": 2, "project add": 2, "project remove": 2}[name]
+	if name == "complete" {
+		want = 1
+	}
 	if len(rest) != want {
 		return fmt.Errorf("%s: wrong number of arguments\n%s", name, usage)
 	}
@@ -192,20 +201,23 @@ func writeCommand(name string, args []string) error {
 	if !asana.ValidGID(gid) {
 		return fmt.Errorf("task gid must be numeric, got %q", gid)
 	}
+	if strings.HasPrefix(name, "project ") {
+		project = &rest[1]
+	}
 	if *project != "" && !asana.ValidGID(*project) {
 		return fmt.Errorf("project gid must be numeric, got %q", *project)
 	}
-	cfg, err := loadConfig()
+	if *myTasks {
+		both := false
+		fs.Visit(func(f *flag.Flag) { both = both || f.Name == "project" })
+		if both {
+			return errors.New("move: pass --project or --my-tasks, not both")
+		}
+		*project = writeback.MyTasks
+	}
+	svc, err := newWriter(*yes)
 	if err != nil {
 		return err
-	}
-	client, err := newClient()
-	if err != nil {
-		return err
-	}
-	svc := writeback.Service{Client: client, Workspace: cfg.Workspace}
-	if writeback.NeedsConfirm(*yes, os.Getenv("ASANAMATE_CONFIRM_WRITES"), cfg.ConfirmWrites) {
-		svc.Confirm = writeback.TTYConfirm
 	}
 	ctx := context.Background()
 	switch name {
@@ -221,23 +233,69 @@ func writeCommand(name string, args []string) error {
 		return svc.Comment(ctx, gid, text)
 	case "move":
 		return svc.Move(ctx, gid, rest[1], *project)
+	case "assign":
+		return svc.Assign(ctx, gid, rest[1])
+	case "due":
+		return svc.SetDue(ctx, gid, rest[1])
+	case "project add":
+		return svc.AddProject(ctx, gid, *project)
+	case "project remove":
+		return svc.RemoveProject(ctx, gid, *project)
+	case "complete":
+		return svc.Complete(ctx, gid, !*reopen)
 	default:
 		return svc.SetField(ctx, gid, rest[1], rest[2], *project)
 	}
 }
 
-func runSetup(args []string) error {
-	codexHome, err := setup.CodexHome()
+// runCreate creates a ticket and prints only its gid, so scripts can chain it.
+func runCreate(args []string, stdin io.Reader, stdout io.Writer, writer func(yes bool) (writeback.Service, error)) error {
+	fs := flag.NewFlagSet("create", flag.ContinueOnError)
+	yes := fs.Bool("yes", false, "write without asking for confirmation")
+	var nt writeback.NewTicket
+	fs.StringVar(&nt.Project, "project", "", "project gid; without it or --parent, the ticket goes to your My Tasks")
+	fs.StringVar(&nt.Section, "section", "", "section of --project, by name or gid")
+	fs.StringVar(&nt.Parent, "parent", "", "parent task gid; makes a subtask")
+	fs.StringVar(&nt.Assignee, "assignee", "", `full name or gid of the assignee, or "me"`)
+	fs.StringVar(&nt.Due, "due", "", "due date as YYYY-MM-DD")
+	fs.StringVar(&nt.Notes, "notes", "", `description in Markdown ("-" reads stdin)`)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("create: wrong number of arguments\n%s", usage)
+	}
+	nt.Name = fs.Arg(0)
+	for flagName, gid := range map[string]string{"project": nt.Project, "parent": nt.Parent} {
+		if gid != "" && !asana.ValidGID(gid) {
+			return fmt.Errorf("%s gid must be numeric, got %q", flagName, gid)
+		}
+	}
+	if nt.Notes == "-" {
+		data, err := io.ReadAll(stdin)
+		if err != nil {
+			return err
+		}
+		nt.Notes = string(data)
+	}
+	svc, err := writer(*yes)
 	if err != nil {
 		return err
 	}
+	t, err := svc.Create(context.Background(), nt)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(stdout, t.GID)
+	return err
+}
+
+func runSetup(args []string) error {
+	if len(args) == 1 && args[0] == "hooks" {
+		return errors.New("asanamate setup hooks moved to `asanamate-ccmux setup`")
+	}
 	if len(args) > 0 {
-		if len(args) != 1 || args[0] != "hooks" {
-			return fmt.Errorf("usage: asanamate setup [hooks]")
-		}
-		return setup.OfferCodexHook(setup.Options{
-			In: bufio.NewReader(os.Stdin), Out: os.Stdout, CodexHome: codexHome, Executable: hookExecutable(),
-		})
+		return fmt.Errorf("usage: asanamate setup")
 	}
 	client, err := newClient()
 	if err != nil {
@@ -254,20 +312,7 @@ func runSetup(args []string) error {
 	return setup.Run(context.Background(), setup.Options{
 		In: bufio.NewReader(os.Stdin), Out: os.Stdout, Client: client,
 		ConfigPath: configPath, StatePath: filepath.Join(stateDir, state.FileName),
-		CodexHome: codexHome, Executable: hookExecutable(),
 	})
-}
-
-// hookExecutable is the asanamate path agent hooks run: the one on PATH,
-// which survives upgrades, else this binary.
-func hookExecutable() string {
-	if path, err := exec.LookPath("asanamate"); err == nil {
-		if abs, err := filepath.Abs(path); err == nil {
-			return abs
-		}
-	}
-	path, _ := os.Executable()
-	return path
 }
 
 // runConfig opens the config file in the user's editor, then checks that it
@@ -361,6 +406,7 @@ func runTUI(args []string) error {
 		ExitOnAction:  *exitOnAction,
 		Symbols:       cfg.SymbolSet(os.Getenv),
 		ReducedMotion: reducedMotion(cfg),
+		Palette:       cfg.Palette(darkBackground(cfg)),
 	})
 	if _, err := tea.NewProgram(m).Run(); err != nil {
 		return err
@@ -370,6 +416,15 @@ func runTUI(args []string) error {
 		return nil
 	}
 	return action.Exec(cmd)
+}
+
+// darkBackground asks the terminal for its background, only when the theme
+// follows it.
+func darkBackground(cfg config.Config) bool {
+	if cmp.Or(cfg.Theme.Name, config.ThemeAuto) != config.ThemeAuto {
+		return true
+	}
+	return lipgloss.HasDarkBackground(os.Stdin, os.Stdout)
 }
 
 // reducedMotion honors the config, else the OS accessibility setting
@@ -487,21 +542,18 @@ func runDoctor(args []string) error {
 	} else {
 		row(w, "branch_field", strconv.Quote(cfg.BranchField))
 	}
+	checkLegacyCodexHook(w)
 	var list []agents.Agent
 	if !cfg.AgentsEnabled() {
-		row(w, "agents", "off: set agents.preset or agents.command")
+		row(w, "agents", "off: set agents.command")
 	} else {
 		source := "command " + strconv.Quote(cfg.Agents.Command)
-		if cfg.Agents.Preset != "" {
-			source = "preset " + strconv.Quote(cfg.Agents.Preset)
-		}
-		list, err = agents.Fetch(ctx, cfg.Agents.Preset, cfg.Agents.Command, cfg.Agents.States, stateDir)
+		list, err = agents.Fetch(ctx, cfg.Agents.Command, cfg.Agents.States)
 		if err != nil {
 			row(w, "agents", fmt.Sprintf("warning: %s failed: %v", source, err))
 		} else {
 			row(w, "agents", "ok: "+source)
 		}
-		checkCodexHook(w)
 		if err == nil {
 			fmt.Fprintf(w, "\n%d running:\n", len(list))
 			for _, a := range list {
@@ -603,49 +655,30 @@ func checkFeatures(w io.Writer, cfg config.Config) {
 		tool("editor", editor[0], "asanamate config needs it; set $EDITOR or edit the config file directly")
 	}
 	tool("browser", browser.Opener(), "opening tickets in a browser needs it; on Linux, install xdg-utils and a desktop browser")
-	switch {
-	case cfg.TimeTracking.Command == "":
+	if cfg.TimeTracking.Command == "" {
 		row(w, "time_tracking", "off")
-	case strings.Contains(cfg.TimeTracking.Command, "time-provider hrvst"):
-		if err := timetracking.CheckHarvest(); err != nil {
-			row(w, "time_tracking", "warning: hrvst: "+err.Error())
-		} else {
-			row(w, "time_tracking", "ok: hrvst installed and logged in")
-		}
-	default:
-		row(w, "time_tracking", "unchecked: custom command (not run)")
+	} else {
+		row(w, "time_tracking", "unchecked: command "+strconv.Quote(cfg.TimeTracking.Command)+" (not run)")
 	}
-	switch {
-	case !cfg.ProjectLinksEnabled():
+	if cfg.ProjectLinks.Command == "" {
 		row(w, "project_links", "off")
-	case strings.Contains(cfg.ProjectLinks.Command, "links-provider hub"):
-		if err := projectlinks.CheckHub(); err != nil {
-			row(w, "project_links", "warning: hub: "+err.Error())
-		} else {
-			row(w, "project_links", "ok: Hub credentials set")
-		}
-	default:
-		row(w, "project_links", "unchecked: custom command (not run)")
+	} else {
+		row(w, "project_links", "unchecked: command "+strconv.Quote(cfg.ProjectLinks.Command)+" (not run)")
 	}
 }
 
-// checkCodexHook reports asanamate's hook in Codex, which Codex agent
-// status needs. It says nothing when Codex is not installed.
-func checkCodexHook(w io.Writer) {
-	home, err := setup.CodexHome()
+// checkLegacyCodexHook warns while Codex's hooks still run
+// `asanamate hook codex`, which only forwards to asanamate-ccmux until
+// v0.3.0. It says nothing otherwise.
+func checkLegacyCodexHook(w io.Writer) {
+	home, err := ccmux.CodexHome()
 	if err != nil {
 		return
 	}
-	state, err := setup.CodexHook(home, hookExecutable())
-	switch {
-	case err != nil:
+	if legacy, err := ccmux.LegacyCodexHook(home); err != nil {
 		row(w, "codex_hook", "warning: "+err.Error())
-	case state == setup.HookMissing:
-		row(w, "codex_hook", "warning: missing, so Codex agent status can be wrong; run asanamate setup hooks")
-	case state == setup.HookStale:
-		row(w, "codex_hook", "warning: runs another asanamate path or misses events; run asanamate setup hooks to repair it")
-	case state == setup.HookCurrent:
-		row(w, "codex_hook", "ok: "+filepath.Join(home, "hooks.json"))
+	} else if legacy {
+		row(w, "codex_hook", "warning: runs `asanamate hook codex`, which v0.3.0 removes; run `asanamate-ccmux setup` to replace it")
 	}
 }
 

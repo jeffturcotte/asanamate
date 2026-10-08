@@ -31,6 +31,14 @@ func editModel(t *testing.T) (*Model, *[]string) {
 			io.WriteString(w, `{"data":[{"gid":"p1","name":"Web","members":[{"gid":"u1"}]},{"gid":"p2","name":"API","members":[{"gid":"u1"}]}]}`)
 		case r.URL.Path == "/workspaces/w/users":
 			io.WriteString(w, `{"data":[{"gid":"u2","name":"zed"},{"gid":"u1","name":"Amy"}]}`)
+		case r.URL.Path == "/tasks/1" && r.Method == http.MethodGet:
+			io.WriteString(w, `{"data":{"gid":"1","name":"Fix","assignee_section":{"gid":"m1","name":"Inbox"},
+				"memberships":[{"project":{"gid":"p1","name":"Web"}}],
+				"custom_fields":[
+					{"gid":"f1","name":"Branch","resource_subtype":"text"},
+					{"gid":"f2","name":"Due","resource_subtype":"date"},
+					{"gid":"f3","name":"Scope","resource_subtype":"multi_enum","enum_options":[{"gid":"o1","name":"FE"},{"gid":"o2","name":"BE"}]},
+					{"gid":"f4","name":"Reviewers","resource_subtype":"people"}]}}`)
 		case r.URL.Path == "/users/me/user_task_list":
 			io.WriteString(w, `{"data":{"gid":"mt"}}`)
 		case r.URL.Path == "/projects/mt/sections":
@@ -40,7 +48,9 @@ func editModel(t *testing.T) (*Model, *[]string) {
 		case r.Method != http.MethodGet:
 			b, _ := io.ReadAll(r.Body)
 			writes = append(writes, r.Method+" "+r.URL.Path+" "+string(b))
-			io.WriteString(w, `{"data":{}}`)
+			io.WriteString(w, `{"data":{"gid":"9","name":"New"}}`)
+		case r.URL.Path == "/tasks/9":
+			io.WriteString(w, `{"data":{"gid":"9","name":"New"}}`)
 		default:
 			io.WriteString(w, `{"data":[]}`)
 		}
@@ -153,12 +163,10 @@ func TestEditWrites(t *testing.T) {
 			send(m, ctrlS)
 		}, `PUT /tasks/1 {"data":{"due_on":null}}`},
 		{"multi-select field", func(m *Model) {
-			press(m, "e", "f", "down", "down", "enter", "down", "enter")
-			send(m, ctrlS)
+			press(m, "e", "f", "down", "down", "enter", "down", "space", "enter")
 		}, `PUT /tasks/1 {"data":{"custom_fields":{"f3":["o1","o2"]}}}`},
 		{"people field", func(m *Model) {
-			press(m, "e", "f", "down", "down", "down", "enter", "down", "enter")
-			send(m, ctrlS)
+			press(m, "e", "f", "down", "down", "down", "enter", "down", "space", "enter")
 		}, `PUT /tasks/1 {"data":{"custom_fields":{"f4":["u2"]}}}`},
 		{"assign", func(m *Model) {
 			press(m, "e", "a", "down", "down", "enter")
@@ -175,7 +183,7 @@ func TestEditWrites(t *testing.T) {
 			press(m, "m", "enter", "down", "enter")
 		}, `PUT /tasks/1 {"data":{"assignee_section":"m2"}}`},
 		{"assign key", func(m *Model) {
-			press(m, "A", "down", "down", "enter")
+			press(m, "@", "down", "down", "enter")
 		}, `PUT /tasks/1 {"data":{"assignee":"u2"}}`},
 	}
 	for _, tc := range cases {
@@ -189,6 +197,46 @@ func TestEditWrites(t *testing.T) {
 				t.Errorf("status = %q", m.status)
 			}
 		})
+	}
+}
+
+func TestCompleteKeyKeepsTicketInViewing(t *testing.T) {
+	m, writes := editModel(t)
+	m.filterInput.SetValue("is:open")
+	m.applyFilter()
+	press(m, "x")
+	if want := `PUT /tasks/1 {"data":{"completed":true}}`; len(*writes) != 1 || strings.TrimSpace((*writes)[0]) != want {
+		t.Fatalf("writes = %q, want %q (status %q)", *writes, want, m.status)
+	}
+	if m.status != "Completed Fix" {
+		t.Errorf("status = %q", m.status)
+	}
+	done := m.tasks[0]
+	done.Completed = true
+	m.Update(tasksMsg{tasks: []asana.Task{done}})
+	if got, _ := m.selected(); got.GID != "1" || !got.Completed || !m.viewingRow {
+		t.Fatalf("selected = %+v, viewingRow = %v; want the completed ticket kept in Viewing", got, m.viewingRow)
+	}
+}
+
+func TestCompleteTogglesByState(t *testing.T) {
+	for _, done := range []bool{false, true} {
+		m, writes := editModel(t)
+		tk := m.details["1"]
+		tk.Completed = done
+		m.details["1"] = tk
+		press(m, "e")
+		label, want := "Complete", `PUT /tasks/1 {"data":{"completed":true}}`
+		if done {
+			label, want = "Reopen", `PUT /tasks/1 {"data":{"completed":false}}`
+		}
+		if !slices.ContainsFunc(m.modal.items, func(it pickItem) bool { return it.Label == label && it.Key == "x" }) {
+			t.Fatalf("completed = %v: edit menu = %+v, want %q on x", done, m.modal.items, label)
+		}
+		press(m, "x")
+		if len(*writes) != 1 || strings.TrimSpace((*writes)[0]) != want {
+			t.Fatalf("completed = %v: writes = %q, want %q", done, *writes, want)
+		}
 	}
 }
 
@@ -403,7 +451,7 @@ func TestReaderFieldEdits(t *testing.T) {
 			send(m, ctrlS)
 		}, `POST /tasks/1/stories {"data":{"text":"hello"}}`},
 		{"comment key", func(m *Model) {
-			press(m, "2", "C")
+			press(m, "2", "c")
 			m.input.area.SetValue("hello")
 			send(m, ctrlS)
 		}, `POST /tasks/1/stories {"data":{"text":"hello"}}`},

@@ -4,80 +4,23 @@ Improvements found during the 2026-09-28 code review that were left out of the
 cleanup. Each one either adds a feature or rewrites behavior, so it needs its
 own design pass. They are recorded here so they can be picked up later.
 
-## Configurable key bindings
-
-**Now:** `keyBindings()` in `internal/tui/keys.go` is the one table of list
-and reader keys: `bindingFor` looks keys up in it for `handleKey`, and the `?`
-help and the NORMAL mode hints render from it. Modals, the filter, the views panel, and the
-cards view's selected row still handle their own keys first, and the hints
-for those modes are written out in `Model.mode`.
-
-**Idea:** Let a `[keys]` config table rebind entries of `keyBindings()`.
-
-**Watch out for:** Adding config keys is a public contract (see `AGENTS.md`).
-Action keys are only read inside the action menu, so they do not collide with
-list keys today. An override system must keep that true, and
-`TestKeyBindingsAreUniqueAndDocumented` should check the merged table.
-
-## Theme-aware colors
-
-**Now:** `theme = "light"` only changes the glamour Markdown style. The TUI's
-own colors are fixed ANSI numbers, all defined at the top of `styles.go`
-(`borderColor`, `okStyle`, `warnStyle`, `errorStyle`). ANSI numbers follow the
-terminal's color scheme; a render with Tokyo Night Day
-(`docs/mocks/actual-wide-light.png`) reads well, but faint text and color 8
-borders depend on how pale the scheme draws them.
-
-**Idea:** Add a small palette struct with a dark and a light variant, chosen
-by `theme`, and build the styles from it.
-
-**Watch out for:** This changes how the light theme looks, so review it
-visually in both themes.
-
-## Action run steps
-
-**Now:** `pendingRun` in `internal/tui/flow.go` tracks progress with four
-flags (`projectChosen`, `awaitingFields`, `inputDone`, `formDone`) and an
-empty `branch` string.
-`continueRun` and `execute` re-enter each other until every flag is settled.
-The flow works, but each new step adds another flag and another re-entry
-point.
-
-**Idea:** Model the run as an ordered list of steps: pick agent, pick project,
-resolve repo, collect input, fill the action form, load project fields, ask
-for a branch when the branch field is empty. Each step either finishes right
-away or opens a modal and resumes when it is answered.
-
-**Watch out for:** This is the most intricate flow in the TUI. The tests in
-`flow_test.go` and `agents_test.go` cover it and should pass unchanged.
-
-## Multi-enum and people fields from the CLI
-
-**Now:** The TUI can set `multi_enum` and `people` custom fields
-(`pickedValues` in `internal/tui/edit.go`). `asanamate field` goes through
-`writeback.FieldValue`, which only supports text, number, enum, and date.
-
-**Idea:** Teach `FieldValue` to accept a comma-separated list of option names
-or people names and resolve them to gids. Then the CLI and TUI share one
-conversion.
-
-**Watch out for:** People names need a workspace user lookup and a rule for
-ambiguous names. `CommentHTML` already refuses two users with the same name.
-Clearing the field with `""` must keep working.
-
 ## Cheaper project list
 
 **Now:** `Client.MemberProjects` loads every unarchived project in the
 workspace with its member list, then keeps the ones the user belongs to. In
-large workspaces this is slow and moves a lot of data.
+large workspaces this is slow and moves a lot of data. The TUI caches the
+result in state, so pickers open at once and the load runs in the
+background once per session, but the request costs the same.
 
-**Idea:** Check whether the Asana API has a server-side way to list only the
-user's projects, for example through team memberships
-(`/users/{gid}/team_memberships`, then `/teams/{gid}/projects`), and compare
-the cost.
+**Idea:** Asana has no server-side filter for the user's own projects:
+`GET /projects` has no member filter, and `GET /memberships` needs a project
+`parent` for user memberships. A team-based list
+(`/users/{gid}/team_memberships`, then `GET /memberships` with each team and
+`resource_subtype=project_membership`) moves far less data.
 
-**Watch out for:** A team-based list may include projects the user can see
-but is not a member of, which changes what the project picker shows.
+**Watch out for:** A team-based list includes team projects the user is not a
+member of and misses projects shared with the user directly, which changes
+what the project picker shows.
 
 ## Shared shell runner
 
@@ -89,6 +32,123 @@ but is not a member of, which changes what the project picker shows.
 **Why deferred:** It is a one-line duplicate in four places, and a new
 package for it costs more than it saves. Revisit if shell handling grows, for
 example a configurable shell or Windows support.
+
+## Key sequences and a which-key popup
+
+**Now:** v0.2.0 key bindings take single keys only. The `[keys]` format
+reserves a space between two keys (`"g g"`, `"space e"`) for sequences and
+rejects it with an error.
+
+**Idea:** Support sequences and a leader key, with a which-key popup that
+lists the keys that can follow a pressed prefix. The action menu and the edit
+menu already behave like two-key sequences, so they could become the popup
+itself. A sample chord layout groups keys by prefix: `g` go, `e` edit,
+`v` view, `y` copy, `space` actions, `]`/`[` next and previous.
+
+**Watch out for:** A key that is both a command and a prefix needs a timeout.
+Avoid that by never letting a prefix key run a command alone; then the popup
+opens at once and esc cancels. Popup group titles would need a new table,
+such as `[keys.groups]`. Validation must reject a binding that is a prefix of
+another.
+
+## Configurable edit and settings menu keys
+
+**Now:** `[keys]` covers every key handler except the item keys of the edit
+menu (`internal/tui/edit.go`) and the settings menu
+(`internal/tui/settings.go`), which are fixed.
+
+**Idea:** Add `[keys.edit_menu]` and `[keys.settings_menu]` scopes, one name
+per menu item.
+
+**Watch out for:** These are key-select pickers, so item keys win over
+`[keys.picker]` navigation. Validation must reject an item key that collides
+with another item in the same menu.
+
+## Reader viewport keys
+
+**Now:** Keys not bound in `[keys.main]` reach the reading pane's bubbles
+viewport, which uses its own default keymap (`h`/`l` and `left`/`right`
+scroll sideways). Most of its other keys are shadowed by `[keys.main]`.
+
+**Idea:** Add a `[keys.reader]` scope that sets the viewport's `KeyMap`, and
+drop the keys `[keys.main]` already shadows.
+
+**Watch out for:** `[keys.main]` movement bindings already scroll the reader
+when it has focus. Two scopes must not both claim a key while the reader has
+focus.
+
+## Picker completion
+
+**Now:** In a picker that accepts typed values (the repo picker), `ctrl+s`
+uses the search text and a `Use "<text>"` row offers the same thing.
+
+**Idea:** A `complete` binding (right arrow while the cursor is at the end of
+the search text, as in fish) copies the highlighted item into the search
+field, so a typed value can start from a match, such as a repo path plus a
+subdirectory.
+
+**Watch out for:** Right arrow moves the text cursor while searching. It may
+only complete at the end of the text. Only the repo picker benefits today.
+
+## Glamour style files
+
+**Now:** `[colors.markdown]` sets a fixed set of glamour roles (text,
+headings, links, code, quotes, rules) on top of the built-in dark or light
+glamour style.
+
+**Idea:** Let a theme point to a full glamour JSON style file, such as
+`markdown_style = "tokyo-night.json"`, for complete control of the reading
+pane's Markdown.
+
+**Watch out for:** `newMarkdownRenderer` overrides several code block fields
+after loading the style. Those overrides must still apply on top of a style
+file. `[colors.markdown]` would then apply on top of the file.
+
+## Image viewer keys
+
+**Now:** The kitty image viewer (`Viewer.Run` in `internal/kitty/kitty.go`)
+reads raw bytes from the terminal, outside Bubble Tea. Its keys are fixed:
+`j` and `k` step between images; enter, `q`, esc, and ctrl+c close it.
+`[keys]` does not reach it.
+
+**Idea:** Add a `[keys.viewer]` scope and pass the resolved keys to
+`NewViewer`.
+
+**Watch out for:** The viewer matches single bytes. Multi-byte keys (arrows,
+`shift+tab`, kitty protocol sequences) need a decoder, such as ultraviolet's,
+before they can be bound there.
+
+## Saved display state overrides config
+
+**Now:** Toggles from the settings menu and a few keys (separator, header
+spacing, reader view, refresh interval) save to `state.Display`, and saved
+values win over `config.toml` (`internal/tui/model.go`, `New`). After a
+toggle, editing those keys in `config.toml` does nothing, and nothing tells
+the user why.
+
+**Idea:** Pick one rule. Either a config change resets the saved value (store
+the config value next to it and compare at startup), or settings changes write
+to `config.toml` itself, or `asanamate doctor` reports which config keys are
+overridden by saved state.
+
+**Watch out for:** Writing to `config.toml` from the TUI must keep comments
+and the user's layout, which `Merge` already knows how to do.
+
+## Views panel layout
+
+**Now:** The views panel shows whenever the reader sits beside the list in a
+terminal at least 160 columns wide (`showNav` in `internal/tui/nav.go`). It
+takes 26 columns from the reader, so `layout.list_width` leaves the reader
+less room at 160 columns and up than just below.
+
+**Idea:** Add `layout.views` (bool, default `true`) to the `[layout]` table,
+and a session toggle key next to `toggle_reader`. With it off, the list and
+reader split the full width.
+
+**Watch out for:** `readerShown` in `internal/tui/model.go` subtracts the
+panel's width itself to avoid calling `showNav`, which depends on it; a new
+setting must change both. Focus must leave the panel when it hides, as
+`layout()` already does on resize.
 
 ## Known issues found during the review
 

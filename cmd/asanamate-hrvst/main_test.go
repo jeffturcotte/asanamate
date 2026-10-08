@@ -1,0 +1,91 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync/atomic"
+	"testing"
+
+	"github.com/sadmachine/asanamate/internal/projectlinks"
+	"github.com/sadmachine/asanamate/internal/timetracking"
+)
+
+// TestMain runs the test binary as asanamate-hrvst when TestProviderProtocol
+// starts it as a provider command, pointed at a fake Harvest.
+func TestMain(m *testing.M) {
+	if endpoint := os.Getenv("ASANAMATE_HRVST_TEST_ENDPOINT"); endpoint != "" {
+		harvestEndpoint = endpoint
+		os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+	}
+	os.Exit(m.Run())
+}
+
+// TestProviderProtocol runs asanamate-hrvst as time_tracking.command through
+// asanamate's provider client, like the protocol test in
+// internal/timetracking: form, log, then summary.
+func TestProviderProtocol(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "hrvst"), []byte("#!/bin/sh\nprintf '%s' '"+assignmentJSON+"'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	home := filepath.Join(dir, "home")
+	if err := os.MkdirAll(filepath.Join(home, ".hrvst"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".hrvst", "config.json"), []byte(`{"accessToken":"test-token","accountId":"789"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var logged atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var payload harvestEntryRequest
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.ProjectID != "123" || payload.TaskID != "456" || payload.Hours != 1.25 || payload.ExternalReference.ID != "42" {
+				t.Errorf("Harvest payload = %+v, err = %v", payload, err)
+			}
+			logged.Store(true)
+			fmt.Fprint(w, `{"id":987,"external_reference":{"id":"42","permalink":"https://app.asana.com/0/7/42"}}`)
+			return
+		}
+		fmt.Fprint(w, `{"time_entries":[{"hours":3.75,"is_running":false,"external_reference":{"id":"42"}}],"next_page":null}`)
+	}))
+	defer server.Close()
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	t.Setenv("HOME", home)
+	t.Setenv("ASANAMATE_HRVST_TEST_ENDPOINT", server.URL)
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := timetracking.Provider{Command: "'" + exe + "' --task-id 456"}
+	ctx := context.Background()
+	asana := timetracking.Asana{TaskGID: "42", ProjectGID: "7", Title: "Fix login", URL: "https://app.asana.com/0/7/42"}
+
+	spec, err := provider.Form(ctx, asana, []projectlinks.Link{{Type: projectlinks.HarvestProject, Value: "123"}})
+	if err != nil || len(spec.Fields) != 3 || spec.Fields[0].Options[0].ID != "123" || spec.Fields[0].Default != "123" {
+		t.Fatalf("form = %+v, err = %v", spec, err)
+	}
+	if err := provider.Log(ctx, spec, map[string]string{"project_id": "123", "task_id": "456", "hours": "1.25"}, asana); err != nil || !logged.Load() {
+		t.Fatalf("log err = %v, logged = %v", err, logged.Load())
+	}
+	summary, err := provider.Summary(ctx, asana)
+	if err != nil || summary.TotalSeconds != 13500 {
+		t.Fatalf("summary = %+v, err = %v", summary, err)
+	}
+}
+
+func TestRunRejectsArguments(t *testing.T) {
+	var out, errOut bytes.Buffer
+	if code := run([]string{"--task-id", "456", "extra"}, strings.NewReader(""), &out, &errOut); code != 1 || !strings.Contains(errOut.String(), "unexpected arguments") {
+		t.Fatalf("code = %d, stderr = %s", code, errOut.String())
+	}
+	if code := run([]string{"-h"}, strings.NewReader(""), &out, &errOut); code != 0 || !strings.Contains(out.String(), "asanamate-hrvst check") {
+		t.Fatalf("help code = %d, stdout = %s", code, out.String())
+	}
+}

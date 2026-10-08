@@ -1,4 +1,4 @@
-package timetracking
+package main
 
 import (
 	"bytes"
@@ -19,7 +19,11 @@ import (
 
 	"github.com/sadmachine/asanamate/internal/form"
 	"github.com/sadmachine/asanamate/internal/projectlinks"
+	"github.com/sadmachine/asanamate/internal/timetracking"
 )
+
+// harvestEndpoint is Harvest's time entries API; tests point it at a fake.
+var harvestEndpoint = "https://api.harvestapp.com/v2/time_entries"
 
 type harvestExternalReference struct {
 	ID        string `json:"id"`
@@ -36,20 +40,9 @@ type harvestEntryRequest struct {
 	ExternalReference harvestExternalReference `json:"external_reference"`
 }
 
-// RunHarvest serves the provider protocol using hrvst's project assignments
-// and credentials. Harvest's API needs a nested external_reference object;
-// hrvst's create command flattens its bracketed flags and drops the link.
-func RunHarvest(ctx context.Context, in io.Reader, out io.Writer, taskID string) error {
-	configPath, err := harvestConfigPath()
-	if err != nil {
-		return err
-	}
-	return runHarvest(ctx, in, out, taskID, configPath, "https://api.harvestapp.com/v2/time_entries")
-}
-
-// CheckHarvest reports whether hrvst is installed and logged in, without
+// checkHarvest reports whether hrvst is installed and logged in, without
 // calling Harvest.
-func CheckHarvest() error {
+func checkHarvest() error {
 	if _, err := exec.LookPath("hrvst"); err != nil {
 		return errors.New("hrvst is not installed; run `npm install -g hrvst-cli`")
 	}
@@ -70,8 +63,11 @@ func harvestConfigPath() (string, error) {
 	return filepath.Join(home, ".hrvst", "config.json"), nil
 }
 
+// runHarvest serves one provider request using hrvst's project assignments
+// and credentials. Harvest's API needs a nested external_reference object;
+// hrvst's create command flattens its bracketed flags and drops the link.
 func runHarvest(ctx context.Context, in io.Reader, out io.Writer, taskID, configPath, endpoint string) error {
-	var req Request
+	var req timetracking.Request
 	if err := json.NewDecoder(in).Decode(&req); err != nil {
 		return fmt.Errorf("time provider request: %w", err)
 	}
@@ -136,7 +132,7 @@ func runHarvest(ctx context.Context, in io.Reader, out io.Writer, taskID, config
 	}
 }
 
-func createHarvestEntry(ctx context.Context, configPath, endpoint, projectID, taskID string, hours float64, asana Asana) error {
+func createHarvestEntry(ctx context.Context, configPath, endpoint, projectID, taskID string, hours float64, asana timetracking.Asana) error {
 	credentials, err := loadHarvestCredentials(configPath)
 	if err != nil {
 		return err
@@ -290,14 +286,14 @@ func (credentials harvestCredentials) call(ctx context.Context, method, endpoint
 	return result, nil
 }
 
-func harvestSummary(ctx context.Context, configPath, endpoint, gid string) (Summary, error) {
+func harvestSummary(ctx context.Context, configPath, endpoint, gid string) (timetracking.Summary, error) {
 	credentials, err := loadHarvestCredentials(configPath)
 	if err != nil {
-		return Summary{}, err
+		return timetracking.Summary{}, err
 	}
 	base, err := url.Parse(endpoint)
 	if err != nil {
-		return Summary{}, err
+		return timetracking.Summary{}, err
 	}
 	var hours float64
 	for page := 1; ; {
@@ -309,7 +305,7 @@ func harvestSummary(ctx context.Context, configPath, endpoint, gid string) (Summ
 		base.RawQuery = query.Encode()
 		data, err := credentials.call(ctx, http.MethodGet, base.String(), nil)
 		if err != nil {
-			return Summary{}, err
+			return timetracking.Summary{}, err
 		}
 		var result struct {
 			Entries *[]struct {
@@ -320,17 +316,17 @@ func harvestSummary(ctx context.Context, configPath, endpoint, gid string) (Summ
 			NextPage json.RawMessage `json:"next_page"`
 		}
 		if err := json.Unmarshal(data, &result); err != nil {
-			return Summary{}, fmt.Errorf("Harvest time summary: %w", err)
+			return timetracking.Summary{}, fmt.Errorf("Harvest time summary: %w", err)
 		}
 		if result.Entries == nil {
-			return Summary{}, errors.New("Harvest time summary: missing time_entries")
+			return timetracking.Summary{}, errors.New("Harvest time summary: missing time_entries")
 		}
 		for _, entry := range *result.Entries {
 			if entry.Reference == nil || entry.Reference.ID != gid {
 				continue
 			}
 			if entry.Running == nil || entry.Hours == nil || *entry.Hours < 0 || math.IsNaN(*entry.Hours) || math.IsInf(*entry.Hours, 0) {
-				return Summary{}, errors.New("Harvest time summary: invalid entry duration or timer state")
+				return timetracking.Summary{}, errors.New("Harvest time summary: invalid entry duration or timer state")
 			}
 			if !*entry.Running {
 				hours += *entry.Hours
@@ -338,19 +334,19 @@ func harvestSummary(ctx context.Context, configPath, endpoint, gid string) (Summ
 		}
 		var nextPage *int
 		if len(result.NextPage) == 0 || json.Unmarshal(result.NextPage, &nextPage) != nil {
-			return Summary{}, errors.New("Harvest time summary: missing or invalid next_page")
+			return timetracking.Summary{}, errors.New("Harvest time summary: missing or invalid next_page")
 		}
 		if nextPage == nil {
 			break
 		}
 		if *nextPage <= page {
-			return Summary{}, errors.New("Harvest time summary: invalid next_page")
+			return timetracking.Summary{}, errors.New("Harvest time summary: invalid next_page")
 		}
 		page = *nextPage
 	}
 	seconds := math.Round(hours * 3600)
 	if math.IsInf(seconds, 0) || seconds >= float64(math.MaxInt64) {
-		return Summary{}, errors.New("Harvest time summary: duration overflow")
+		return timetracking.Summary{}, errors.New("Harvest time summary: duration overflow")
 	}
-	return Summary{TotalSeconds: int64(seconds)}, nil
+	return timetracking.Summary{TotalSeconds: int64(seconds)}, nil
 }
