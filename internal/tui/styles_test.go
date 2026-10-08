@@ -5,6 +5,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/sadmachine/asanamate/internal/agents"
 	"github.com/sadmachine/asanamate/internal/config"
 )
 
@@ -41,6 +42,9 @@ func TestNewAppliesConfiguredColors(t *testing.T) {
 	}
 	if okStyle.GetForeground() != lipgloss.Color("10") {
 		t.Fatalf("ok = %v", okStyle)
+	}
+	if got := stateStyles[agents.Completed].GetForeground(); got != lipgloss.Color("10") {
+		t.Fatalf("completed agent = %v, want the ok color", got)
 	}
 	if m.pinnedStyle.GetForeground() != lipgloss.Color("208") {
 		t.Fatalf("pinned = %v, want the dark theme's", m.pinnedStyle)
