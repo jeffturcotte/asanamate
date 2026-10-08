@@ -115,6 +115,7 @@ func keyBindings() []binding {
 		{keys: []string{"p"}, desc: "projects", hint: "proj", group: "Move", run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd {
 			return m.requestProjects(func() tea.Cmd { m.openProjectPicker(); return nil })
 		}},
+		{keys: []string{"I"}, desc: "activity", group: "Move", run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.openActivity() }},
 		{keys: []string{"H"}, desc: "ticket history", group: "Move", splitOnly: true, run: do((*Model).openHistory)},
 		{keys: []string{"space", "a"}, label: "space/a", desc: "run action", hint: "act", group: "Ticket", run: menu(func(m *Model) func() { return m.openActionMenu })},
 		{keys: []string{"P"}, desc: "pin / unpin", group: "Ticket", run: (*Model).togglePin},
@@ -183,7 +184,12 @@ func keyBindings() []binding {
 		{keys: []string{"B"}, desc: "sort by", group: "View", run: do((*Model).openSortPicker)},
 		{keys: []string{"="}, desc: "fit list", group: "View", run: do((*Model).fitList)},
 		{keys: []string{"?"}, desc: "this help", hint: "keys", group: "View", run: do(func(m *Model) { m.help = true })},
-		{keys: []string{"q"}, desc: "quit", group: "View", run: func(*Model, tea.KeyPressMsg) tea.Cmd { return tea.Quit }},
+		{keys: []string{"q"}, desc: "quit", group: "View", run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd {
+			if m.activity != nil {
+				m.closeActivity()
+			}
+			return tea.Quit
+		}},
 	}
 }
 

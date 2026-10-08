@@ -52,6 +52,9 @@ func (m *Model) mode() (name string, pill color.Color, hints [][2]string) {
 // shows, then the key hints for what has focus, or the latest status message
 // in their place.
 func (m *Model) statusline() string {
+	if m.activityOpen {
+		return m.activityStatusline()
+	}
 	name, pillColor, hints := m.mode()
 	pill := lipgloss.NewStyle().Bold(true).Reverse(true).Foreground(pillColor).Render(" " + name + " ")
 	sep := dimStyle.Render(" │ ")

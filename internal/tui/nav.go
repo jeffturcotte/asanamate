@@ -42,10 +42,12 @@ type navItem struct {
 	group        *string
 	heading      bool
 	active       bool
+	activity     bool
+	activityMode string
 }
 
 func (it navItem) selectable() bool {
-	return it.isView || it.savedView != "" || it.group != nil || it.sort != nil
+	return it.isView || it.activity || it.activityMode != "" || it.savedView != "" || it.group != nil || it.sort != nil
 }
 
 // showNav reports whether the layout has room for the views panel.
@@ -65,10 +67,11 @@ func (m *Model) navWidth() int {
 // linked agents by state.
 func (m *Model) navItems() []navItem {
 	count := fmt.Sprint(len(m.visible))
-	items := []navItem{{label: "My Tasks", isView: true, active: m.viewProject == nil}}
-	if m.viewProject == nil {
+	items := []navItem{{label: "My Tasks", isView: true, active: m.viewProject == nil && !m.activityOpen}}
+	if m.viewProject == nil && !m.activityOpen {
 		items[0].right = count
 	}
+	items = append(items, navItem{label: "Activity", right: "I", activity: true, active: m.activityOpen})
 	named := m.recentSavedViewNames()
 	if len(named) > 0 {
 		items = append(items, navItem{label: "Saved views", right: "V", heading: true})
@@ -98,7 +101,7 @@ func (m *Model) navItems() []navItem {
 	}
 	for _, gid := range gids {
 		it := navItem{label: ticket.OneLine(names[gid]), project: &asana.Ref{GID: gid, Name: names[gid]}, isView: true}
-		if gidOf(m.viewProject) == gid {
+		if gidOf(m.viewProject) == gid && !m.activityOpen {
 			it.active, it.right = true, count
 		}
 		items = append(items, it)
@@ -115,6 +118,13 @@ func (m *Model) navItems() []navItem {
 		items = appendMore(items, hidden)
 	}
 
+	if m.activityOpen && m.activity != nil {
+		items = append(items, navItem{label: "Activity filter", right: "]/[", heading: true})
+		for _, mode := range activityModes {
+			items = append(items, navItem{label: mode, activityMode: mode, active: mode == m.activity.mode})
+		}
+		return items
+	}
 	items = append(items, navItem{label: "Group by", right: "b", heading: true})
 	groups := uniqueFold(append(append([]string{""}, m.deps.Config.List.Fields...), m.deps.Config.List.GroupBy, m.groupBy))
 	for _, g := range groups {
@@ -180,11 +190,11 @@ func (m *Model) navView(width, height int) string {
 		}
 		mark := "  "
 		switch {
-		case (it.group != nil || it.sort != nil) && it.active:
+		case (it.group != nil || it.sort != nil || it.activityMode != "") && it.active:
 			mark = m.accentStyle.Render("●") + " "
-		case it.group != nil || it.sort != nil:
+		case it.group != nil || it.sort != nil || it.activityMode != "":
 			mark = dimStyle.Render("○") + " "
-		case (it.isView || it.savedView != "") && it.active:
+		case (it.isView || it.activity || it.savedView != "") && it.active:
 			mark = m.accentStyle.Render("▌") + " "
 		}
 		label := it.label
@@ -243,7 +253,7 @@ func (m *Model) focusNavPanel() {
 		if !it.selectable() {
 			continue
 		}
-		if it.isView && it.active {
+		if (it.isView || it.activity) && it.active {
 			m.navCursor = n
 			return
 		}
@@ -275,6 +285,21 @@ func (m *Model) updateNav(k string) tea.Cmd {
 	case "enter", "l":
 		it := selectable[m.navCursor]
 		m.focusNav = false
+		if it.activity {
+			if m.activityOpen {
+				return nil
+			}
+			return m.openActivity()
+		}
+		if it.activityMode != "" {
+			m.activity.mode = it.activityMode
+			m.filterActivity()
+			return nil
+		}
+		if m.activityOpen {
+			m.closeActivity()
+			m.layout()
+		}
 		if it.savedView != "" {
 			return m.applySavedView(it.savedView)
 		}

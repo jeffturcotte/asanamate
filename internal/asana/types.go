@@ -194,11 +194,23 @@ func Names(refs []Ref) []string {
 
 // Story is an entry in a task's activity feed; comments have Type "comment".
 type Story struct {
-	GID       string `json:"gid"`
-	Type      string `json:"type"`
-	CreatedAt string `json:"created_at"`
-	CreatedBy *Ref   `json:"created_by,omitempty"`
-	HTMLText  string `json:"html_text"`
+	GID             string      `json:"gid"`
+	Type            string      `json:"type"`
+	ResourceSubtype string      `json:"resource_subtype"`
+	CreatedAt       string      `json:"created_at"`
+	CreatedBy       *Ref        `json:"created_by,omitempty"`
+	Text            string      `json:"text"`
+	HTMLText        string      `json:"html_text"`
+	Assignee        *Ref        `json:"assignee,omitempty"`
+	OldDates        *StoryDates `json:"old_dates,omitempty"`
+	NewDates        *StoryDates `json:"new_dates,omitempty"`
+}
+
+// StoryDates is the date state before or after a task's date change.
+type StoryDates struct {
+	DueOn   *string `json:"due_on"`
+	DueAt   *string `json:"due_at"`
+	StartOn *string `json:"start_on"`
 }
 
 // Attachment is a file attached to a task.

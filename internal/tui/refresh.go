@@ -43,6 +43,11 @@ func (m *Model) autoRefresh(msg refreshTickMsg) tea.Cmd {
 		return nil
 	}
 	next := m.scheduleRefresh()
+	// Workspace activity scans are explicit; ticket auto-update must not
+	// repeatedly scan every task while the Activity view is open.
+	if m.activityOpen {
+		return next
+	}
 	if m.loading || len(m.detailRequests) > 0 || m.filtering || m.help || m.modal != nil || m.input != nil || m.form != nil || m.builder != nil ||
 		m.run != nil || m.edit != nil || m.timeEntry != nil || m.menuFor != "" {
 		return next

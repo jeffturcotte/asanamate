@@ -63,17 +63,17 @@ func TestViewsPanelPicksGroupingAndProject(t *testing.T) {
 	if !m.focusNav || m.navCursor != 0 || !strings.HasPrefix(ansi.Strip(m.statusline()), " VIEWS ") {
 		t.Fatalf("focusNav = %v, navCursor = %d", m.focusNav, m.navCursor)
 	}
-	// My Tasks, Mobile, Web, then none, section, due.
-	keys(m, "j", "j", "j", "j", "enter")
+	// My Tasks, Activity, Mobile, Web, then none, section, due.
+	keys(m, "j", "j", "j", "j", "j", "enter")
 	if m.focusNav || m.groupBy != "section" {
 		t.Fatalf("focusNav = %v, groupBy = %q", m.focusNav, m.groupBy)
 	}
-	keys(m, "0", "j", "enter")
+	keys(m, "0", "j", "j", "enter")
 	if gidOf(m.viewProject) != "p2" {
 		t.Fatalf("viewProject = %+v", m.viewProject)
 	}
 	m.Update(key("0"))
-	if m.navCursor != 1 {
+	if m.navCursor != 2 {
 		t.Fatalf("focus starts on the viewed project, got %d", m.navCursor)
 	}
 	m.Update(key("esc"))
@@ -123,7 +123,7 @@ func TestViewsPanelAppliesAndResetsSavedViewWithoutSwitchingProject(t *testing.T
 	m := wideModel(t, 220)
 	st := m.deps.State
 	st.SavedViews["Work"] = state.View{Filter: "is:open", GroupBy: "section", Sort: config.Sort{By: "due", Direction: "asc"}}
-	keys(m, "0", "j", "enter") // My Tasks, then Work
+	keys(m, "0", "j", "j", "enter") // My Tasks, Activity, then Work
 	if m.focusNav || m.viewProject != nil || m.savedViewLabel() != "Work" || m.currentView() != st.SavedViews["Work"] {
 		t.Fatalf("sidebar recall failed: name = %q, view = %+v", m.savedViewLabel(), m.currentView())
 	}
@@ -132,13 +132,13 @@ func TestViewsPanelAppliesAndResetsSavedViewWithoutSwitchingProject(t *testing.T
 	if !strings.Contains(body, "▌ Work *") {
 		t.Fatalf("sidebar lost modified mark:\n%s", body)
 	}
-	keys(m, "0", "j", "enter")
+	keys(m, "0", "j", "j", "enter")
 	if m.savedViewLabel() != "Work" || m.filterInput.Value() != "is:open" {
 		t.Fatalf("active modified view did not reset: %q", m.savedViewLabel())
 	}
 	m.pickedProject(&asana.Ref{GID: "p1", Name: "Web"})
 	m.Update(tasksMsg{project: m.viewProject, tasks: []asana.Task{openTask, doneTask}})
-	keys(m, "0", "g", "j", "enter")
+	keys(m, "0", "g", "j", "j", "enter")
 	if m.viewProject == nil || m.viewProject.GID != "p1" || m.savedViewLabel() != "Work" {
 		t.Fatalf("sidebar recall switched project: %+v", m.viewProject)
 	}

@@ -80,6 +80,9 @@ type Model struct {
 	width, height int
 
 	viewProject     *asana.Ref
+	activity        *activityView // API activity, kept only in memory
+	activityOpen    bool
+	activityTicket  bool // Esc returns from a ticket opened through Activity
 	tasks           []asana.Task
 	pinExtras       []asana.Task // pinned tickets absent from the normal list
 	visible         []asana.Task
@@ -220,6 +223,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case refreshTickMsg:
 		return m, m.autoRefresh(msg)
+	case activityMsg:
+		return m, m.gotActivity(msg)
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.layout()
@@ -420,6 +425,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.handleKey(msg)
 	}
 	// Editors also receive paste events and asynchronous clipboard results.
+	if m.activityOpen && m.activity.filtering {
+		return m, m.updateActivitySearch(msg)
+	}
 	if m.builder != nil {
 		return m, m.updateActionBuilder(msg)
 	}
@@ -444,6 +452,9 @@ func gidOf(project *asana.Ref) string {
 func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	k := msg.String()
 	if k == "ctrl+c" {
+		if m.activity != nil {
+			m.closeActivity()
+		}
 		return tea.Quit
 	}
 	if len(m.notices) > 0 {
@@ -479,6 +490,16 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 	m.status = ""
+	if m.activityOpen {
+		return m.handleActivityKey(msg)
+	}
+	if k == "esc" && m.activityTicket && !m.filtering {
+		m.activityTicket = false
+		m.activityOpen = true
+		m.focusList()
+		m.layout()
+		return nil
+	}
 	if m.filtering {
 		return m.updateFilter(msg)
 	}
@@ -636,7 +657,9 @@ func (m *Model) refreshViewing(tasks ...asana.Task) bool {
 }
 
 // animating reports whether anything shown uses the spinner.
-func (m *Model) animating() bool { return m.loading || m.anyWorking() }
+func (m *Model) animating() bool {
+	return m.loading || m.anyWorking() || m.activityOpen && m.activity != nil && m.activity.loading
+}
 
 // startSpinner schedules a spinner tick unless one is scheduled or nothing animates.
 func (m *Model) startSpinner() tea.Cmd {
@@ -908,6 +931,7 @@ func (m *Model) openProjectPicker() {
 
 func (m *Model) pickedProject(ref *asana.Ref) tea.Cmd {
 	m.modal = nil
+	m.closeActivity()
 	m.viewProject, m.linked, m.viewing = ref, nil, nil
 	m.restoreView()
 	if ref != nil {
@@ -956,7 +980,10 @@ func (m *Model) paneWidths() (listW, readerW int, split bool) {
 	}
 	room := m.width - m.navWidth()
 	outer := min(room*2/5, room-readerIdealW-panelFrame)
-	if m.listW > 0 {
+	if m.activityOpen {
+		outer = room - readerMinW - panelFrame
+	}
+	if m.listW > 0 && !m.activityOpen {
 		outer = min(m.listW, room-readerMinW-panelFrame)
 	}
 	outer = min(max(outer, minPaneW), room-minPaneW)
@@ -985,6 +1012,9 @@ func (m *Model) layout() {
 	m.reader.SetWidth(readerW)
 	m.reader.SetHeight(m.paneHeight())
 	m.filterInput.SetWidth(max(m.width/3, 10))
+	if m.activityOpen {
+		m.layoutActivity()
+	}
 	if t, ok := m.selected(); widthChanged && ok && t.GID == m.shownGID {
 		m.renderDetail(true)
 	}
@@ -1023,7 +1053,9 @@ func (m *Model) body() string {
 	case m.modal != nil:
 		content = m.modal.view(w, mh, m.accentStyle)
 	case m.help:
-		if m.filtering {
+		if m.activityOpen {
+			content = m.activityHelp()
+		} else if m.filtering {
 			content = m.filterHelpView()
 		} else {
 			content = m.helpView()
@@ -1051,6 +1083,9 @@ func (m *Model) body() string {
 }
 
 func (m *Model) panes(h int) string {
+	if m.activityOpen {
+		return m.activityPanes(h)
+	}
 	listW, readerW, split := m.paneWidths()
 	switch {
 	case split:

@@ -169,6 +169,7 @@ key press.
 | `0` / `1` / `2` | focus the views panel (wide screens) / the list / the reader |
 | `/` | edit the filter (available fields appear while editing; `?` opens the filter guide; Enter or Esc to finish) |
 | `p` | switch project (recent first) |
+| `I` | open Activity: your actions and changes directly related to you |
 | `H` | ticket history: the last 10 tickets focused in the reader, most recent first; picking one selects it (keeping it in the Viewing section when the view doesn't show it) and focuses the reader |
 | `L` | repo links: link, relink, or unlink each project's repo (starts on the viewed project), or give the selected ticket its own repo that overrides its projects' links without changing them |
 | `space`, `a` | run an action on the selected ticket |
@@ -251,6 +252,36 @@ project, while recently used view names are shared across projects.
 Save under the same name to replace a view, with confirmation. The `V` picker
 also offers saving and deletion; deletion requires confirmation. These keys
 work in narrow terminals and list-only mode too.
+
+### Activity
+
+Press `I`, or choose Activity in the wide Views panel. The view loads Asana's
+stories from recently changed tasks across the workspace, including tasks you
+reassigned to someone else. It stores activity only in memory.
+
+- `[` / `]` switches between **Both**, **Mine** (your actions), and **Related**
+  (actions by others on tasks currently assigned to you, assignments to you,
+  explicit user mentions in comments, or tasks whose current description
+  mentions you). Each event explains why it appears.
+- `D` chooses the last 24 hours, 7 days (the default), or 30 days.
+- `/` searches ticket names, actors, and activity text. Words combine;
+  Activity search is separate from the saved ticket filter.
+- `j` / `k` selects an event. `Tab` or `2` focuses its reader to scroll it.
+- `Enter` opens the existing ticket reader, where the usual edit and action
+  keys work; `Esc` returns to Activity. On narrow screens, the first `Enter`
+  shows the event, and the next opens the ticket. In list-only mode, opening
+  a ticket selects it in the ticket list instead.
+- `z` includes or hides automated updates and reminders. These never count
+  as your actions, even when Asana attributes a reminder to your user ID.
+- `r` refreshes from the API. Activity scans run on opening the view or manual
+  refresh, rather than the ticket auto-update timer. `I` or `Esc` from the
+  event list returns to tickets; `?` shows all Activity keys.
+
+Activity requires paid access to Asana's workspace search API. The header
+shows scan coverage and reports failed or incomplete requests. Search indexing
+can lag behind changes, and Asana consolidates stories, so this is not a
+complete audit log. Current ownership and description mentions are labelled
+as current context, not proof of who owned a task when an older event occurred.
 
 ## List-only mode and scripting
 

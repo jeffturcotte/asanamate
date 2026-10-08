@@ -10,6 +10,9 @@ import (
 
 // filterHints keeps available fields visible next to the filter editor.
 func (m *Model) filterHints() []string {
+	if m.activityOpen {
+		return nil
+	}
 	if !m.filtering || m.width < 1 || m.bodyHeight() < 4 {
 		return nil
 	}
