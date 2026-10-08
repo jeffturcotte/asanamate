@@ -34,13 +34,17 @@ type activityView struct {
 	loading   bool
 	seq       uint64
 	cancel    context.CancelFunc
+	updates   chan activityMsg
 	err       string
 }
 
+// activityMsg carries a scan snapshot. Partial snapshots stream in while the
+// scan runs; the last one is final and may carry an error.
 type activityMsg struct {
-	seq    uint64
-	report activity.Report
-	err    error
+	seq     uint64
+	report  activity.Report
+	err     error
+	partial bool
 }
 
 func (m *Model) openActivity() tea.Cmd {
@@ -86,14 +90,33 @@ func (m *Model) reloadActivity() tea.Cmd {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*requestTimeout)
 	a.cancel = cancel
 	c, workspace := m.deps.Client, m.deps.Config.Workspace
-	return tea.Batch(func() tea.Msg {
-		defer cancel()
-		if c == nil {
-			return activityMsg{seq: seq, err: fmt.Errorf("Asana client is unavailable")}
+	if c == nil {
+		cancel()
+		return func() tea.Msg { return activityMsg{seq: seq, err: fmt.Errorf("Asana client is unavailable")} }
+	}
+	// The buffer holds only the newest snapshot, so a slow UI skips stale
+	// ones and the scan never blocks. Publishes are serialized.
+	updates := make(chan activityMsg, 1)
+	a.updates = updates
+	publish := func(msg activityMsg) {
+		select {
+		case <-updates:
+		default:
 		}
-		report, err := activity.Fetch(ctx, c, workspace, since, until)
-		return activityMsg{seq: seq, report: report, err: err}
-	}, m.startSpinner())
+		updates <- msg
+	}
+	go func() {
+		defer cancel()
+		report, err := activity.Fetch(ctx, c, workspace, since, until, func(r activity.Report) {
+			publish(activityMsg{seq: seq, report: r, partial: true})
+		})
+		publish(activityMsg{seq: seq, report: report, err: err})
+	}()
+	return tea.Batch(waitActivity(updates), m.startSpinner())
+}
+
+func waitActivity(updates <-chan activityMsg) tea.Cmd {
+	return func() tea.Msg { return <-updates }
 }
 
 func (m *Model) gotActivity(msg activityMsg) tea.Cmd {
@@ -101,14 +124,19 @@ func (m *Model) gotActivity(msg activityMsg) tea.Cmd {
 	if a == nil || a.seq != msg.seq {
 		return nil
 	}
-	a.loading = false
+	var next tea.Cmd
+	if msg.partial {
+		next = waitActivity(a.updates)
+	} else {
+		a.loading = false
+	}
 	if msg.err != nil {
 		a.err = ticket.OneLine(msg.err.Error())
 		return nil
 	}
 	a.report = msg.report
 	m.filterActivity()
-	return nil
+	return next
 }
 
 func (a *activityView) selected() (activity.Entry, bool) {
@@ -132,12 +160,10 @@ func (m *Model) filterActivity() {
 			a.visible = append(a.visible, e)
 		}
 	}
-	if i := slices.IndexFunc(a.visible, func(e activity.Entry) bool { return e.Story.GID == previous.Story.GID }); i >= 0 {
-		a.cursor = i
-	} else {
-		a.cursor = 0
-	}
-	m.renderActivityDetail(false)
+	i := slices.IndexFunc(a.visible, func(e activity.Entry) bool { return e.Story.GID == previous.Story.GID })
+	a.cursor = max(i, 0)
+	// Streamed snapshots must not reset the reader under the user.
+	m.renderActivityDetail(i >= 0)
 }
 
 func (m *Model) layoutActivity() {
@@ -527,6 +553,9 @@ func (m *Model) activitySegs() []string {
 	switch {
 	case a.loading:
 		loading := "scanning"
+		if a.report.Total > 0 {
+			loading = fmt.Sprintf("scanning %d/%d", a.report.Scanned, a.report.Total)
+		}
 		if len(m.sym.spinner) > 0 {
 			loading = m.sym.spinner[m.frame%len(m.sym.spinner)] + " " + loading
 		}

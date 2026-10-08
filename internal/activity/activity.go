@@ -38,52 +38,69 @@ type Report struct {
 }
 
 // Fetch scans recently changed tasks across the workspace, including tasks
-// no longer assigned to the user. Bounded concurrency limits API pressure.
-func Fetch(ctx context.Context, c *asana.Client, workspace string, since, until time.Time) (Report, error) {
+// no longer assigned to the user. Ticket feeds load while search pages are
+// still arriving, and progress, when non-nil, receives a sorted snapshot
+// after each search page and ticket feed. Calls are serialized; progress must
+// not block. Bounded concurrency limits API pressure.
+func Fetch(ctx context.Context, c *asana.Client, workspace string, since, until time.Time, progress func(Report)) (Report, error) {
 	r := Report{Since: since, Until: until}
 	me, err := c.Me(ctx)
 	if err != nil {
 		return r, err
 	}
-	tasks, searchErr := c.RecentTasks(ctx, workspace, since)
-	if len(tasks) == 0 && searchErr != nil {
+	var mu sync.Mutex
+	var failed int
+	var firstErr error
+	// emit runs with mu held.
+	emit := func() {
+		if progress != nil {
+			sortEntries(r.Entries)
+			snap := r
+			snap.Entries = slices.Clone(r.Entries)
+			progress(snap)
+		}
+	}
+	g := new(errgroup.Group)
+	g.SetLimit(6)
+	searchErr := c.RecentTasks(ctx, workspace, since, func(tasks []asana.Task) {
+		mu.Lock()
+		r.Total += len(tasks)
+		emit()
+		mu.Unlock()
+		for _, t := range tasks {
+			if ctx.Err() != nil {
+				return
+			}
+			g.Go(func() error {
+				stories, err := c.Stories(ctx, t.GID, since)
+				var entries []Entry
+				if err == nil {
+					entries = Classify(t, stories, me.GID, since, until)
+				}
+				mu.Lock()
+				defer mu.Unlock()
+				if err != nil {
+					failed++
+					if firstErr == nil {
+						firstErr = err
+					}
+				} else {
+					r.Scanned++
+					r.Entries = append(r.Entries, entries...)
+				}
+				emit()
+				return nil
+			})
+		}
+	})
+	_ = g.Wait()
+	if r.Total == 0 && searchErr != nil {
 		var apiErr *asana.APIError
 		if errors.As(searchErr, &apiErr) && apiErr.Status == 402 {
 			return r, fmt.Errorf("Activity requires Asana's paid workspace search API: %w", searchErr)
 		}
 		return r, searchErr
 	}
-	r.Total = len(tasks)
-	var mu sync.Mutex
-	var failed int
-	var firstErr error
-	g := new(errgroup.Group)
-	g.SetLimit(3)
-	for _, t := range tasks {
-		if ctx.Err() != nil {
-			break
-		}
-		g.Go(func() error {
-			stories, err := c.Stories(ctx, t.GID, since)
-			var entries []Entry
-			if err == nil {
-				entries = Classify(t, stories, me.GID, since, until)
-			}
-			mu.Lock()
-			defer mu.Unlock()
-			if err != nil {
-				failed++
-				if firstErr == nil {
-					firstErr = err
-				}
-			} else {
-				r.Scanned++
-				r.Entries = append(r.Entries, entries...)
-			}
-			return nil
-		})
-	}
-	_ = g.Wait()
 	var warnings []string
 	if searchErr != nil {
 		warnings = append(warnings, "task search incomplete: "+searchErr.Error())
@@ -95,13 +112,18 @@ func Fetch(ctx context.Context, c *asana.Client, workspace string, since, until 
 		warnings = append(warnings, err.Error())
 	}
 	r.Warning = strings.Join(warnings, "; ")
-	slices.SortFunc(r.Entries, func(a, b Entry) int {
+	sortEntries(r.Entries)
+	return r, nil
+}
+
+// sortEntries orders entries newest first.
+func sortEntries(entries []Entry) {
+	slices.SortFunc(entries, func(a, b Entry) int {
 		if n := b.At.Compare(a.At); n != 0 {
 			return n
 		}
 		return strings.Compare(a.Story.GID, b.Story.GID)
 	})
-	return r, nil
 }
 
 // Classify keeps own actions and directly related activity. Current task

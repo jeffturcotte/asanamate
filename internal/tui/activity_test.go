@@ -127,6 +127,21 @@ func TestActivityIgnoresStaleLoadsAndKeepsOldResultsOnError(t *testing.T) {
 	}
 }
 
+func TestActivityStreamsPartialSnapshots(t *testing.T) {
+	m := activityModel(t, 160)
+	m.reloadActivity()
+	seq, entries := m.activity.seq, m.activity.report.Entries
+	m.activity.updates = make(chan activityMsg, 1)
+	_, cmd := m.Update(activityMsg{seq: seq, report: activity.Report{Entries: entries[:1], Scanned: 1, Total: 3}, partial: true})
+	if cmd == nil || !m.activity.loading || len(m.activity.visible) != 1 || !strings.Contains(ansi.Strip(m.statusline()), "scanning 1/3") {
+		t.Fatal("partial snapshot must show entries and keep scanning")
+	}
+	_, cmd = m.Update(activityMsg{seq: seq, report: activity.Report{Entries: entries, Scanned: 3, Total: 3}})
+	if cmd != nil || m.activity.loading || len(m.activity.visible) != 2 {
+		t.Fatal("final snapshot must stop scanning")
+	}
+}
+
 func TestActivityPeriodChangeDoesNotRelabelOldResults(t *testing.T) {
 	m := activityModel(t, 160)
 	sendKeys(m, "D", "j", "j", "enter")
