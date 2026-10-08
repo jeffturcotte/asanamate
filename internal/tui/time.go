@@ -75,22 +75,22 @@ func (m *Model) pickedTimeAsanaProject(project asana.Ref) tea.Cmd {
 	m.modal = nil
 	entry := m.timeEntry
 	entry.project = project
-	m.status = "loading time form…"
 	provider := timetracking.Provider{Command: m.deps.Config.TimeTracking.Command}
 	asanaTask := entry.asana()
 	links := m.projectLinks()
-	return request(func(ctx context.Context) tea.Msg {
+	return m.wait("Loading time form…", request(func(ctx context.Context) tea.Msg {
 		// Links only suggest defaults; the form works without them.
 		suggested, linksErr := links.Links(ctx, project.GID)
 		spec, err := provider.Form(ctx, asanaTask, suggested)
 		return timeFormMsg{entry: entry, spec: spec, err: err, linksErr: linksErr}
-	})
+	}))
 }
 
 func (m *Model) gotTimeForm(msg timeFormMsg) {
 	if m.timeEntry != msg.entry {
 		return
 	}
+	m.waiting = ""
 	if msg.err != nil {
 		m.status = "loading time form: " + msg.err.Error()
 		m.timeEntry = nil

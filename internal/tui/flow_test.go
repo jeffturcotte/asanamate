@@ -80,8 +80,7 @@ func TestLinkedRepoRunsImmediately(t *testing.T) {
 func TestUnlinkedRepoPromptsAndSaves(t *testing.T) {
 	dir := gitRepo(t)
 	m, st := flowModel(t, web)
-	msg := m.pickedAction(0)().(candidatesMsg)
-	m.Update(msg)
+	drain(m, m.pickedAction(0))
 	if m.modal == nil || !strings.HasPrefix(m.modal.title, "Repo for") || !m.modal.allowFree {
 		t.Fatalf("modal = %+v", m.modal)
 	}
@@ -108,15 +107,19 @@ func TestStaleRepoLinkReprompts(t *testing.T) {
 	if cmd == nil || m.ExitCommand() != nil || !strings.Contains(m.status, "no longer a git repository") {
 		t.Fatalf("status = %q, exit = %v", m.status, m.ExitCommand())
 	}
-	if _, ok := cmd().(candidatesMsg); !ok {
-		t.Fatal("want the repo picker to load candidates")
+	if m.waiting == "" {
+		t.Fatal("want a loading modal while candidates load")
+	}
+	drain(m, cmd)
+	if m.waiting != "" || m.modal == nil || !strings.HasPrefix(m.modal.title, "Repo for") {
+		t.Fatalf("want the repo picker; waiting = %q, modal = %+v", m.waiting, m.modal)
 	}
 }
 
 func TestNoProjectRepoIsNotSaved(t *testing.T) {
 	dir := gitRepo(t)
 	m, st := flowModel(t)
-	m.Update(m.pickedAction(0)())
+	drain(m, m.pickedAction(0))
 	m.pickedRepo(dir)
 	if m.ExitCommand() == nil || len(st.Repos) != 0 {
 		t.Fatalf("exit = %v, repos = %v", m.ExitCommand(), st.Repos)
@@ -255,7 +258,7 @@ func editLink(t *testing.T, m *Model) {
 	if cmd == nil {
 		t.Fatal("want the repo picker to load candidates")
 	}
-	m.Update(cmd())
+	drain(m, cmd)
 	if m.modal == nil || m.modal.title != "Repo for Web" || !m.modal.allowFree {
 		t.Fatalf("modal = %+v", m.modal)
 	}
@@ -290,7 +293,7 @@ func TestRepoPickerPreselectsSuggestedRepo(t *testing.T) {
 	m, st := flowModel(t, web)
 	m.deps.Config.RepoSource.Command = "printf '%s\\n' '" + other + "' '" + site + "'"
 	m.deps.Config.ProjectLinks.Command = `cat | grep -q '"project_gid":"p1"' && printf '{"links":[{"type":"git","value":"https://github.com/acme/site"}]}'`
-	m.Update(m.pickedAction(0)())
+	drain(m, m.pickedAction(0))
 	if m.modal == nil || len(m.modal.items) != 2 || m.modal.items[0].Value != site || m.modal.items[0].Hint != "suggested" || m.modal.items[1].Value != other || m.modal.err != "" {
 		t.Fatalf("modal = %+v", m.modal)
 	}
@@ -303,10 +306,30 @@ func TestRepoPickerPreselectsSuggestedRepo(t *testing.T) {
 	}
 }
 
+// While candidates and suggestions load, a loading modal shows; esc closes
+// it and drops the reply.
+func TestRepoPickerLoadingModalCancels(t *testing.T) {
+	m, _ := flowModel(t, web)
+	m.width, m.height = 100, 30
+	cmd := m.pickedAction(0)
+	if !strings.Contains(ansi.Strip(m.View().Content), "Loading repos") {
+		t.Fatalf("loading modal missing:\n%s", ansi.Strip(m.View().Content))
+	}
+	m.Update(key("x"))
+	if m.waiting == "" || m.run == nil {
+		t.Fatal("other keys must not close the loading modal")
+	}
+	m.Update(key("esc"))
+	drain(m, cmd)
+	if m.waiting != "" || m.run != nil || m.modal != nil {
+		t.Fatalf("cancelled load still opened: waiting = %q, modal = %+v", m.waiting, m.modal)
+	}
+}
+
 func TestRepoPickerShowsSuggestionFailure(t *testing.T) {
 	m, _ := flowModel(t, web)
 	m.deps.Config.ProjectLinks.Command = "echo hub down >&2; exit 1"
-	m.Update(m.pickedAction(0)())
+	drain(m, m.pickedAction(0))
 	if m.modal == nil || !strings.Contains(m.modal.err, "no suggestions: project links: hub down") || m.modal.items[0].Hint != "" {
 		t.Fatalf("modal = %+v", m.modal)
 	}
@@ -365,7 +388,7 @@ func TestRepoLinksSetTicketRepoWithoutLinkingProject(t *testing.T) {
 	}
 	m.modal.cursor = 0
 	_, cmd := m.Update(key("enter"))
-	m.Update(cmd())
+	drain(m, cmd)
 	if m.modal == nil || m.modal.title != "Repo for this ticket" || len(m.modal.items) != 1 {
 		t.Fatalf("modal = %+v", m.modal)
 	}

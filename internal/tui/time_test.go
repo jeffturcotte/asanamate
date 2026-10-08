@@ -47,10 +47,13 @@ func TestTimeFormChoosesAsanaProjectAndRestoresFields(t *testing.T) {
 		t.Fatalf("project prompt = %+v, cmd = %v", m.modal, cmd)
 	}
 	cmd := m.pickedTimeAsanaProject(api.Project)
+	if m.waiting != "Loading time form…" {
+		t.Fatalf("waiting = %q, want the loading modal", m.waiting)
+	}
 	st.TouchFormChoice("time:hrvst", "2", "project_id", "789")
 	st.TouchFormChoice("time:hrvst", "2", "task_id", "456")
-	m.Update(cmd())
-	if m.form == nil || m.form.values["project_id"] != "789" || m.form.values["task_id"] != "456" || m.form.values["hours"] != "" {
+	drain(m, cmd)
+	if m.form == nil || m.waiting != "" || m.form.values["project_id"] != "789" || m.form.values["task_id"] != "456" || m.form.values["hours"] != "" {
 		t.Fatalf("form values = %+v", m.form)
 	}
 	if m.form.spec.Fields[0].Type != form.Select || m.form.spec.Fields[2].Type != form.Hours {
@@ -65,17 +68,17 @@ func TestTimeFormProviderDefaultYieldsToRememberedChoice(t *testing.T) {
 	withDefault := strings.Replace(timeFormJSON, `"remember":true}`, `"remember":true,"default":"123"}`, 1)
 	m.deps.Config.TimeTracking.Command = "printf '%s' '" + withDefault + "'"
 	m.deps.Config.ProjectLinks.Command = `printf '{"links":[{"type":"harvest_project","value":"123"}]}'`
-	m.Update(m.openTime()())
+	drain(m, m.openTime())
 	if m.form == nil || m.form.values["project_id"] != "123" || m.status != "" {
 		t.Fatalf("form = %+v, status = %q", m.form, m.status)
 	}
 	st.TouchFormChoice("time:hrvst", "1", "project_id", "789")
-	m.Update(m.openTime()())
+	drain(m, m.openTime())
 	if m.form.values["project_id"] != "789" {
 		t.Fatalf("remembered choice lost to default: %+v", m.form.values)
 	}
 	m.deps.Config.ProjectLinks.Command = "echo hub down >&2; exit 1"
-	m.Update(m.openTime()())
+	drain(m, m.openTime())
 	if m.form == nil || !strings.Contains(m.status, "no suggestions: project links: hub down") {
 		t.Fatalf("form = %+v, status = %q", m.form, m.status)
 	}
@@ -84,7 +87,7 @@ func TestTimeFormProviderDefaultYieldsToRememberedChoice(t *testing.T) {
 func TestTimeFormValidationFailureAndSuccess(t *testing.T) {
 	m, st := timeModel(t, asana.Membership{Project: asana.Ref{GID: "1", Name: "Asana Web"}})
 	cmd := m.openTime()
-	m.Update(cmd())
+	drain(m, cmd)
 	if m.form == nil || m.form.values["task_id"] != "456" {
 		t.Fatalf("form = %+v", m.form)
 	}
@@ -115,7 +118,7 @@ func TestTimeFormValidationFailureAndSuccess(t *testing.T) {
 
 func TestTimeFormCancelKeepsStateUnchanged(t *testing.T) {
 	m, st := timeModel(t, asana.Membership{Project: asana.Ref{GID: "1", Name: "Asana Web"}})
-	m.Update(m.openTime()())
+	drain(m, m.openTime())
 	m.form.values["project_id"] = "123"
 	cancelled, _ := m.form.update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if !cancelled || len(st.RecentFormChoices("time:hrvst", "1", "project_id")) != 0 {

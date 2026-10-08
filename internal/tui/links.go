@@ -85,7 +85,7 @@ func (m *Model) pickedLink(target linkTarget) tea.Cmd {
 	if target.ticket {
 		projectGID = ""
 	}
-	return loadCandidates(m.deps.Config.RepoSource, &target, m.projectLinks(), projectGID)
+	return m.wait("Loading repos…", loadCandidates(m.deps.Config.RepoSource, &target, m.projectLinks(), projectGID))
 }
 
 // projectLinks returns the configured project links provider; it is off
