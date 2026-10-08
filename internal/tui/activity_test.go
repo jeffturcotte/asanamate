@@ -52,6 +52,45 @@ func TestActivityFiltersAndAutomatedToggle(t *testing.T) {
 	}
 }
 
+func TestActivityTabCyclesViewsListAndReader(t *testing.T) {
+	m := activityModel(t, 160)
+	for i, want := range []string{"reader", "views", "list"} {
+		sendKeys(m, "tab")
+		got := "list"
+		if m.focusNav {
+			got = "views"
+		} else if m.activity.details {
+			got = "reader"
+		}
+		if got != want {
+			t.Fatalf("tab %d focus = %s, want %s", i+1, got, want)
+		}
+	}
+	sendKeys(m, "shift+tab")
+	if !m.focusNav {
+		t.Fatal("shift+tab from list must focus views")
+	}
+}
+
+func TestActivityDimsTaskOnlyViews(t *testing.T) {
+	m := activityModel(t, 160)
+	projects := 0
+	for _, it := range m.navItems() {
+		if it.project != nil {
+			projects++
+		}
+		if (it.project != nil || it.savedView != "") && !it.dim {
+			t.Fatalf("%q must be dim in Activity", it.label)
+		}
+		if (it.activity || it.activityMode != "") && it.dim {
+			t.Fatalf("%q must not be dim in Activity", it.label)
+		}
+	}
+	if projects == 0 {
+		t.Fatal("views panel lists no projects")
+	}
+}
+
 func TestActivitySearchDoesNotChangeSavedTicketFilter(t *testing.T) {
 	m := activityModel(t, 160)
 	before := m.filterInput.Value()

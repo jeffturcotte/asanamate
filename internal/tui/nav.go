@@ -41,6 +41,7 @@ type navItem struct {
 	active       bool
 	activity     bool
 	activityMode string
+	dim          bool // the row does not apply to the open view
 }
 
 func (it navItem) selectable() bool {
@@ -71,9 +72,9 @@ func (m *Model) navItems() []navItem {
 	items = append(items, navItem{label: "Activity", right: keyLabel("main", "activity"), activity: true, active: m.activityOpen})
 	named := m.recentSavedViewNames()
 	if len(named) > 0 {
-		items = append(items, navItem{label: "Saved views", right: "V", heading: true})
+		items = append(items, navItem{label: "Saved views", right: "V", heading: true, dim: m.activityOpen})
 		for _, name := range named[:min(len(named), maxNavSavedViews)] {
-			it := navItem{label: ticket.OneLine(name), savedView: name, active: name == m.savedView}
+			it := navItem{label: ticket.OneLine(name), savedView: name, active: name == m.savedView && !m.activityOpen, dim: m.activityOpen}
 			if it.active && m.savedViewModified() {
 				it.label += " *"
 			}
@@ -81,7 +82,7 @@ func (m *Model) navItems() []navItem {
 		}
 		items = appendMore(items, max(len(named)-maxNavSavedViews, 0))
 	}
-	items = append(items, navItem{label: "Projects", right: "p", heading: true})
+	items = append(items, navItem{label: "Projects", right: "p", heading: true, dim: m.activityOpen})
 	names := map[string]string{}
 	for _, p := range m.projects {
 		names[p.GID] = p.Name
@@ -97,7 +98,7 @@ func (m *Model) navItems() []navItem {
 		}
 	}
 	for _, gid := range gids {
-		it := navItem{label: ticket.OneLine(names[gid]), project: &asana.Ref{GID: gid, Name: names[gid]}, isView: true}
+		it := navItem{label: ticket.OneLine(names[gid]), project: &asana.Ref{GID: gid, Name: names[gid]}, isView: true, dim: m.activityOpen}
 		if gidOf(m.viewProject) == gid && !m.activityOpen {
 			it.active, it.right = true, count
 		}
@@ -182,7 +183,11 @@ func (m *Model) navView(width, height int) string {
 			if i > 0 {
 				lines = append(lines, "")
 			}
-			lines = append(lines, m.navRule(it.label, it.right, width))
+			rule := m.navRule(it.label, it.right, width)
+			if it.dim {
+				rule = dimStyle.Render(ansi.Strip(rule))
+			}
+			lines = append(lines, rule)
 			continue
 		}
 		mark := "  "
@@ -195,7 +200,10 @@ func (m *Model) navView(width, height int) string {
 			mark = m.accentStyle.Render("▌") + " "
 		}
 		label := it.label
-		if it.active {
+		switch {
+		case it.dim:
+			label = dimStyle.Render(label)
+		case it.active:
 			label = titleStyle.Render(label)
 		}
 		right := dimStyle.Render(it.right)
