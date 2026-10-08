@@ -153,7 +153,7 @@ func (c Config) SymbolSet(getenv func(string) string) string {
 }
 
 // Layout configures the panes. Reader starts with the reading pane shown;
-// --no-preview forces it off and the toggle_reader key flips it for the
+// --hide-preview starts with it hidden and the toggle_reader key flips it for the
 // session. ListWidth fixes the list pane's width in columns, borders
 // included, and gives the reader the rest; 0 sizes the list automatically.
 type Layout struct {

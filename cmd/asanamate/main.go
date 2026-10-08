@@ -42,8 +42,9 @@ import (
 var version = "dev"
 
 const usage = `usage:
-  asanamate [--no-preview] [--exit-on-action]      open the TUI (--no-preview: list only;
+  asanamate [--hide-preview] [--exit-on-action]    open the TUI (--hide-preview: preview initially hidden;
                                                    --exit-on-action: quit before background actions)
+  --no-preview                                    deprecated alias for --hide-preview
   asanamate list [--project <gid>] [--filter <query>] [--format tsv|jsonl]
                                                    print tickets (tsv: gid, section, due, title, url)
   asanamate show [--format md|json] <gid>          print one ticket
@@ -366,7 +367,9 @@ func runConfigUpdate(args []string) error {
 
 func runTUI(args []string) error {
 	fs := flag.NewFlagSet("asanamate", flag.ContinueOnError)
-	noPreview := fs.Bool("no-preview", false, "show only the ticket list")
+	var hidePreview bool
+	fs.BoolVar(&hidePreview, "hide-preview", false, "start with the preview hidden (z toggles it)")
+	fs.BoolVar(&hidePreview, "no-preview", false, "deprecated alias for --hide-preview")
 	exitOnAction := fs.Bool("exit-on-action", false, "quit before running background actions, as exit mode does")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -402,7 +405,7 @@ func runTUI(args []string) error {
 		StateDir:      stateDir,
 		Images:        kitty.Supported(cfg.Images.Mode, os.Getenv, kitty.TmuxPassthrough),
 		InTmux:        os.Getenv("TMUX") != "",
-		NoPreview:     *noPreview,
+		NoPreview:     hidePreview,
 		ExitOnAction:  *exitOnAction,
 		Symbols:       cfg.SymbolSet(os.Getenv),
 		ReducedMotion: reducedMotion(cfg),

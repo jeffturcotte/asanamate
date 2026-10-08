@@ -314,7 +314,7 @@ light = "light"
 
 [layout]
 # Start with the reading pane beside the list; z shows or hides it for the
-# session. --no-preview forces it off.
+# session. --hide-preview starts with it hidden.
 reader = true
 # Fix the list pane at this many columns, borders included, and give the
 # reader the rest; the reader hides when that leaves it too little room.

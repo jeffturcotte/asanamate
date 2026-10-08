@@ -43,6 +43,7 @@ var catalog = []Scope{
 		{Name: "reload", Keys: []string{"r"}, Desc: "reload / clear image cache", Group: "Ticket"},
 		{Name: "reader_view", Keys: []string{"v"}, Desc: "cards / markdown", Group: "View"},
 		{Name: "toggle_reader", Keys: []string{"z"}, Desc: "show / hide reader", Group: "View"},
+		{Name: "toggle_sidebar", Keys: []string{"Z"}, Desc: "show / hide views panel", Group: "View"},
 		{Name: "saved_views", Keys: []string{"V"}, Desc: "saved views", Group: "View"},
 		{Name: "save_view", Keys: []string{"ctrl+s"}, Desc: "save current view", Group: "View"},
 		{Name: "next_saved_view", Keys: []string{"]"}, Desc: "next / previous saved view", Group: "View"},

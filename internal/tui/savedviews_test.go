@@ -19,7 +19,7 @@ func TestSavedViewSaveAndRecall(t *testing.T) {
 	for _, noPreview := range []bool{false, true} {
 		t.Run(map[bool]string{false: "narrow", true: "list-only"}[noPreview], func(t *testing.T) {
 			m, st := testModel(t, config.Config{})
-			m.deps.NoPreview, m.loading = noPreview, false
+			m.readerHidden, m.loading = noPreview, false
 			m.tasks = []asana.Task{openTask, doneTask}
 			m.filterInput.SetValue("is:done")
 			m.groupBy = "section"
@@ -190,7 +190,7 @@ func TestSavedViewIdentityAndModifiedSettings(t *testing.T) {
 		t.Fatalf("list title = %q", title)
 	}
 	for _, noPreview := range []bool{false, true} {
-		m.width, m.deps.NoPreview = 80, noPreview
+		m.width, m.readerHidden = 80, noPreview
 		if !strings.Contains(ansi.Strip(m.statusline()), "Daily work") {
 			t.Fatalf("single-pane status = %q", ansi.Strip(m.statusline()))
 		}

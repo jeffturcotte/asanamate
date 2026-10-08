@@ -137,11 +137,11 @@ func handlers() map[string]handler {
 		"half_page_up":   {run: page(2, true)},
 		"page_down":      {run: page(1, false)},
 		"page_up":        {run: page(1, true)},
-		"focus_views":    {splitOnly: true, run: do((*Model).focusViews)},
+		"focus_views":    {run: do((*Model).focusViews)},
 		"focus_list":     {run: do((*Model).focusList)},
 		"focus_reader":   {splitOnly: true, run: do((*Model).focusReaderPane)},
-		"next_pane":      {splitOnly: true, run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.cyclePane(false) }},
-		"prev_pane":      {splitOnly: true, run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.cyclePane(true) }},
+		"next_pane":      {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.cyclePane(false) }},
+		"prev_pane":      {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.cyclePane(true) }},
 		"open":           {splitOnly: true, run: (*Model).open},
 		"filter": {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd {
 			m.filtering, m.filterBefore = true, m.filterInput.Value()
@@ -199,6 +199,7 @@ func handlers() map[string]handler {
 		"reload":           {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.refreshWithImages() }},
 		"reader_view":      {splitOnly: true, run: do(func(m *Model) { m.toggleReaderView(); m.saveDisplay() })},
 		"toggle_reader":    {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.toggleReader() }},
+		"toggle_sidebar":   {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.toggleSidebar() }},
 		"saved_views":      {run: do((*Model).openSavedViews)},
 		"save_view":        {run: do((*Model).openSaveView)},
 		"next_saved_view":  {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.cycleSavedView(1) }},
@@ -235,9 +236,14 @@ func (m *Model) open(tea.KeyPressMsg) tea.Cmd {
 
 // available reports whether b runs in the current layout.
 func (m *Model) available(b binding) bool {
+	if b.Name == "focus_views" {
+		return len(b.keys) > 0 && m.showNav()
+	}
+	if b.Name == "next_pane" || b.Name == "prev_pane" {
+		return len(b.keys) > 0 && (m.readerOn() || m.showNav())
+	}
 	return len(b.keys) > 0 && (!b.splitOnly || m.readerOn()) &&
-		(b.Name != "log_time" || m.deps.Config.TimeTrackingEnabled()) &&
-		(b.Name != "toggle_reader" || !m.deps.NoPreview)
+		(b.Name != "log_time" || m.deps.Config.TimeTrackingEnabled())
 }
 
 // bindingFor returns the binding k runs in the current layout.
@@ -303,7 +309,7 @@ func (m *Model) focusReaderPane() {
 // focus to the list; showing it draws the selected ticket.
 func (m *Model) toggleReader() tea.Cmd {
 	m.readerHidden = !m.readerHidden
-	if m.readerHidden {
+	if m.readerHidden && m.focusReader {
 		m.focusList()
 	}
 	m.layout()
@@ -311,7 +317,14 @@ func (m *Model) toggleReader() tea.Cmd {
 		return nil
 	}
 	m.renderDetail(false)
-	// The views panel lists recent projects by name.
+	return nil
+}
+
+// toggleSidebar shows or hides the views panel independently of the reader.
+func (m *Model) toggleSidebar() tea.Cmd {
+	m.navHidden = !m.navHidden
+	m.layout()
+	m.renderDetail(false)
 	if m.showNav() {
 		return m.refreshProjects()
 	}
@@ -321,11 +334,17 @@ func (m *Model) toggleReader() tea.Cmd {
 // cyclePane moves focus to the next pane: the views panel when it shows, the
 // list, then the reader; back goes the other way.
 func (m *Model) cyclePane(back bool) tea.Cmd {
-	panes := []func(){m.focusList, m.focusReaderPane}
+	panes := []func(){m.focusList}
+	if m.readerOn() {
+		panes = append(panes, m.focusReaderPane)
+	}
 	if m.showNav() {
 		panes = append([]func(){m.focusViews}, panes...)
 	}
-	i := len(panes) - 2
+	i := 0
+	if m.showNav() {
+		i = 1
+	}
 	switch {
 	case m.focusNav:
 		i = 0

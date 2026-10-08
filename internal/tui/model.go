@@ -67,8 +67,7 @@ type Deps struct {
 	Symbols string
 	// ReducedMotion shows static symbols instead of the working spinner.
 	ReducedMotion bool
-	// NoPreview hides the reading pane and gives the list the full width,
-	// overriding layout.reader and toggle_reader.
+	// NoPreview starts with the reading pane hidden, overriding layout.reader.
 	NoPreview bool
 	// ExitOnAction runs background actions as exit actions, so asanamate
 	// quits first. It suits popups, which close when asanamate exits.
@@ -106,7 +105,8 @@ type Model struct {
 	navCursor    int    // selected row among the views panel's selectable rows
 	help         bool   // the key help is open
 	savedView    string // named view associated with the current project's settings
-	readerHidden bool   // the reader is off for this session, from layout.reader or toggle_reader
+	readerHidden bool   // the reader is hidden for this session
+	navHidden    bool   // the views panel is hidden for this session
 
 	projects        []asana.Project
 	projectsLoaded  bool                       // projects came from Asana this session, not the state cache
@@ -185,7 +185,7 @@ func New(d Deps) *Model {
 		sym:             newSymbols(d.Symbols, d.Config.Agents.Symbols, d.ReducedMotion),
 		loading:         true,
 		now:             time.Now,
-		readerHidden:    !d.Config.Layout.Reader,
+		readerHidden:    d.NoPreview || !d.Config.Layout.Reader,
 	}
 	for _, p := range d.State.Projects {
 		m.projects = append(m.projects, asana.Project{GID: p.GID, Name: p.Name})
@@ -852,10 +852,10 @@ func (m *Model) saveView() {
 }
 
 // readerOn reports whether the reader is available: layout.reader sets its
-// start, toggle_reader flips it, and --no-preview forces it off. On narrow
+// start, --hide-preview hides it initially, and toggle_reader flips it. On narrow
 // terminals it opens full screen instead of beside the list.
 func (m *Model) readerOn() bool {
-	return !m.deps.NoPreview && !m.readerHidden
+	return !m.readerHidden
 }
 
 // readerShown reports whether the reader sits beside the list: it is on and
@@ -870,10 +870,7 @@ func (m *Model) readerShown() bool {
 	if fixed == 0 {
 		return m.width >= narrowWidth
 	}
-	room := m.width
-	if room >= wideWidth {
-		room -= navW
-	}
+	room := m.width - m.navWidth()
 	return room-fixed >= minPaneW
 }
 
@@ -890,7 +887,11 @@ func (m *Model) fixedListW() int {
 // panes sit in panels, each panelFrame columns wider than its content.
 func (m *Model) paneWidths() (listW, readerW int, split bool) {
 	if !m.readerShown() {
-		return m.width, m.width, false
+		room := m.width - m.navWidth()
+		if m.showNav() {
+			return room, room - panelFrame, false
+		}
+		return room, room, false
 	}
 	room := m.width - m.navWidth()
 	if fixed := m.fixedListW(); fixed > 0 {
@@ -908,7 +909,7 @@ func (m *Model) bodyHeight() int { return max(m.height-1, 1) }
 
 // paneHeight is the height of the panes' content.
 func (m *Model) paneHeight() int {
-	if _, _, split := m.paneWidths(); split {
+	if _, _, split := m.paneWidths(); split || m.showNav() {
 		return max(m.bodyHeight()-m.filterHintHeight()-panelFrame, 1)
 	}
 	return max(m.bodyHeight()-m.filterHintHeight(), 1)
@@ -993,22 +994,30 @@ func (m *Model) body() string {
 
 func (m *Model) panes(h int) string {
 	listW, readerW, split := m.paneWidths()
+	inner := m.paneHeight()
+	var panes string
 	switch {
 	case split:
-		inner := m.paneHeight()
 		title, count := m.listTitle()
 		list := m.panel(title, count, m.listView(listW, inner), listW+panelFrame, h, m.listHighlight())
 		reader := m.panel("[2] Ticket", m.readerView, m.reader.View(), readerW+panelFrame, h, m.readerHighlight())
-		if !m.showNav() {
-			return lipgloss.JoinHorizontal(lipgloss.Top, list, reader)
-		}
-		nav := m.panel("[0] Views", "", m.navView(navW-panelFrame, inner), navW, h, m.focusColor(m.focusNav))
-		return lipgloss.JoinHorizontal(lipgloss.Top, nav, list, reader)
+		panes = lipgloss.JoinHorizontal(lipgloss.Top, list, reader)
 	case m.focusReader:
-		return m.reader.View()
+		panes = m.reader.View()
+		if m.showNav() {
+			panes = m.panel("[2] Ticket", m.readerView, panes, readerW+panelFrame, h, m.readerHighlight())
+		}
+	case m.showNav():
+		title, count := m.listTitle()
+		panes = m.panel(title, count, m.listView(listW-panelFrame, inner), listW, h, m.listHighlight())
 	default:
-		return lipgloss.NewStyle().Width(listW).Height(h).Render(m.listView(listW, h))
+		panes = lipgloss.NewStyle().Width(listW).Height(h).Render(m.listView(listW, h))
 	}
+	if m.showNav() {
+		nav := m.panel("[0] Views", "", m.navView(navW-panelFrame, inner), navW, h, m.focusColor(m.focusNav))
+		panes = lipgloss.JoinHorizontal(lipgloss.Top, nav, panes)
+	}
+	return panes
 }
 
 // focusColor is the accent color for a focused panel, or nil.

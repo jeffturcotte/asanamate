@@ -95,7 +95,7 @@ func TestActionMenuKeys(t *testing.T) {
 				m, _ := testModel(t, config.Config{Actions: []config.Action{{Name: "Go", Key: "x", Mode: config.ModeExit, Command: "true"}}})
 				m.Update(tasksMsg{tasks: []asana.Task{openTask}})
 				m.Update(detailMsg{gid: "1", ticket: ticket.Ticket{Task: openTask}})
-				m.deps.NoPreview = target == "list-only"
+				m.readerHidden = target == "list-only"
 				m.focusReader = target != "list" && target != "list-only"
 				if target == "markdown" {
 					m.readerView = config.ViewMarkdown
@@ -145,7 +145,7 @@ func TestCopyCommentOnlyOnTarget(t *testing.T) {
 					{HTMLText: "<body>Second comment</body>"},
 				}}})
 			}
-			m.focusReader, m.fieldKey, m.deps.NoPreview = !tt.list, tt.target, tt.noPreview
+			m.focusReader, m.fieldKey, m.readerHidden = !tt.list, tt.target, tt.noPreview
 			if tt.markdown {
 				m.readerView = config.ViewMarkdown
 			}

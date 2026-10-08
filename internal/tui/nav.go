@@ -47,7 +47,7 @@ func (it navItem) selectable() bool {
 
 // showNav reports whether the layout has room for the views panel.
 func (m *Model) showNav() bool {
-	return m.readerShown() && m.width >= wideWidth
+	return !m.navHidden && m.width >= wideWidth
 }
 
 // navWidth is the width the views panel takes, 0 when it is hidden.
