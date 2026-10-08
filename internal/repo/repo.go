@@ -134,3 +134,58 @@ func Worktree(repoPath, branch string) string {
 	}
 	return ""
 }
+
+// Matching returns the paths with a git remote equal to one of urls, ignoring
+// the scheme, user, port, and a trailing ".git", so ssh and https forms match.
+// Clones come before worktrees, which share their remotes.
+func Matching(ctx context.Context, paths, urls []string) []string {
+	want := map[string]bool{}
+	for _, u := range urls {
+		if key := remoteKey(u); key != "" {
+			want[key] = true
+		}
+	}
+	if len(want) == 0 {
+		return nil
+	}
+	var clones, worktrees []string
+	for _, p := range paths {
+		out, err := exec.CommandContext(ctx, "git", "-C", p, "remote", "-v").Output()
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(out), "\n") {
+			if fields := strings.Fields(line); len(fields) >= 2 && want[remoteKey(fields[1])] {
+				if info, err := os.Stat(filepath.Join(p, ".git")); err == nil && !info.IsDir() {
+					worktrees = append(worktrees, p)
+				} else {
+					clones = append(clones, p)
+				}
+				break
+			}
+		}
+	}
+	return append(clones, worktrees...)
+}
+
+// remoteKey reduces a git remote URL to lowercase "host/path", or "" when it
+// names no host and path. It accepts URLs with a scheme and scp-like
+// "user@host:path" remotes.
+func remoteKey(u string) string {
+	u = strings.TrimSpace(u)
+	if _, rest, ok := strings.Cut(u, "://"); ok {
+		u = rest
+	} else if host, path, ok := strings.Cut(u, ":"); ok && !strings.Contains(host, "/") {
+		u = host + "/" + path
+	}
+	host, path, _ := strings.Cut(u, "/")
+	if _, h, ok := strings.Cut(host, "@"); ok {
+		host = h
+	}
+	host, _, _ = strings.Cut(host, ":")
+	path = strings.TrimSuffix(strings.Trim(path, "/"), ".git")
+	if host == "" || path == "" {
+		return ""
+	}
+	return strings.ToLower(host + "/" + path)
+}

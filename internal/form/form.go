@@ -25,13 +25,15 @@ type Option struct {
 }
 
 // Field describes one required control. Remember associates a select choice
-// with the chosen Asana project after submission.
+// with the chosen Asana project after submission. Default preselects a select
+// option when no remembered choice applies; only providers set it.
 type Field struct {
 	ID       string   `json:"id" toml:"id"`
 	Label    string   `json:"label" toml:"label"`
 	Type     string   `json:"type" toml:"type"`
 	Options  []Option `json:"options,omitempty" toml:"options"`
 	Remember bool     `json:"remember,omitempty" toml:"remember"`
+	Default  string   `json:"default,omitempty" toml:"-"`
 }
 
 // Spec contains the controls rendered in one modal.
@@ -62,9 +64,12 @@ func (s Spec) Validate() error {
 				}
 				options[option.ID] = true
 			}
+			if field.Default != "" && !options[field.Default] {
+				return fmt.Errorf("form select %q default is not one of its options", field.ID)
+			}
 		case Hours:
-			if field.Remember || len(field.Options) != 0 {
-				return fmt.Errorf("form hours %q cannot have options or be remembered", field.ID)
+			if field.Remember || len(field.Options) != 0 || field.Default != "" {
+				return fmt.Errorf("form hours %q cannot have options, a default, or be remembered", field.ID)
 			}
 		default:
 			return fmt.Errorf("form field %q has unknown type %q", field.ID, field.Type)

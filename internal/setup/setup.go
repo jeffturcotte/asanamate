@@ -303,6 +303,12 @@ inline = false
 # id = "hrvst"
 # command = "asanamate time-provider hrvst --task-id YOUR_TASK_ID"
 
+# Optional: suggest each Asana project's git repository and time tracking
+# project from another system. The command reads a JSON request from stdin and
+# writes the project's links as JSON. See README for the protocol.
+[project_links]
+# command = "asanamate links-provider hub"
+
 
 [repo_source]
 # Directory whose git repositories (its direct children) fill the repo picker.

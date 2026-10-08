@@ -29,6 +29,7 @@ import (
 	"github.com/sadmachine/asanamate/internal/filter"
 	"github.com/sadmachine/asanamate/internal/kitty"
 	"github.com/sadmachine/asanamate/internal/listing"
+	"github.com/sadmachine/asanamate/internal/projectlinks"
 	"github.com/sadmachine/asanamate/internal/repo"
 	"github.com/sadmachine/asanamate/internal/setup"
 	"github.com/sadmachine/asanamate/internal/state"
@@ -57,6 +58,7 @@ const usage = `usage:
                                                    set a custom field ("" clears it)
   asanamate doctor [<gid>]                         check setup and optional tools; for a ticket, why agents link (or not)
   asanamate time-provider hrvst --task-id <id>     serve time tracking provider requests on stdin
+  asanamate links-provider hub [--url <url>]       serve project links requests on stdin from Hub
   asanamate hook codex                             record a Codex hook event read on stdin
                                                    (installed by setup)
   asanamate version
@@ -103,6 +105,20 @@ func run(args []string) int {
 					err = fmt.Errorf("unexpected time-provider arguments: %v", fs.Args())
 				} else {
 					err = timetracking.RunHarvest(context.Background(), os.Stdin, os.Stdout, *taskID)
+				}
+			}
+		}
+	case "links-provider":
+		if len(args) < 2 || args[1] != "hub" {
+			err = fmt.Errorf("usage: asanamate links-provider hub [--url <url>]")
+		} else {
+			fs := flag.NewFlagSet("links-provider hub", flag.ContinueOnError)
+			hubURL := fs.String("url", projectlinks.HubURL, "Hub base URL")
+			if err = fs.Parse(args[2:]); err == nil {
+				if len(fs.Args()) != 0 {
+					err = fmt.Errorf("unexpected links-provider arguments: %v", fs.Args())
+				} else {
+					err = projectlinks.RunHub(context.Background(), os.Stdin, os.Stdout, *hubURL)
 				}
 			}
 		}
@@ -598,6 +614,18 @@ func checkFeatures(w io.Writer, cfg config.Config) {
 		}
 	default:
 		row(w, "time_tracking", "unchecked: custom command (not run)")
+	}
+	switch {
+	case !cfg.ProjectLinksEnabled():
+		row(w, "project_links", "off")
+	case strings.Contains(cfg.ProjectLinks.Command, "links-provider hub"):
+		if err := projectlinks.CheckHub(); err != nil {
+			row(w, "project_links", "warning: hub: "+err.Error())
+		} else {
+			row(w, "project_links", "ok: Hub credentials set")
+		}
+	default:
+		row(w, "project_links", "unchecked: custom command (not run)")
 	}
 }
 

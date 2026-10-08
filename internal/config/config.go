@@ -67,6 +67,8 @@ type Config struct {
 	Agents        Agents     `toml:"agents"`
 	// TimeTracking is disabled until both its provider ID and command are set.
 	TimeTracking TimeTracking `toml:"time_tracking"`
+	// ProjectLinks is disabled until its command is set.
+	ProjectLinks ProjectLinks `toml:"project_links"`
 	List         List         `toml:"list"`
 	Reader       Reader       `toml:"reader"`
 	Images       Images       `toml:"images"`
@@ -84,6 +86,19 @@ type TimeTracking struct {
 
 func (c Config) TimeTrackingEnabled() bool {
 	return c.TimeTracking.ID != "" && c.TimeTracking.Command != ""
+}
+
+// ProjectLinks configures an optional JSON command provider that returns an
+// Asana project's links in other systems. They preselect pickers: a linked
+// git repository in the repo picker, a tracker project in the time form.
+type ProjectLinks struct {
+	// Command reads a JSON request from stdin and returns the links as JSON.
+	Command string `toml:"command"`
+}
+
+// ProjectLinksEnabled reports whether a project links provider is configured.
+func (c Config) ProjectLinksEnabled() bool {
+	return c.ProjectLinks.Command != ""
 }
 
 // Agents links tickets to running coding agents. It is off unless Preset or
@@ -232,6 +247,7 @@ func Default() Config {
 	return Config{
 		Theme: "dark", AccentColor: "4", DefaultFilter: "is:open", ConfirmWrites: true,
 		TimeTracking: TimeTracking{},
+		ProjectLinks: ProjectLinks{},
 		Actions:      nil,
 		List: List{
 			RefreshInterval: "30s",
@@ -308,6 +324,9 @@ func (c Config) validate() error {
 	}
 	if strings.TrimSpace(c.TimeTracking.ID) != c.TimeTracking.ID {
 		return errors.New("time_tracking.id must not have surrounding whitespace")
+	}
+	if c.ProjectLinks.Command != "" && strings.TrimSpace(c.ProjectLinks.Command) == "" {
+		return errors.New("project_links.command must not be blank; remove it to turn project links off")
 	}
 	for _, e := range []error{
 		oneOf("theme", c.Theme, "dark", "light"),

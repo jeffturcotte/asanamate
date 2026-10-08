@@ -151,3 +151,49 @@ func TestCollapseHome(t *testing.T) {
 		}
 	}
 }
+
+func TestRemoteKeyNormalizesForms(t *testing.T) {
+	for _, tc := range []struct{ url, want string }{
+		{"https://github.com/Acme/Site.git", "github.com/acme/site"},
+		{"https://github.com/acme/site/", "github.com/acme/site"},
+		{"git@github.com:acme/site.git", "github.com/acme/site"},
+		{"ssh://git@github.com:22/acme/site.git", "github.com/acme/site"},
+		{"https://user@gitlab.example.com/group/sub/site", "gitlab.example.com/group/sub/site"},
+		{"/srv/git/site.git", ""},
+		{"file:///srv/git/site.git", ""},
+		{"https://github.com", ""},
+		{"", ""},
+	} {
+		if got := remoteKey(tc.url); got != tc.want {
+			t.Errorf("remoteKey(%q) = %q, want %q", tc.url, got, tc.want)
+		}
+	}
+}
+
+// Matching finds repos by any remote, in either URL form, listing clones
+// before worktrees that share their remotes.
+func TestMatchingPrefersClones(t *testing.T) {
+	dir := t.TempDir()
+	clone, wt, other, plain := filepath.Join(dir, "clone"), filepath.Join(dir, "wt"), filepath.Join(dir, "other"), filepath.Join(dir, "plain")
+	for _, args := range [][]string{
+		{"init", "-q", "-b", "main", clone},
+		{"-C", clone, "remote", "add", "upstream", "git@github.com:Acme/Site.git"},
+		{"-C", clone, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init"},
+		{"-C", clone, "worktree", "add", "-q", "-b", "feat", wt},
+		{"init", "-q", other},
+		{"-C", other, "remote", "add", "origin", "https://github.com/acme/other.git"},
+		{"init", "-q", plain},
+	} {
+		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	paths := []string{wt, other, plain, clone, filepath.Join(dir, "missing")}
+	got := Matching(context.Background(), paths, []string{"https://github.com/acme/site"})
+	if want := []string{clone, wt}; !slices.Equal(got, want) {
+		t.Fatalf("Matching = %v, want %v", got, want)
+	}
+	if got := Matching(context.Background(), paths, []string{"/local/path"}); got != nil {
+		t.Fatalf("Matching without usable URLs = %v", got)
+	}
+}

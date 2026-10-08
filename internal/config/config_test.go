@@ -286,6 +286,20 @@ func TestTimeTrackingConfig(t *testing.T) {
 	}
 }
 
+func TestProjectLinksConfig(t *testing.T) {
+	cfg, err := Load(writeFile(t, "workspace = \"1\"\n"))
+	if err != nil || cfg.ProjectLinksEnabled() {
+		t.Fatalf("default project links = %+v, err = %v", cfg.ProjectLinks, err)
+	}
+	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[project_links]\ncommand = \"asanamate links-provider hub\"\n"))
+	if err != nil || !cfg.ProjectLinksEnabled() || cfg.ProjectLinks.Command != "asanamate links-provider hub" {
+		t.Fatalf("configured project links = %+v, err = %v", cfg.ProjectLinks, err)
+	}
+	if _, err := Load(writeFile(t, "workspace = \"1\"\n[project_links]\ncommand = \"  \"\n")); err == nil || !strings.Contains(err.Error(), "project_links.command") {
+		t.Fatalf("blank command error = %v", err)
+	}
+}
+
 func TestActionFormConfig(t *testing.T) {
 	path := writeFile(t, `workspace = "1"`)
 	body := `name = "Deploy"

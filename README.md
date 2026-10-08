@@ -118,6 +118,7 @@ Browsing needs none of these. Each one affects only its own feature, and
 | Paste into input (`Ctrl+V`) | macOS `pbpaste`; Linux `xclip` or `xsel` (X11) or `wl-clipboard` (Wayland) | always on | not needed | not checked | the input shows why, and your terminal's paste still works |
 | Agent status | a supported agent tool; see [Agents](#agents-optional) | `[agents]` | remove `[agents]` keys | `agents`, `codex_hook` | off |
 | Time tracking | [hrvst](https://github.com/kgajera/hrvst-cli) 3.x; see [Time tracking](#time-tracking-optional) | `[time_tracking]` | remove `[time_tracking]` keys | `time_tracking` | off |
+| Project link suggestions | a command implementing the protocol; see [Project links](#project-links-optional) | `[project_links]` | remove `project_links.command` | `project_links` | no suggestions |
 | Inline images | a kitty-graphics terminal ([kitty](https://sw.kovidgoyal.net/kitty/), [Ghostty](https://ghostty.org)); in tmux, `set -g allow-passthrough on` | `images.mode = "auto"` (default) | `images.mode = "off"` | not checked | links shown instead |
 | Nerd Font symbols | a [Nerd Font](https://www.nerdfonts.com) | `symbols = "nerd"` | `symbols = "unicode"` or `"ascii"` | not checked | unicode or ascii symbols |
 | Follow OS reduced motion | macOS `defaults`; GNOME `gsettings` | leave `reduced_motion` unset | set `reduced_motion` | not checked | set `reduced_motion` yourself |
@@ -314,6 +315,7 @@ asanamate list | fzf --delimiter '\t' --with-nth 2,4 --preview 'asanamate show {
 | `repo_source.root` | your setup directory, or empty | directory whose direct children with a `.git` entry (clones and worktrees) fill the repo picker; absolute or starting with `~`; empty: type a path |
 | `repo_source.command` | unset | prints one repo path per line; replaces `repo_source.root` when set |
 | `time_tracking.id` / `time_tracking.command` | unset (off) | provider ID for saved choices and command implementing the time tracking JSON protocol |
+| `project_links.command` | unset (off) | command implementing the project links JSON protocol; its links preselect the repo picker and time form |
 
 The title is always shown. `list.fields` picks the other columns and their
 order: the built-ins `section`, `due`, `assignee`, `initials` (the assignee's
@@ -415,8 +417,13 @@ return a form spec, such as:
 ```
 
 Fields are required. IDs use snake_case. Select option IDs must be stable;
-`remember` saves a select choice per Asana project. Time forms need exactly
-one `hours` field. The `log` request contains `values` keyed by field ID and
+`remember` saves a select choice per Asana project. A select's optional
+`default` names one of its options to preselect when no remembered choice is
+still offered. Time forms need exactly one `hours` field. The `form` request
+contains the same `asana` object as `log`, and `links`, the chosen Asana
+project's links from [project links](#project-links-optional) when configured;
+hrvst preselects the `harvest_project` it finds there. The `log` request
+contains `values` keyed by field ID and
 an `asana` object with `task_gid`, `project_gid`, `title`, and `url`. Exit zero
 only after creating entry. Failed logs are never retried automatically. Use a
 different provider `id` when changing trackers so saved choices stay separate.
@@ -437,6 +444,57 @@ all pages before returning a total. On retrieval failure, exit nonzero; never
 return a partial total. Providers without retrieval can return
 `{"unsupported":true}`. Older providers that reject `summary` show unavailable
 time while their existing form and logging operations continue to work.
+
+### Project links (optional)
+
+A project links command tells asanamate where an Asana project lives in other
+systems, such as its git repository and its time tracking project. asanamate
+only reads these links; it never writes them back.
+
+imarc's [Hub](https://hub.imarc.net) is built in. It needs a Hub service
+account (`https://hub.imarc.net/admin/service-accounts`); a read-only one is
+enough. Export its client ID and secret, so asanamate's child processes see
+them:
+
+```sh
+export HUB_CLIENT_ID=...
+export HUB_CLIENT_SECRET=...
+```
+
+```toml
+[project_links]
+command = "asanamate links-provider hub"
+```
+
+Hub projects whose `Asana Project` link equals the Asana project's GID supply
+their `Git Repository` links and `Harvest Project` links (the current
+contract's first), skipping links outside their dates. `--url` points at
+another Hub.
+
+Other systems can implement the same protocol. The command runs through `/bin/sh -c` and reads one JSON request from stdin:
+
+```json
+{"operation":"links","asana":{"project_gid":"1207680268468634"}}
+```
+
+It returns the project's links, best first, or an empty list when it knows
+none. Exit nonzero on lookup failure.
+
+```json
+{"links":[
+  {"type":"git","value":"https://github.com/acme/site"},
+  {"type":"harvest_project","value":"46870250"}
+]}
+```
+
+asanamate reads `git` links itself. When the repo picker opens for a project
+without a linked repo, local repos with a matching remote come first, marked
+`suggested`, with the cursor on the first; Enter links it as if picked by
+hand. ssh and https remotes of the same repo match, and clones come before
+their worktrees. Repos that are not cloned locally are not shown. Other link
+types pass unread to the time provider's `form` request, where a remembered
+choice still wins over a suggestion. A lookup failure shows in the picker or
+status line and leaves the picker and form working without suggestions.
 
 ## Actions
 

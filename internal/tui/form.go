@@ -35,6 +35,8 @@ func newFormModal(title string, spec form.Spec, defaults map[string]string, onSu
 		if field.Type == form.Select {
 			if field.HasOption(defaults[field.ID]) {
 				f.values[field.ID] = defaults[field.ID]
+			} else if field.Default != "" {
+				f.values[field.ID] = field.Default
 			} else if len(field.Options) == 1 {
 				f.values[field.ID] = field.Options[0].ID
 			} else if firstMissing < 0 {
