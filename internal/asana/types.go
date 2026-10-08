@@ -217,6 +217,7 @@ type StoryDates struct {
 
 // Reaction counts the reactions on a story with one emoji.
 type Reaction struct {
+	Base    string `json:"emoji_base,omitempty"` // Emoji without a skin tone
 	Emoji   string `json:"variant"`
 	Count   int    `json:"count"`
 	Reacted bool   `json:"reacted"` // the authenticated user reacted with Emoji

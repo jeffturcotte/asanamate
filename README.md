@@ -16,11 +16,12 @@ and coding agents can do what you can. macOS and Linux only.
   [Layout](#layout).
 - **Edit** a ticket: comment (with images), move it to a section, assign or
   unassign it, set its due date or a custom field, add or remove projects, and
-  mark it complete or reopen it. See [Keys](#keys).
+  mark it complete or reopen it. React to a comment with an emoji. See
+  [Keys](#keys).
 - **Create** a ticket in a project or My Tasks, or a subtask. See
   [Keys](#keys).
 - **Script** every edit and create from the CLI: `asanamate comment`, `move`,
-  `field`, `assign`, `due`, `project`, `complete`, and `create`. See
+  `field`, `assign`, `due`, `project`, `complete`, `react`, and `create`. See
   [Writing back to Asana](#writing-back-to-asana).
 - **Act** on a ticket: run your own commands with the ticket as context, such
   as starting a coding agent in its repo. See [Actions](#actions).
@@ -240,7 +241,7 @@ key press.
 | `ctrl+d`/`ctrl+u` | half page down/up in the list, or scroll the reader half a page |
 | `ctrl+f`/`ctrl+b` (or pgdown/pgup) | page down/up in the list, or scroll the reader a page |
 | `tab`/`shift+tab`, `l`/`h` | focus the next/previous pane: the views panel (wide screens), the list, and the reader; in the cards view, entering the reader selects its first editable row |
-| `enter` | in the list, open the ticket in the reader; in the reader, edit the selected row (Add comment opens the comment editor) |
+| `enter` | in the list, open the ticket in the reader; in the reader, edit the selected row (Add comment opens the comment editor), or open the selected comment's menu: `r` reacts with an emoji (`1`-`9` pick one; picking one you reacted with removes it) |
 | `esc` | return focus to the list |
 | `0` / `1` / `2` | focus the views panel (wide screens) / the list / the reader |
 | `/` | edit the filter (available fields appear while editing; `ctrl+/` opens the filter guide; `enter` keeps the filter, `esc` restores the previous one) |
@@ -1034,6 +1035,7 @@ asanamate due     [--yes] <gid> 2026-10-01                  # "" clears the date
 asanamate project add    [--yes] <gid> <project-gid>
 asanamate project remove [--yes] <gid> <project-gid>
 asanamate complete [--yes] [--reopen] <gid>                 # --reopen marks it incomplete
+asanamate react   [--yes] [--remove] <comment-gid> 👍       # --remove takes it back
 asanamate create  [--yes] [--project <gid> [--section "To Do"] | --parent <gid>] \
                   [--assignee "Ann Lee"] [--due 2026-10-01] [--notes <markdown | ->] "Fix login"
 ```
@@ -1053,6 +1055,11 @@ Markdown like a comment (`-` reads stdin), without image uploads.
 to you, since Asana shows a ticket's My Tasks section only to its assignee.
 Wherever a command takes a name (a section, field, option, or user), a gid
 works too.
+
+`asanamate react` takes a comment's gid, which `asanamate show --format json
+<gid>` lists under `comments`. Asana does not document writing reactions, so
+asanamate reads the comment back after each one and fails if the reaction did
+not change.
 
 `asanamate field` takes the value as typed for text fields, a number, a date
 as `YYYY-MM-DD`, or an option name (case-insensitive). Multi-select and people

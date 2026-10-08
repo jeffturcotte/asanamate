@@ -64,6 +64,9 @@ const usage = `usage:
   asanamate project add|remove [--yes] <gid> <project-gid>
                                                    add a task to a project or remove it
   asanamate complete [--yes] [--reopen] <gid>        mark a task complete (--reopen reopens it)
+  asanamate react   [--yes] [--remove] <comment-gid> <emoji>
+                                                   react to a comment (--remove takes it back;
+                                                   comment gids are in show --format json)
   asanamate create  [--yes] [--project <gid> [--section <name>] | --parent <gid>]
                     [--assignee <name | me>] [--due <YYYY-MM-DD>] [--notes <markdown | ->] <title>
                                                    create a ticket (default: in My Tasks, assigned
@@ -89,7 +92,7 @@ func run(args []string) int {
 		err = writeCommand(name, args[1:])
 	case "assign", "due", "project":
 		err = writeCommand(name, args[1:])
-	case "complete":
+	case "complete", "react":
 		err = writeCommand(name, args[1:])
 	case "create":
 		err = runCreate(args[1:], os.Stdin, os.Stdout, newWriter)
@@ -187,20 +190,27 @@ func writeCommand(name string, args []string) error {
 	if name == "complete" {
 		reopen = fs.Bool("reopen", false, "reopen a completed task instead")
 	}
+	remove := new(bool)
+	if name == "react" {
+		remove = fs.Bool("remove", false, "remove your reaction instead")
+	}
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	rest := fs.Args()
-	want := map[string]int{"comment": 2, "move": 2, "field": 3, "assign": 2, "due": 2, "project add": 2, "project remove": 2}[name]
+	want := map[string]int{"comment": 2, "move": 2, "field": 3, "assign": 2, "due": 2, "project add": 2, "project remove": 2, "react": 2}[name]
 	if name == "complete" {
 		want = 1
 	}
 	if len(rest) != want {
 		return fmt.Errorf("%s: wrong number of arguments\n%s", name, usage)
 	}
-	gid := rest[0]
+	gid, noun := rest[0], "task"
+	if name == "react" {
+		noun = "comment"
+	}
 	if !asana.ValidGID(gid) {
-		return fmt.Errorf("task gid must be numeric, got %q", gid)
+		return fmt.Errorf("%s gid must be numeric, got %q", noun, gid)
 	}
 	if strings.HasPrefix(name, "project ") {
 		project = &rest[1]
@@ -244,6 +254,8 @@ func writeCommand(name string, args []string) error {
 		return svc.RemoveProject(ctx, gid, *project)
 	case "complete":
 		return svc.Complete(ctx, gid, !*reopen)
+	case "react":
+		return svc.React(ctx, gid, rest[1], !*remove)
 	default:
 		return svc.SetField(ctx, gid, rest[1], rest[2], *project)
 	}

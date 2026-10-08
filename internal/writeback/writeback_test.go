@@ -568,3 +568,80 @@ func TestCreateConfirmsPlacement(t *testing.T) {
 		t.Fatalf("writes = %+v, prompt = %q", *writes, asked)
 	}
 }
+
+// fakeStories serves comment s1, whose reactions follow the reactions
+// written to it, and comment s2, which ignores them.
+func fakeStories(t *testing.T) (*asana.Client, *[]write) {
+	t.Helper()
+	var writes []write
+	reacted := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			var body struct {
+				Data map[string]any `json:"data"`
+			}
+			json.NewDecoder(r.Body).Decode(&body)
+			writes = append(writes, write{r.Method, r.URL.Path, body.Data})
+			if rs, ok := body.Data["reactions"].([]any); ok && r.URL.Path == "/stories/s1" {
+				reacted = rs[0].(map[string]any)["reacted"].(bool)
+			}
+			io.WriteString(w, `{"data":{}}`)
+			return
+		}
+		summary := `[]`
+		if reacted && r.URL.Path == "/stories/s1" {
+			summary = `[{"emoji_base":"👍","variant":"👍🏽","count":2,"reacted":true}]`
+		}
+		io.WriteString(w, `{"data":{"type":"comment","created_by":{"name":"Bo"},"text":"Looks good to me, shipping it after lunch today","reaction_summary":`+summary+`}}`)
+	}))
+	t.Cleanup(srv.Close)
+	c := asana.New("tok")
+	c.BaseURL = srv.URL
+	return c, &writes
+}
+
+func TestReact(t *testing.T) {
+	c, writes := fakeStories(t)
+	svc := Service{Client: c}
+	if err := svc.React(ctx, "s1", " 👍 ", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.React(ctx, "s1", "👍", false); err != nil {
+		t.Fatal(err)
+	}
+	want := []write{
+		{"PUT", "/stories/s1", map[string]any{"reactions": []any{map[string]any{"emoji": "👍", "reacted": true}}}},
+		{"PUT", "/stories/s1", map[string]any{"reactions": []any{map[string]any{"emoji": "👍", "reacted": false}}}},
+	}
+	if !reflect.DeepEqual(*writes, want) {
+		t.Fatalf("writes = %+v", *writes)
+	}
+	if err := svc.React(ctx, "s1", "", true); err == nil {
+		t.Fatal("an empty emoji must fail")
+	}
+}
+
+func TestReactIgnoredFails(t *testing.T) {
+	c, _ := fakeStories(t)
+	if err := (Service{Client: c}).React(ctx, "s2", "👍", true); !errors.Is(err, ErrReactionIgnored) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestReactConfirms(t *testing.T) {
+	c, writes := fakeStories(t)
+	var asked []string
+	svc := Service{Client: c, Confirm: func(p string) (bool, error) { asked = append(asked, p); return false, nil }}
+	for _, reacted := range []bool{true, false} {
+		if err := svc.React(ctx, "s1", "👍", reacted); !errors.Is(err, ErrDeclined) {
+			t.Fatalf("err = %v", err)
+		}
+	}
+	want := []string{
+		`React 👍 to Bo's comment "Looks good to me, shipping it after lun…"?`,
+		`Remove your 👍 from Bo's comment "Looks good to me, shipping it after lun…"?`,
+	}
+	if !reflect.DeepEqual(asked, want) || len(*writes) != 0 {
+		t.Fatalf("asked = %q, writes = %+v", asked, *writes)
+	}
+}

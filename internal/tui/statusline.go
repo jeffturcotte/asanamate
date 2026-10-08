@@ -36,6 +36,7 @@ func (m *Model) mode() (name string, pill lipgloss.Style, hints [][2]string) {
 		if m.readerView != config.ViewMarkdown {
 			hints := [][2]string{targets}
 			if t, ok := m.selectedDetail(); ok && m.selectedComment(t) != nil {
+				hints = append(hints, [2]string{keyLabel("main", "open"), "comment menu"})
 				hints = append(hints, m.keyHints("copy_comment")...)
 			}
 			return "READ", readPill, append(hints, scroll, pane, list)

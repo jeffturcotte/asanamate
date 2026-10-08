@@ -194,6 +194,20 @@ func (c *Client) addStory(ctx context.Context, taskGID string, body map[string]a
 	return c.do(ctx, http.MethodPost, "/tasks/"+taskGID+"/stories", nil, body, nil)
 }
 
+// Story returns one story with its author, text, and reactions.
+func (c *Client) Story(ctx context.Context, gid string) (Story, error) {
+	return getOne[Story](ctx, c, "/stories/"+gid, fields("type,created_by.name,text,reaction_summary.emoji_base,reaction_summary.variant,reaction_summary.count,reaction_summary.reacted"))
+}
+
+// SetReaction adds the user's emoji reaction to a story, or removes it when
+// reacted is false. The reactions field is undocumented, and Asana ignores
+// unknown fields, so a 200 does not prove the reaction changed; read the
+// story back to check.
+func (c *Client) SetReaction(ctx context.Context, storyGID, emoji string, reacted bool) error {
+	body := map[string]any{"reactions": []map[string]any{{"emoji": emoji, "reacted": reacted}}}
+	return c.do(ctx, http.MethodPut, "/stories/"+storyGID, nil, body, nil)
+}
+
 // AddToSection moves a task into a section.
 func (c *Client) AddToSection(ctx context.Context, sectionGID, taskGID string) error {
 	return c.do(ctx, http.MethodPost, "/sections/"+sectionGID+"/addTask", nil, map[string]any{"task": taskGID}, nil)
