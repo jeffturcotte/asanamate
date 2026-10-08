@@ -21,10 +21,16 @@ type pendingTime struct {
 	spec    form.Spec
 }
 
+// asana identifies the entry's ticket and chosen project to the provider.
+func (e *pendingTime) asana() timetracking.Asana {
+	return timetracking.Asana{TaskGID: e.ticket.GID, ProjectGID: e.project.GID, Title: e.ticket.Name, URL: e.ticket.PermalinkURL}
+}
+
 type timeFormMsg struct {
-	entry *pendingTime
-	spec  form.Spec
-	err   error
+	entry    *pendingTime
+	spec     form.Spec
+	err      error
+	linksErr error
 }
 
 type timeDoneMsg struct {
@@ -71,9 +77,13 @@ func (m *Model) pickedTimeAsanaProject(project asana.Ref) tea.Cmd {
 	entry.project = project
 	m.status = "loading time form…"
 	provider := timetracking.Provider{Command: m.deps.Config.TimeTracking.Command}
+	asanaTask := entry.asana()
+	links := m.projectLinks()
 	return request(func(ctx context.Context) tea.Msg {
-		spec, err := provider.Form(ctx)
-		return timeFormMsg{entry: entry, spec: spec, err: err}
+		// Links only suggest defaults; the form works without them.
+		suggested, linksErr := links.Links(ctx, project.GID)
+		spec, err := provider.Form(ctx, asanaTask, suggested)
+		return timeFormMsg{entry: entry, spec: spec, err: err, linksErr: linksErr}
 	})
 }
 
@@ -102,6 +112,9 @@ func (m *Model) gotTimeForm(msg timeFormMsg) {
 		}
 	}
 	m.status = ""
+	if msg.linksErr != nil {
+		m.status = "no suggestions: " + msg.linksErr.Error()
+	}
 	m.form = newFormModal("Log time · "+ticket.OneLine(entry.project.Name), msg.spec, defaults, m.submitTimeForm)
 }
 
@@ -110,7 +123,7 @@ func (m *Model) submitTimeForm(values map[string]string) tea.Cmd {
 	m.form.busy = true
 	m.status = "logging time…"
 	provider := timetracking.Provider{Command: m.deps.Config.TimeTracking.Command}
-	asanaTask := timetracking.Asana{TaskGID: entry.ticket.GID, ProjectGID: entry.project.GID, Title: entry.ticket.Name, URL: entry.ticket.PermalinkURL}
+	asanaTask := entry.asana()
 	return request(func(ctx context.Context) tea.Msg {
 		return timeDoneMsg{entry: entry, values: values, err: provider.Log(ctx, entry.spec, values, asanaTask)}
 	})

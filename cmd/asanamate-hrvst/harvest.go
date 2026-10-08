@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/sadmachine/asanamate/internal/form"
+	"github.com/sadmachine/asanamate/internal/projectlinks"
 	"github.com/sadmachine/asanamate/internal/timetracking"
 )
 
@@ -86,8 +87,15 @@ func runHarvest(ctx context.Context, in io.Reader, out io.Writer, taskID, config
 		if err != nil {
 			return err
 		}
+		project := form.Field{ID: "project_id", Label: "Harvest project", Type: form.Select, Options: projects, Remember: true}
+		for _, id := range projectlinks.Values(req.Links, projectlinks.HarvestProject) {
+			if project.HasOption(id) {
+				project.Default = id
+				break
+			}
+		}
 		return json.NewEncoder(out).Encode(form.Spec{Fields: []form.Field{
-			{ID: "project_id", Label: "Harvest project", Type: form.Select, Options: projects, Remember: true},
+			project,
 			{ID: "task_id", Label: "Harvest task", Type: form.Select, Options: []form.Option{task}, Remember: true},
 			{ID: "hours", Label: "Hours", Type: form.Hours},
 		}})

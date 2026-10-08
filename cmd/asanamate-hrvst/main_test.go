@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/sadmachine/asanamate/internal/projectlinks"
 	"github.com/sadmachine/asanamate/internal/timetracking"
 )
 
@@ -66,8 +67,8 @@ func TestProviderProtocol(t *testing.T) {
 	ctx := context.Background()
 	asana := timetracking.Asana{TaskGID: "42", ProjectGID: "7", Title: "Fix login", URL: "https://app.asana.com/0/7/42"}
 
-	spec, err := provider.Form(ctx)
-	if err != nil || len(spec.Fields) != 3 || spec.Fields[0].Options[0].ID != "123" {
+	spec, err := provider.Form(ctx, asana, []projectlinks.Link{{Type: projectlinks.HarvestProject, Value: "123"}})
+	if err != nil || len(spec.Fields) != 3 || spec.Fields[0].Options[0].ID != "123" || spec.Fields[0].Default != "123" {
 		t.Fatalf("form = %+v, err = %v", spec, err)
 	}
 	if err := provider.Log(ctx, spec, map[string]string{"project_id": "123", "task_id": "456", "hours": "1.25"}, asana); err != nil || !logged.Load() {

@@ -56,6 +56,14 @@ func TestHarvestAdapterUsesExternalReference(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &spec); err != nil || len(spec.Fields) != 3 || spec.Fields[0].Options[0].ID != "123" || spec.Fields[1].Options[0] != (form.Option{ID: "456", Name: "Development"}) || !spec.Fields[0].Remember || !spec.Fields[1].Remember {
 		t.Fatalf("response = %s, err = %v", out.String(), err)
 	}
+	out.Reset()
+	// The first suggested Harvest project that is offered becomes the default.
+	if err := runHarvest(context.Background(), strings.NewReader(`{"operation":"form","links":[{"type":"harvest_project","value":"999"},{"type":"harvest_project","value":"123"}]}`), &out, "456", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(out.Bytes(), &spec); err != nil || spec.Fields[0].Default != "123" || spec.Fields[1].Default != "" {
+		t.Fatalf("suggested response = %s, err = %v", out.String(), err)
+	}
 	projectArgs, _ := os.ReadFile(projectCall)
 	if string(projectArgs) != "users\nproject-assignments\nme\n--output=json\n--page=all\n" {
 		t.Fatalf("assignment command args = %s", projectArgs)

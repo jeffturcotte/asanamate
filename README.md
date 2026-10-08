@@ -28,12 +28,16 @@ and coding agents can do what you can. macOS and Linux only.
   appear next to their tickets. See [Agents](#agents-optional).
 - **Track time** (optional): log time to Harvest from a ticket. See
   [Time tracking](#time-tracking-optional).
+- **Suggest links** (optional): preselect each project's repo and Harvest
+  project from imarc's Hub or another source. See
+  [Project links](#project-links-optional).
 
-**Extending asanamate.** External commands plug in at four points:
+**Extending asanamate.** External commands plug in at five points:
 [actions](docs/extensions.md#actions),
 [agent sources](docs/extensions.md#agent-sources),
-[time tracking providers](docs/extensions.md#time-tracking), and
-[repo sources](docs/extensions.md#repo-sources).
+[time tracking providers](docs/extensions.md#time-tracking),
+[repo sources](docs/extensions.md#repo-sources), and
+[project links](docs/extensions.md#project-links).
 [docs/extensions.md](docs/extensions.md) documents each protocol.
 
 **Left to Asana.** asanamate does not rename or delete tickets, change a
@@ -68,14 +72,16 @@ mkdir -p ~/.local/bin && mv asanamate ~/.local/bin/
 asanamate version
 ```
 
-The archive also holds two optional binaries: `asanamate-hrvst`, the Harvest
-provider for [Time tracking](#time-tracking-optional), and `asanamate-ccmux`,
-the ccmux adapter for [Agents](#agents-optional). Extract and move the ones you
-use the same way:
+The archive also holds three optional binaries: `asanamate-hrvst`, the Harvest
+provider for [Time tracking](#time-tracking-optional), `asanamate-ccmux`,
+the ccmux adapter for [Agents](#agents-optional), and `asanamate-hub`, the Hub
+provider for [Project links](#project-links-optional). Extract and move the
+ones you use the same way:
 
 ```sh
 tar -xzf "$archive" asanamate-hrvst && mv asanamate-hrvst ~/.local/bin/
 tar -xzf "$archive" asanamate-ccmux && mv asanamate-ccmux ~/.local/bin/
+tar -xzf "$archive" asanamate-hub && mv asanamate-hub ~/.local/bin/
 ```
 
 If `asanamate version` is not found, add `~/.local/bin` to your `PATH` in your
@@ -93,6 +99,7 @@ quarantine flag once:
 xattr -d com.apple.quarantine ~/.local/bin/asanamate
 xattr -d com.apple.quarantine ~/.local/bin/asanamate-hrvst   # if you use it
 xattr -d com.apple.quarantine ~/.local/bin/asanamate-ccmux   # if you use it
+xattr -d com.apple.quarantine ~/.local/bin/asanamate-hub     # if you use it
 ```
 
 ### From source
@@ -103,6 +110,7 @@ Needs Go 1.26 or later.
 go install github.com/sadmachine/asanamate/cmd/asanamate@latest
 go install github.com/sadmachine/asanamate/cmd/asanamate-hrvst@latest   # Harvest time tracking
 go install github.com/sadmachine/asanamate/cmd/asanamate-ccmux@latest   # ccmux agents
+go install github.com/sadmachine/asanamate/cmd/asanamate-hub@latest     # Hub project links
 ```
 
 This installs to `$(go env GOBIN)`, else `$(go env GOPATH)/bin` (usually
@@ -114,8 +122,8 @@ Upgrade the way you installed: replace the binary with a newer archive, or
 rerun `go install`. Upgrades never touch
 your config, actions, or state.
 
-To uninstall, delete the binaries (`asanamate`, plus `asanamate-hrvst` and
-`asanamate-ccmux` if you installed them). Your
+To uninstall, delete the binaries (`asanamate`, plus `asanamate-hrvst`,
+`asanamate-ccmux`, and `asanamate-hub` if you installed them). Your
 files stay until you delete them yourself: the config and actions in
 `~/.config/asanamate`, the state, ticket exports, and logs in
 `~/.local/state/asanamate`, and the Codex hook, if you added it, in
@@ -164,6 +172,7 @@ Browsing needs none of these. Each one affects only its own feature, and
 | Paste into input (`Ctrl+V`) | macOS `pbpaste`; Linux `xclip` or `xsel` (X11) or `wl-clipboard` (Wayland) | always on | not needed | not checked | the input shows why, and your terminal's paste still works |
 | Agent status | an agents command, such as `asanamate-ccmux` for ccmux; see [Agents](#agents-optional) | `agents.command` | remove `[agents]` keys | `agents` | off |
 | Time tracking | `asanamate-hrvst` and [hrvst](https://github.com/kgajera/hrvst-cli) 3.x, or your own provider; see [Time tracking](#time-tracking-optional) | `[time_tracking]` | remove `[time_tracking]` keys | `time_tracking` | off |
+| Project link suggestions | a project links command, such as `asanamate-hub` for imarc's Hub; see [Project links](#project-links-optional) | `project_links.command` | remove `project_links.command` | `project_links` | no suggestions |
 | Inline images | a kitty-graphics terminal ([kitty](https://sw.kovidgoyal.net/kitty/), [Ghostty](https://ghostty.org)); in tmux, `set -g allow-passthrough on` | `images.mode = "auto"` (default) | `images.mode = "off"` | not checked | links shown instead |
 | Nerd Font symbols | a [Nerd Font](https://www.nerdfonts.com) | `symbols = "nerd"` | `symbols = "unicode"` or `"ascii"` | not checked | unicode or ascii symbols |
 | Follow OS reduced motion | macOS `defaults`; GNOME `gsettings` | leave `reduced_motion` unset | set `reduced_motion` | not checked | set `reduced_motion` yourself |
@@ -474,6 +483,7 @@ once. Run `asanamate doctor` to check a change without starting the TUI.
 | `repo_source.root` | your setup directory, or empty | directory whose direct children with a `.git` entry (clones and worktrees) fill the repo picker; absolute or starting with `~`; empty: type a path |
 | `repo_source.command` | unset | prints one repo path per line; replaces `repo_source.root` when set; see [Repo sources](docs/extensions.md#repo-sources) |
 | `time_tracking.id` / `time_tracking.command` | unset (off) | provider ID for saved choices and command implementing the [time tracking JSON protocol](docs/extensions.md#time-tracking) |
+| `project_links.command` | unset (off) | command implementing the [project links JSON protocol](docs/extensions.md#project-links); its links preselect the repo picker and time form |
 
 The title is always shown. `list.fields` picks the other columns and their
 order: the built-ins `section`, `due`, `assignee`, `initials` (the assignee's
@@ -632,6 +642,48 @@ request (`form`, `log`, or an optional `summary`) on stdin and prints a JSON
 reply. See [Time tracking](docs/extensions.md#time-tracking) for the request
 and reply formats. Use a different provider `id` when changing trackers so
 saved choices stay separate.
+
+### Project links (optional)
+
+A project links command tells asanamate where an Asana project lives in other
+systems: its git repository and its time tracking project. When the repo
+picker opens for a project without a linked repo, local repos whose remote
+matches come first, marked `suggested`, with the cursor on the first; Enter
+links it as if you had picked it. The time form preselects the suggested
+tracker project unless you chose another one before. asanamate only reads
+these links; it never writes them back. A lookup failure shows in the picker
+or status line, and the picker and form work without suggestions.
+
+imarc's [Hub](https://hub.imarc.net) support is a separate binary,
+`asanamate-hub`, shipped with asanamate (see [Install](#install)). Set it up:
+
+1. Install `asanamate-hub` on your `PATH`.
+2. Create a Hub service account at
+   `https://hub.imarc.net/admin/service-accounts`; a read-only one is enough.
+   Export its client ID and secret in your shell's startup file, so
+   asanamate's child processes see them. `asanamate-hub check` confirms both
+   are set.
+
+   ```sh
+   export HUB_CLIENT_ID=...
+   export HUB_CLIENT_SECRET=...
+   ```
+
+3. Add to the config:
+
+```toml
+[project_links]
+command = "asanamate-hub"
+```
+
+Hub projects whose `Asana Project` link equals the Asana project's GID supply
+their `Git Repository` links and `Harvest Project` links (the current
+contract's first), skipping links outside their dates; `asanamate-hrvst`
+preselects that Harvest project. `--url` points at another Hub.
+
+Other systems can implement the same protocol: the command reads one JSON
+request on stdin and prints the project's links. See
+[Project links](docs/extensions.md#project-links) for the formats.
 
 ## Actions
 

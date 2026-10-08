@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/sadmachine/asanamate/internal/form"
+	"github.com/sadmachine/asanamate/internal/projectlinks"
 )
 
 const sampleForm = `{"fields":[{"id":"project_id","label":"Project","type":"select","options":[{"id":"opaque","name":"Project"}],"remember":true},{"id":"hours","label":"Hours","type":"hours"}]}`
@@ -21,13 +22,16 @@ func TestCommandProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	provider := Provider{Command: script}
-	spec, err := provider.Form(context.Background())
+	links := []projectlinks.Link{{Type: projectlinks.HarvestProject, Value: "opaque"}}
+	spec, err := provider.Form(context.Background(), Asana{TaskGID: "1", ProjectGID: "2"}, links)
 	if err != nil || len(spec.Fields) != 2 || spec.Fields[0].Options[0].ID != "opaque" {
 		t.Fatalf("form = %+v, err = %v", spec, err)
 	}
 	request, _ := os.ReadFile(path)
-	if !strings.Contains(string(request), `{"version":1,"operation":"form"}`) {
-		t.Fatalf("request = %s", request)
+	for _, want := range []string{`"version":1`, `"operation":"form"`, `"project_gid":"2"`, `"links":[{"type":"harvest_project","value":"opaque"}]`} {
+		if !strings.Contains(string(request), want) {
+			t.Fatalf("request = %s; missing %s", request, want)
+		}
 	}
 	values := map[string]string{"project_id": "opaque", "hours": "1.25"}
 	if err := provider.Log(context.Background(), spec, values, Asana{TaskGID: "1", ProjectGID: "2", Title: "Fix", URL: "https://app.asana.com/0/2/1"}); err != nil {
@@ -54,7 +58,7 @@ func TestProviderFixture(t *testing.T) {
 	ctx := context.Background()
 	asana := Asana{TaskGID: "42", ProjectGID: "7", Title: "Fix login", URL: "https://app.asana.com/0/7/42"}
 
-	spec, err := provider.Form(ctx)
+	spec, err := provider.Form(ctx, asana, []projectlinks.Link{{Type: projectlinks.HarvestProject, Value: "123"}})
 	if err != nil || len(spec.Fields) != 2 || spec.Fields[0].Options[0].ID != "123" {
 		t.Fatalf("form = %+v, err = %v", spec, err)
 	}
@@ -71,7 +75,7 @@ func TestProviderFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{
-		`{"version":1,"operation":"form"}`,
+		`{"version":1,"operation":"form","asana":{"task_gid":"42","project_gid":"7","title":"Fix login","url":"https://app.asana.com/0/7/42"},"links":[{"type":"harvest_project","value":"123"}]}`,
 		`{"version":1,"operation":"log","values":{"hours":"1.5","project_id":"123"},"asana":{"task_gid":"42","project_gid":"7","title":"Fix login","url":"https://app.asana.com/0/7/42"}}`,
 		`{"version":1,"operation":"summary","asana":{"task_gid":"42","project_gid":"","title":"","url":"https://app.asana.com/0/7/42"}}`,
 	}
@@ -84,12 +88,12 @@ func TestProviderFixture(t *testing.T) {
 func TestProviderRejectsBadDataAndFailures(t *testing.T) {
 	for _, response := range []string{`{}`, `{"fields":[{"id":"x","label":"X","type":"select","options":[]}]}`, `bad`} {
 		provider := Provider{Command: "printf '%s' '" + response + "'"}
-		if _, err := provider.Form(context.Background()); err == nil {
+		if _, err := provider.Form(context.Background(), Asana{}, nil); err == nil {
 			t.Fatalf("response %s should fail", response)
 		}
 	}
 	provider := Provider{Command: "echo unavailable >&2; exit 1"}
-	if _, err := provider.Form(context.Background()); err == nil || !strings.Contains(err.Error(), "unavailable") {
+	if _, err := provider.Form(context.Background(), Asana{}, nil); err == nil || !strings.Contains(err.Error(), "unavailable") {
 		t.Fatalf("error = %v", err)
 	}
 	spec := form.Spec{Fields: []form.Field{{ID: "hours", Label: "Hours", Type: form.Hours}}}

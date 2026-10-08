@@ -404,6 +404,13 @@ type_first = false
 # id = "hrvst"
 # command = "asanamate-hrvst --task-id YOUR_TASK_ID"
 
+# Optional: suggest each Asana project's git repository and time tracking
+# project from another system. The command reads a JSON request from stdin and
+# writes the project's links as JSON (docs/extensions.md). asanamate-hub reads
+# them from imarc's Hub; it needs HUB_CLIENT_ID and HUB_CLIENT_SECRET exported.
+[project_links]
+# command = "asanamate-hub"
+
 
 [repo_source]
 # Directory whose git repositories (its direct children) fill the repo picker.

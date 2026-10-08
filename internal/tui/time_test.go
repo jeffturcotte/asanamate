@@ -58,6 +58,29 @@ func TestTimeFormChoosesAsanaProjectAndRestoresFields(t *testing.T) {
 	}
 }
 
+// A provider default fills a select without a remembered choice; a
+// remembered choice still offered wins over it.
+func TestTimeFormProviderDefaultYieldsToRememberedChoice(t *testing.T) {
+	m, st := timeModel(t, asana.Membership{Project: asana.Ref{GID: "1", Name: "Asana Web"}})
+	withDefault := strings.Replace(timeFormJSON, `"remember":true}`, `"remember":true,"default":"123"}`, 1)
+	m.deps.Config.TimeTracking.Command = "printf '%s' '" + withDefault + "'"
+	m.deps.Config.ProjectLinks.Command = `printf '{"links":[{"type":"harvest_project","value":"123"}]}'`
+	m.Update(m.openTime()())
+	if m.form == nil || m.form.values["project_id"] != "123" || m.status != "" {
+		t.Fatalf("form = %+v, status = %q", m.form, m.status)
+	}
+	st.TouchFormChoice("time:hrvst", "1", "project_id", "789")
+	m.Update(m.openTime()())
+	if m.form.values["project_id"] != "789" {
+		t.Fatalf("remembered choice lost to default: %+v", m.form.values)
+	}
+	m.deps.Config.ProjectLinks.Command = "echo hub down >&2; exit 1"
+	m.Update(m.openTime()())
+	if m.form == nil || !strings.Contains(m.status, "no suggestions: project links: hub down") {
+		t.Fatalf("form = %+v, status = %q", m.form, m.status)
+	}
+}
+
 func TestTimeFormValidationFailureAndSuccess(t *testing.T) {
 	m, st := timeModel(t, asana.Membership{Project: asana.Ref{GID: "1", Name: "Asana Web"}})
 	cmd := m.openTime()

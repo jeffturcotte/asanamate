@@ -256,7 +256,11 @@ func (m *Model) runRepo(r *pendingRun) (tea.Cmd, bool) {
 			m.status = fmt.Sprintf("linked repo %s is no longer a git repository; pick again", path)
 		}
 	}
-	return loadCandidates(m.deps.Config.RepoSource, nil), true
+	projectGID := ""
+	if r.project != nil {
+		projectGID = r.project.GID
+	}
+	return loadCandidates(m.deps.Config.RepoSource, nil, m.projectLinks(), projectGID), true
 }
 
 // isRepoRoot reports whether a saved link still names a repo. Links are saved
@@ -294,11 +298,17 @@ func (m *Model) openRepoPicker(msg candidatesMsg) {
 }
 
 // repoPicker lists msg's candidate repos for project, after any lead items,
-// and accepts a typed path.
+// and accepts a typed path. Suggested repos come first, so without lead items
+// the cursor starts on the best suggestion.
 func repoPicker(msg candidatesMsg, project *asana.Ref, onPick func(pickResult) tea.Cmd, lead ...pickItem) *picker {
 	items := lead
+	for _, p := range msg.suggested {
+		items = append(items, pickItem{Label: p, Hint: "suggested", Value: p})
+	}
 	for _, p := range msg.paths {
-		items = append(items, pickItem{Label: p, Value: p})
+		if !slices.Contains(msg.suggested, p) {
+			items = append(items, pickItem{Label: p, Value: p})
+		}
 	}
 	title := "Repo for this ticket"
 	if project != nil {
@@ -308,6 +318,8 @@ func repoPicker(msg candidatesMsg, project *asana.Ref, onPick func(pickResult) t
 	p.allowFree = true
 	if msg.err != nil {
 		p.err = msg.err.Error()
+	} else if msg.linksErr != nil {
+		p.err = "no suggestions: " + msg.linksErr.Error()
 	}
 	return p
 }

@@ -10,6 +10,10 @@ func TestSpecValidatesControlsAndValues(t *testing.T) {
 	if err := spec.ValidateValues(map[string]string{"project_id": "123", "hours": "1.25"}); err != nil {
 		t.Fatal(err)
 	}
+	spec.Fields[0].Default = "123"
+	if err := spec.Validate(); err != nil {
+		t.Fatalf("listed default rejected: %v", err)
+	}
 	for _, values := range []map[string]string{{"project_id": "gone", "hours": "1"}, {"project_id": "123", "hours": "0"}, {"project_id": "123", "hours": "NaN"}} {
 		if err := spec.ValidateValues(values); err == nil {
 			t.Fatalf("accepted %v", values)
@@ -21,6 +25,8 @@ func TestSpecValidatesControlsAndValues(t *testing.T) {
 		{Fields: []Field{{ID: "x", Label: "X", Type: Select}}},
 		{Fields: []Field{{ID: "x", Label: "X", Type: Hours, Remember: true}}},
 		{Fields: []Field{{ID: "x", Label: "X", Type: Hours}, {ID: "x", Label: "Again", Type: Hours}}},
+		{Fields: []Field{{ID: "x", Label: "X", Type: Select, Options: []Option{{ID: "1", Name: "One"}}, Default: "2"}}},
+		{Fields: []Field{{ID: "x", Label: "X", Type: Hours, Default: "1"}}},
 	}
 	for _, candidate := range bad {
 		if err := candidate.Validate(); err == nil {

@@ -10,6 +10,7 @@ commands, one section per extension point:
 | [Agent sources](#agent-sources) | `agents.command`, `agents.states` | nothing | one tab-separated line per agent |
 | [Repo sources](#repo-sources) | `repo_source.command` | nothing | one repo path per line |
 | [Time tracking](#time-tracking) | `time_tracking.command` | one JSON request on stdin | one JSON reply |
+| [Project links](#project-links) | `project_links.command` | one JSON request on stdin | one JSON reply |
 
 Each format is covered by a test that runs a small fixture script through the
 real code path (`internal/*/testdata/`), so a format change cannot slip in
@@ -232,10 +233,11 @@ choices stay separate.
 | `version` | protocol version, `1` |
 | `operation` | `form`, `log`, or `summary` |
 | `values` | `log` only: form values keyed by field ID. Select values are option IDs; `hours` is positive decimal hours as typed, such as `"1.25"` |
-| `asana` | `log` and `summary`: `task_gid`, `project_gid`, `title`, `url`. `summary` sends only `task_gid` and `url`; the others are empty |
+| `asana` | `task_gid`, `project_gid`, `title`, `url`. `summary` sends only `task_gid` and `url`; the others are empty |
+| `links` | `form` only, when [project links](#project-links) knows the chosen Asana project: its links, best first. Omitted otherwise |
 
 ```json
-{"version":1,"operation":"form"}
+{"version":1,"operation":"form","asana":{"task_gid":"42","project_gid":"7","title":"Fix login","url":"https://app.asana.com/0/7/42"},"links":[{"type":"harvest_project","value":"123"}]}
 {"version":1,"operation":"log","values":{"hours":"1.5","project_id":"123"},"asana":{"task_gid":"42","project_gid":"7","title":"Fix login","url":"https://app.asana.com/0/7/42"}}
 {"version":1,"operation":"summary","asana":{"task_gid":"42","project_gid":"","title":"","url":"https://app.asana.com/0/7/42"}}
 ```
@@ -251,7 +253,9 @@ ignore.
   names, and labels are not empty. Types are `select` (needs `options`, each
   with a stable, unique `id` and a `name`) and `hours`. A time form needs
   exactly one `hours` field. `remember: true` on a select saves the choice
-  per Asana project.
+  per Asana project. A select's optional `default` names one of its options
+  to preselect, such as the project a `links` entry suggests; a remembered
+  choice that is still offered wins over it.
 
   ```json
   {"fields":[
@@ -309,4 +313,83 @@ provider should parse it with a JSON tool such as `jq`.
 [time_tracking]
 id = "my-tracker"
 command = '~/bin/my-tracker.sh'
+```
+
+## Project links
+
+Set `project_links.command` to suggest where each Asana project lives in
+other systems: its git repository and its time tracking project. asanamate's
+Hub provider, `asanamate-hub` (`cmd/asanamate-hub`), is a separate binary that
+uses only this protocol, like any other provider. asanamate only reads links;
+providers never receive anything to write.
+
+**When it runs.** Once per lookup, as a new process each time:
+
+- opening the repo picker for a project, such as for a `repo = true` action
+  on a project with no linked repo, or when you link a project's repo with `L`
+- `t` on a ticket, after choosing an Asana project, before the time form's
+  `form` request
+
+**Input.** One JSON object on stdin, then end of input:
+
+| Field | Value |
+|---|---|
+| `version` | protocol version, `1` |
+| `operation` | `links` |
+| `asana` | `project_gid`, the Asana project's GID |
+
+```json
+{"version":1,"operation":"links","asana":{"project_gid":"7"}}
+```
+
+**Compatibility.** As for [time tracking](#time-tracking): ignore `version`
+and unknown fields if you like; the version changes only for a change
+existing providers could not ignore.
+
+**Output.** `{"links":[...]}` on stdout: the project's links, best first, each
+with a nonempty `type` and `value`. Return `{"links":[]}` when the project is
+unknown.
+
+| Type | Value | Used by |
+|---|---|---|
+| `git` | a git remote URL, such as `https://github.com/acme/web` or `git@github.com:acme/web.git` | the repo picker: local repos with a remote that matches, ignoring scheme, user, port, case, and a trailing `.git`, come first, marked `suggested`, and the cursor starts on the first. Clones come before their worktrees |
+| `harvest_project` | a Harvest project ID | `asanamate-hrvst`, which preselects it in the time form |
+
+asanamate reads only `git` itself. Every link, of any type, goes unchanged to
+the time provider's `form` request as `links`, so other trackers can define
+their own types.
+
+```json
+{"links":[
+  {"type":"git","value":"https://github.com/acme/web"},
+  {"type":"harvest_project","value":"123"}
+]}
+```
+
+**Exit status.** Non-zero is a failure; asanamate shows `no suggestions:`
+with the provider's stderr in the picker or status line, and the picker and
+time form work without suggestions.
+
+**Timeouts.** 1 minute per lookup, counted with the rest of the request it
+belongs to; the command is killed after that, and the lookup counts as failed.
+
+**Example.** `internal/projectlinks/testdata/provider.sh`, without its
+request log:
+
+```sh
+#!/bin/sh
+request=$(cat)
+case $request in
+*'"project_gid":"7"'*)
+	printf '%s\n' '{"links":[{"type":"git","value":"https://github.com/acme/web"},{"type":"harvest_project","value":"123"}]}'
+	;;
+*)
+	printf '%s\n' '{"links":[]}'
+	;;
+esac
+```
+
+```toml
+[project_links]
+command = '~/bin/project-links.sh'
 ```

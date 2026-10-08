@@ -660,6 +660,11 @@ func checkFeatures(w io.Writer, cfg config.Config) {
 	} else {
 		row(w, "time_tracking", "unchecked: command "+strconv.Quote(cfg.TimeTracking.Command)+" (not run)")
 	}
+	if cfg.ProjectLinks.Command == "" {
+		row(w, "project_links", "off")
+	} else {
+		row(w, "project_links", "unchecked: command "+strconv.Quote(cfg.ProjectLinks.Command)+" (not run)")
+	}
 }
 
 // checkLegacyCodexHook warns while Codex's hooks still run

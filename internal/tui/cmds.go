@@ -14,6 +14,7 @@ import (
 	"github.com/sadmachine/asanamate/internal/browser"
 	"github.com/sadmachine/asanamate/internal/config"
 	"github.com/sadmachine/asanamate/internal/kitty"
+	"github.com/sadmachine/asanamate/internal/projectlinks"
 	"github.com/sadmachine/asanamate/internal/repo"
 	"github.com/sadmachine/asanamate/internal/ticket"
 )
@@ -74,9 +75,11 @@ type projectsMsg struct {
 type linkNamesMsg struct{ names map[string]string }
 
 type candidatesMsg struct {
-	paths []string
-	err   error
-	link  *linkTarget // link being edited, outside a run
+	paths     []string
+	suggested []string // paths matching the project's links, best first
+	err       error
+	linksErr  error
+	link      *linkTarget // link being edited, outside a run
 }
 
 // linkTarget is a project whose repo link is edited, or with ticket set, a
@@ -233,10 +236,17 @@ func loadLinkNames(c *asana.Client, gids []string) tea.Cmd {
 
 // loadCandidates loads the repo picker's paths; link is set when editing a
 // link from the repo links picker.
-func loadCandidates(src config.RepoSource, link *linkTarget) tea.Cmd {
+// loadCandidates lists the repo picker's paths and, when projectGID is set,
+// the ones whose remote matches a git link of that project from links.
+func loadCandidates(src config.RepoSource, link *linkTarget, links projectlinks.Provider, projectGID string) tea.Cmd {
 	return request(func(ctx context.Context) tea.Msg {
 		paths, err := repo.Candidates(ctx, src)
-		return candidatesMsg{paths: paths, err: err, link: link}
+		msg := candidatesMsg{paths: paths, err: err, link: link}
+		if projectGID != "" {
+			found, err := links.Links(ctx, projectGID)
+			msg.suggested, msg.linksErr = repo.Matching(ctx, paths, projectlinks.Values(found, projectlinks.Git)), err
+		}
+		return msg
 	})
 }
 

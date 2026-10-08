@@ -280,6 +280,38 @@ func TestRepoLinksRelinkSaves(t *testing.T) {
 	}
 }
 
+// Repos whose remote matches the project's git links come first, marked,
+// with the cursor on them; Enter links the suggestion.
+func TestRepoPickerPreselectsSuggestedRepo(t *testing.T) {
+	other, site := gitRepo(t), gitRepo(t)
+	if out, err := exec.Command("git", "-C", site, "remote", "add", "origin", "git@github.com:acme/site.git").CombinedOutput(); err != nil {
+		t.Fatalf("git remote: %v %s", err, out)
+	}
+	m, st := flowModel(t, web)
+	m.deps.Config.RepoSource.Command = "printf '%s\\n' '" + other + "' '" + site + "'"
+	m.deps.Config.ProjectLinks.Command = `cat | grep -q '"project_gid":"p1"' && printf '{"links":[{"type":"git","value":"https://github.com/acme/site"}]}'`
+	m.Update(m.pickedAction(0)())
+	if m.modal == nil || len(m.modal.items) != 2 || m.modal.items[0].Value != site || m.modal.items[0].Hint != "suggested" || m.modal.items[1].Value != other || m.modal.err != "" {
+		t.Fatalf("modal = %+v", m.modal)
+	}
+	m.Update(key("enter"))
+	if m.ExitCommand() == nil || m.ExitCommand().Dir != site {
+		t.Fatalf("exit = %+v", m.ExitCommand())
+	}
+	if again, _ := state.Load(st.Path()); again.Repos["p1"] != site {
+		t.Fatalf("saved repos = %v", again.Repos)
+	}
+}
+
+func TestRepoPickerShowsSuggestionFailure(t *testing.T) {
+	m, _ := flowModel(t, web)
+	m.deps.Config.ProjectLinks.Command = "echo hub down >&2; exit 1"
+	m.Update(m.pickedAction(0)())
+	if m.modal == nil || !strings.Contains(m.modal.err, "no suggestions: project links: hub down") || m.modal.items[0].Hint != "" {
+		t.Fatalf("modal = %+v", m.modal)
+	}
+}
+
 func TestRepoLinksUnlinkSaves(t *testing.T) {
 	m, st := linksModel(t)
 	st.LinkRepo("p1", "/code/web")
