@@ -52,6 +52,26 @@ func TestActivityFiltersAndAutomatedToggle(t *testing.T) {
 	}
 }
 
+func TestActivityTabCyclesViewsListAndReader(t *testing.T) {
+	m := activityModel(t, 160)
+	for i, want := range []string{"reader", "views", "list"} {
+		sendKeys(m, "tab")
+		got := "list"
+		if m.focusNav {
+			got = "views"
+		} else if m.activity.details {
+			got = "reader"
+		}
+		if got != want {
+			t.Fatalf("tab %d focus = %s, want %s", i+1, got, want)
+		}
+	}
+	sendKeys(m, "shift+tab")
+	if !m.focusNav {
+		t.Fatal("shift+tab from list must focus views")
+	}
+}
+
 func TestActivitySearchDoesNotChangeSavedTicketFilter(t *testing.T) {
 	m := activityModel(t, 160)
 	before := m.filterInput.Value()

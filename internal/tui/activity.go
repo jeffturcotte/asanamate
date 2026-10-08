@@ -305,9 +305,11 @@ func (m *Model) handleActivityKey(msg tea.KeyPressMsg) tea.Cmd {
 			m.focusNav = true
 			m.focusNavPanel()
 		}
-	case "focus_reader", "next_pane", "prev_pane":
+	case "focus_reader":
 		m.focusNav = false
 		a.details = !a.details
+	case "next_pane", "prev_pane":
+		m.cycleActivityPane(name == "prev_pane")
 	case "open":
 		if _, _, split := m.paneWidths(); !split && !a.details {
 			a.details = true
@@ -375,6 +377,32 @@ func (m *Model) handleActivityKey(msg tea.KeyPressMsg) tea.Cmd {
 		m.renderActivityDetail(false)
 	}
 	return nil
+}
+
+// cycleActivityPane moves focus to the next or, with back, previous of the
+// views panel, the list and the event reader.
+func (m *Model) cycleActivityPane(back bool) {
+	a := m.activity
+	first, i := 1, 1
+	if m.showNav() {
+		first = 0
+	}
+	switch {
+	case m.focusNav:
+		i = 0
+	case a.details:
+		i = 2
+	}
+	dir := 1
+	if back {
+		dir = -1
+	}
+	n := 3 - first
+	i = first + (i-first+dir+n)%n
+	m.focusNav, a.details = false, i == 2
+	if i == 0 {
+		m.focusNavPanel()
+	}
 }
 
 func (m *Model) updateActivitySearch(msg tea.Msg) tea.Cmd {
@@ -576,7 +604,7 @@ func (m *Model) activityHelp() string {
 		{"activity", "automated", "include / hide automated reminders"},
 		{"main", "down", "move down; scroll event reader"},
 		{"main", "up", "move up; scroll event reader"},
-		{"main", "next_pane", "focus event reader / list"},
+		{"main", "next_pane", "next pane: views, list, event reader"},
 		{"main", "open", "open ticket; narrow list first shows event"},
 		{"main", "focus_list", "event list; from opened ticket, Activity"},
 		{"main", "toggle_reader", "show / hide preview"},
