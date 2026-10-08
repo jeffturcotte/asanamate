@@ -72,6 +72,25 @@ func TestActivityTabCyclesViewsListAndReader(t *testing.T) {
 	}
 }
 
+func TestActivityDimsTaskOnlyViews(t *testing.T) {
+	m := activityModel(t, 160)
+	projects := 0
+	for _, it := range m.navItems() {
+		if it.project != nil {
+			projects++
+		}
+		if (it.project != nil || it.savedView != "") && !it.dim {
+			t.Fatalf("%q must be dim in Activity", it.label)
+		}
+		if (it.activity || it.activityMode != "") && it.dim {
+			t.Fatalf("%q must not be dim in Activity", it.label)
+		}
+	}
+	if projects == 0 {
+		t.Fatal("views panel lists no projects")
+	}
+}
+
 func TestActivitySearchDoesNotChangeSavedTicketFilter(t *testing.T) {
 	m := activityModel(t, 160)
 	before := m.filterInput.Value()
