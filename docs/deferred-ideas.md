@@ -150,6 +150,25 @@ panel's width itself to avoid calling `showNav`, which depends on it; a new
 setting must change both. Focus must leave the panel when it hides, as
 `layout()` already does on resize.
 
+## Recheck the reactions write
+
+**Now:** `asana.Client.SetReaction` reacts to a comment with
+`PUT /stories/{gid}` and `{"reactions": [{"emoji": ..., "reacted": ...}]}`.
+Asana's OpenAPI spec does not list this field: as of 2026-10-08, `StoryRequest`
+accepts only `text`, `html_text`, `is_pinned`, and `sticker_name`. It was found
+by testing, after Asana's forum post "[Upcoming] Adding emoji reactions to the
+API" described an experimental rollout. Asana ignores unknown fields with a
+200, so `writeback.Service.React` reads the comment back and returns
+`ErrReactionIgnored` when nothing changed.
+
+**Idea:** Check the Asana API reference and changelog for a documented
+reactions write (a field on story update or a `/reactions` endpoint). If one
+exists, switch `SetReaction` to it. If reactions now fail with
+`ErrReactionIgnored`, find the new request shape or remove the feature.
+
+**Watch out for:** The `reaction_summary` reads in `Client.Comments` and
+`Client.Story` may change with it.
+
 ## Known issues found during the review
 
 These were already broken before the cleanup:
