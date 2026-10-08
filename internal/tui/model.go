@@ -97,6 +97,7 @@ type Model struct {
 	now             func() time.Time // today, for due dates
 	loading         bool             // tasks are loading; the stale view stays frozen under a modal
 	background      bool             // the timer started the loading reload, so it shows no modal
+	waiting         string           // loading modal text while a picker's or form's choices load
 	refreshInterval time.Duration    // auto-update interval, from saved settings or config
 	refreshSeq      uint64           // invalidates timers from earlier session intervals
 
@@ -256,7 +257,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case projectFieldsMsg:
 		return m, m.gotProjectFields(msg)
 	case candidatesMsg:
-		m.openRepoPicker(msg)
+		if m.waiting != "" {
+			m.waiting = ""
+			m.openRepoPicker(msg)
+		}
 	case actionDoneMsg:
 		status := actionStatus(msg)
 		if msg.err != nil {
@@ -507,6 +511,15 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		return nil
 	}
+	if m.waiting != "" {
+		switch {
+		case keys.Name("main", k) == "quit":
+			return tea.Quit
+		case keys.Name("picker", k) == "cancel":
+			m.waiting, m.run, m.timeEntry = "", nil, nil
+		}
+		return nil
+	}
 	if m.builder != nil {
 		return m.updateActionBuilder(msg)
 	}
@@ -690,7 +703,14 @@ func (m *Model) refreshViewing(tasks ...asana.Task) bool {
 }
 
 // animating reports whether anything shown uses the spinner.
-func (m *Model) animating() bool { return m.loading || m.anyWorking() }
+func (m *Model) animating() bool { return m.loading || m.waiting != "" || m.anyWorking() }
+
+// wait shows text in a loading modal until the reply to cmd clears it;
+// cancel closes the modal and drops the reply.
+func (m *Model) wait(text string, cmd tea.Cmd) tea.Cmd {
+	m.waiting = text
+	return tea.Batch(cmd, m.startSpinner())
+}
 
 // startSpinner schedules a spinner tick unless one is scheduled or nothing animates.
 func (m *Model) startSpinner() tea.Cmd {
@@ -950,8 +970,8 @@ func (m *Model) body() string {
 			content = m.helpView()
 		}
 		style = style.Padding(0, 2)
-	case m.loading && m.tasks != nil && !m.background:
-		content = "Loading tasks…"
+	case m.waiting != "" || (m.loading && m.tasks != nil && !m.background):
+		content = cmp.Or(m.waiting, "Loading tasks…")
 		if m.sym.spinner != nil {
 			content = m.sym.spinner[m.frame%len(m.sym.spinner)] + " " + content
 		}

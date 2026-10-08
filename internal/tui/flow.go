@@ -260,7 +260,7 @@ func (m *Model) runRepo(r *pendingRun) (tea.Cmd, bool) {
 	if r.project != nil {
 		projectGID = r.project.GID
 	}
-	return loadCandidates(m.deps.Config.RepoSource, nil, m.projectLinks(), projectGID), true
+	return m.wait("Loading repos…", loadCandidates(m.deps.Config.RepoSource, nil, m.projectLinks(), projectGID)), true
 }
 
 // isRepoRoot reports whether a saved link still names a repo. Links are saved
