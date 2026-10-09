@@ -302,7 +302,7 @@ light = "light"
 # new = { fg = "15", bg = "4", bold = true }
 # +N more badge on Activity events in a row on one ticket.
 # more = { fg = "0", bg = "6", bold = true }
-# Comment authors cycle through these.
+# Comment authors, their dots and gutters, cycle through these.
 # authors = ["4", "5", "6", "2", "3", "1"]
 
 [colors.mode]

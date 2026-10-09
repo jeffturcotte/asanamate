@@ -233,7 +233,7 @@ func (m *Model) progress(done, total int) string {
 }
 
 // comment renders one comment of the timeline: a colored dot, the author, and
-// the day, over the body behind a faint gutter.
+// the day, over the body behind a gutter in the author's color.
 func (m *Model) comment(c asana.Story, width int, selected bool) string {
 	author := ticket.Author(c)
 	day, err := time.Parse(time.DateOnly, ticket.Day(c.CreatedAt))
@@ -246,7 +246,7 @@ func (m *Model) comment(c asana.Story, width int, selected bool) string {
 		head = m.fieldStyle().Render(ansi.Strip(head))
 	}
 	body := m.renderRich(c.HTMLText, width-2)
-	gutterStyle := lipgloss.NewStyle().Foreground(borderColor)
+	gutterStyle := authorStyle(author)
 	if selected {
 		gutterStyle = m.markerStyle
 	}

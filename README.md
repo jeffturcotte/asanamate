@@ -710,7 +710,7 @@ purples and pinks in `viewing`, and cool gray in `muted`.
 | `reacted` | comment reactions you made, drawn as pills |
 | `new` | `NEW` badge on My Tasks tickets changed since you last viewed them |
 | `more` | `+N more` badge on Activity events in a row on one ticket |
-| `authors` | comment author names, cycled |
+| `authors` | comment authors' dots and gutters and `initials` badges, cycled |
 | `mode.normal`, `mode.filter`, `mode.read`, `mode.edit` | statusline mode pills |
 | `markdown.text`, `.heading`, `.h1`, `.link`, `.code`, `.code_block`, `.quote`, `.rule` | reading pane Markdown, on top of glamour's dark or light style |
 
