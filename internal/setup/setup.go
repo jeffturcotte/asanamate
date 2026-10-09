@@ -378,6 +378,12 @@ inline = false
 # for browse mode (j/k to move); a second esc closes the picker.
 type_first = false
 
+[activity]
+# Scan Activity (I) in the background at this interval (at least 1s), so it
+# opens ready and the views panel counts new related events. "0" turns
+# background scans off; Activity then scans when you open it.
+refresh_interval = "2m"
+
 # Optional: show running coding agents next to their tickets. Off unless
 # command is set. A ticket matches agents on its branch (see branch_field) in
 # one of its linked repos. See the README for agent actions.

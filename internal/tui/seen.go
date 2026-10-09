@@ -48,8 +48,13 @@ func (m *Model) newBadge(i int) string {
 	if !m.changed[t.GID] || t.GID == m.shownGID {
 		return ""
 	}
+	return newPill(i == m.cursor)
+}
+
+// newPill is the NEW badge, reversed on a selected row.
+func newPill(selected bool) string {
 	style := newStyle
-	if i == m.cursor {
+	if selected {
 		style = style.Reverse(!style.GetReverse())
 	}
 	return style.Render(" NEW ")

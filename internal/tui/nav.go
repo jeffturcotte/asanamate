@@ -69,7 +69,11 @@ func (m *Model) navItems() []navItem {
 	if m.viewProject == nil && !m.activityOpen {
 		items[0].right = count
 	}
-	items = append(items, navItem{label: "Activity", right: keyLabel("main", "activity"), activity: true, active: m.activityOpen})
+	activityItem := navItem{label: "Activity", activity: true, active: m.activityOpen}
+	if n := m.activity.newActivity(); n > 0 && !m.activityOpen {
+		activityItem.right = fmt.Sprint(n)
+	}
+	items = append(items, activityItem)
 	named := m.recentSavedViewNames()
 	if len(named) > 0 {
 		items = append(items, navItem{label: "Saved views", right: "V", heading: true, dim: m.activityOpen})
@@ -116,10 +120,10 @@ func (m *Model) navItems() []navItem {
 		items = appendMore(items, hidden)
 	}
 
-	if m.activityOpen && m.activity != nil {
+	if m.activityOpen {
 		items = append(items, navItem{label: "Activity filter", right: keyLabel("activity", "next_mode", "prev_mode"), heading: true})
 		for _, mode := range activityModes {
-			items = append(items, navItem{label: mode, right: fmt.Sprint(m.activity.count(mode)), activityMode: mode, active: mode == m.activity.mode})
+			items = append(items, navItem{label: mode, right: fmt.Sprint(m.activityCount(mode)), activityMode: mode, active: mode == m.activity.mode})
 		}
 		return items
 	}

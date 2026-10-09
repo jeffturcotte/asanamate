@@ -100,11 +100,11 @@ func TestFetchKeepsPartialResultsAndSorts(t *testing.T) {
 	c.BaseURL = srv.URL
 	var snaps []Report
 	r, err := Fetch(context.Background(), c, "w", since, until, func(r Report) { snaps = append(snaps, r) })
-	if err != nil || r.Total != 3 || r.Scanned != 2 || len(r.Entries) != 2 || r.Entries[0].Story.GID != "related" || !strings.Contains(r.Warning, "1 ticket feeds failed") {
+	if err != nil || r.Total != 3 || r.Scanned != 2 || len(r.Entries) != 2 || r.Entries[0].Story.GID != "related" || !strings.Contains(r.Warning, "1 ticket feeds failed") || r.User != "me" || !r.Complete {
 		t.Fatalf("report = %+v, err = %v", r, err)
 	}
 	// One snapshot for the search page, then one per ticket feed.
-	if len(snaps) != 4 || snaps[0].Total != 3 || snaps[0].Scanned != 0 || len(snaps[3].Entries) != 2 || snaps[3].Entries[0].Story.GID != "related" {
+	if len(snaps) != 4 || snaps[0].Total != 3 || snaps[0].Scanned != 0 || len(snaps[3].Entries) != 2 || snaps[3].Entries[0].Story.GID != "related" || snaps[3].Complete {
 		t.Fatalf("snapshots = %+v", snaps)
 	}
 }

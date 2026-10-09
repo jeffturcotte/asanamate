@@ -10,6 +10,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/sadmachine/asanamate/internal/form"
 )
@@ -223,6 +224,29 @@ func TestListConfig(t *testing.T) {
 		if _, err := Load(writeFile(t, "workspace = \"1\"\n"+body)); err == nil {
 			t.Errorf("%s: expected an error", name)
 		}
+	}
+}
+
+func TestActivityRefreshIntervalConfig(t *testing.T) {
+	cfg, err := Load(writeFile(t, "workspace = \"1\"\n"))
+	if d, _ := cfg.Activity.Interval(); err != nil || cfg.Activity.RefreshInterval != "2m" || d != 2*time.Minute {
+		t.Fatalf("default interval = %q, err = %v", cfg.Activity.RefreshInterval, err)
+	}
+	for value, want := range map[string]time.Duration{"0": 0, "0s": 0, "1s": time.Second, "5m": 5 * time.Minute} {
+		t.Run(value, func(t *testing.T) {
+			cfg, err := Load(writeFile(t, "workspace = \"1\"\n[activity]\nrefresh_interval = \""+value+"\"\n"))
+			if d, _ := cfg.Activity.Interval(); err != nil || d != want {
+				t.Fatalf("interval = %v, err = %v", d, err)
+			}
+		})
+	}
+	for _, value := range []string{"", "2", "-1s", "500ms"} {
+		t.Run("invalid "+value, func(t *testing.T) {
+			_, err := Load(writeFile(t, "workspace = \"1\"\n[activity]\nrefresh_interval = \""+value+"\"\n"))
+			if err == nil || !strings.Contains(err.Error(), "activity.refresh_interval") {
+				t.Fatalf("want dotted config key in error, got %v", err)
+			}
+		})
 	}
 }
 

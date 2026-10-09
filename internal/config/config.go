@@ -76,6 +76,7 @@ type Config struct {
 	Reader       Reader       `toml:"reader"`
 	Images       Images       `toml:"images"`
 	Picker       Picker       `toml:"picker"`
+	Activity     Activity     `toml:"activity"`
 	// Keys overrides key bindings: scope, then binding name, then keys. See
 	// internal/keymap for the scopes and names, including Activity controls.
 	Keys map[string]map[string][]string `toml:"keys"`
@@ -220,6 +221,25 @@ type Picker struct {
 	TypeFirst bool `toml:"type_first"`
 }
 
+// Activity configures the Activity view. RefreshInterval is how often
+// Activity scans run in the background: a duration of at least one second,
+// or "0" for no background scans.
+type Activity struct {
+	RefreshInterval string `toml:"refresh_interval"`
+}
+
+// Interval is the background scan interval; 0 turns background scans off.
+func (a Activity) Interval() (time.Duration, error) {
+	if d, err := time.ParseDuration(a.RefreshInterval); err == nil && d == 0 {
+		return 0, nil
+	}
+	d, err := ParseRefreshInterval(a.RefreshInterval)
+	if err != nil {
+		return 0, errors.New("must be 0 (off) or a duration of at least 1s, such as 2m")
+	}
+	return d, nil
+}
+
 // RepoSource configures where repo picker candidates come from.
 type RepoSource struct {
 	// Root is a directory whose direct children with a .git entry are listed,
@@ -264,9 +284,10 @@ func Default() Config {
 			Layout:          LayoutSingle, Fields: []string{"section", "due"},
 			Header: Header{Style: StyleRule}, Selection: Selection{Style: StyleMarker},
 		},
-		Reader: Reader{View: ViewCards},
-		Images: Images{Mode: "auto"},
-		Keymap: keymap.Default(),
+		Reader:   Reader{View: ViewCards},
+		Images:   Images{Mode: "auto"},
+		Activity: Activity{RefreshInterval: "2m"},
+		Keymap:   keymap.Default(),
 	}
 }
 
@@ -403,6 +424,9 @@ func (c Config) validate() error {
 	if _, err := ParseRefreshInterval(c.List.RefreshInterval); err != nil {
 		return fmt.Errorf("list.refresh_interval: %w", err)
 	}
+	if _, err := c.Activity.Interval(); err != nil {
+		return fmt.Errorf("activity.refresh_interval: %w", err)
+	}
 	for _, f := range c.List.Fields {
 		switch name := strings.TrimSpace(f); {
 		case name == "":
@@ -514,6 +538,9 @@ func ActionsDir(configPath string) string {
 
 // StateDir returns the directory for files asanamate writes itself.
 func StateDir() (string, error) { return xdgDir("XDG_STATE_HOME", filepath.Join(".local", "state")) }
+
+// CacheDir returns the directory for data asanamate can fetch again.
+func CacheDir() (string, error) { return xdgDir("XDG_CACHE_HOME", ".cache") }
 
 func xdgDir(envKey, homeFallback string) (string, error) {
 	base := os.Getenv(envKey)

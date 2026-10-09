@@ -43,8 +43,7 @@ func (m *Model) autoRefresh(msg refreshTickMsg) tea.Cmd {
 		return nil
 	}
 	next := m.scheduleRefresh()
-	// Workspace activity scans are explicit; ticket auto-update must not
-	// repeatedly scan every task while the Activity view is open.
+	// Activity has its own background timer; tickets pause while it is open.
 	if m.activityOpen {
 		return next
 	}
