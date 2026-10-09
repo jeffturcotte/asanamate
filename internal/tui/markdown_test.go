@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -16,10 +18,31 @@ import (
 
 func TestMarkdownCodeBlocks(t *testing.T) {
 	for _, theme := range []string{"dark", "light", "one-dark", "one-light"} {
+		cfg := config.Config{Theme: config.Theme{Name: theme}}
+		if theme != "dark" && theme != "light" {
+			path := filepath.Join(t.TempDir(), "config.toml")
+			if err := os.Mkdir(config.ThemesDir(path), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			data, err := os.ReadFile(filepath.Join("..", "..", "themes", theme+".toml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(config.ThemesDir(path), theme+".toml"), data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte("workspace = \"1\"\n[theme]\nname = \""+theme+"\"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err = config.Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
 		for _, bare := range []bool{true, false} {
 			for _, width := range []int{20, 40, 80} {
 				t.Run(fmt.Sprintf("%s/bare=%v/width=%d", theme, bare, width), func(t *testing.T) {
-					m, _ := testModel(t, config.Config{Theme: config.Theme{Name: theme}})
+					m, _ := testModel(t, cfg)
 					code := "    " + strings.Repeat("word ", 22) + strings.Repeat("界", 8)
 					for _, wrapper := range []string{"```php\n%s\n```", "```\n%s\n```", "> ```php\n> %s\n> ```", "- item\n\n  ```php\n  %s\n  ```", "    %s"} {
 						out := m.glamour(fmt.Sprintf(wrapper, code), width, bare)

@@ -34,7 +34,7 @@ func TestBuiltinThemesLoad(t *testing.T) {
 	}
 }
 
-func TestStandardThemesLoadWithoutFiles(t *testing.T) {
+func TestStandardThemesLoadFromFiles(t *testing.T) {
 	for _, tc := range []struct{ name, base, accent string }{
 		{"one-dark", "dark", "#61afef"},
 		{"one-light", "light", "#4078f2"},
@@ -54,12 +54,13 @@ func TestStandardThemesLoadWithoutFiles(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeFile(t, "workspace = \"1\"\n[theme]\nname = \""+tc.name+"\"\n")
+			installThemeFixture(t, path, tc.name)
 			cfg, err := Load(path)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if cfg.Themes != nil {
-				t.Fatal("built-ins must not need local theme files")
+			if _, ok := cfg.Themes[tc.name]; !ok {
+				t.Fatal("standard themes must load from local files")
 			}
 			for _, darkBackground := range []bool{false, true} {
 				p := cfg.Palette(darkBackground)
@@ -104,6 +105,8 @@ func TestStandardThemesLoadWithoutFiles(t *testing.T) {
 
 func TestStandardThemesAutoAndOverrides(t *testing.T) {
 	path := writeFile(t, "workspace = \"1\"\n[theme]\nname = \"auto\"\ndark = \"one-dark\"\nlight = \"one-light\"\n[colors]\npinned = \"#123456\"\n")
+	installThemeFixture(t, path, "one-dark")
+	installThemeFixture(t, path, "one-light")
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
@@ -125,8 +128,9 @@ func TestStandardThemesAutoAndOverrides(t *testing.T) {
 	}
 }
 
-func TestCustomThemeTakesPrecedenceOverStandard(t *testing.T) {
+func TestStandardThemeEditsTakeEffect(t *testing.T) {
 	path := writeFile(t, "workspace = \"1\"\n[theme]\nname = \"tokyo-night\"\n")
+	installThemeFixture(t, path, "tokyo-night")
 	writeTheme(t, path, "tokyo-night", "base = \"light\"\n[colors]\naccent = \"#123456\"\n")
 	cfg, err := Load(path)
 	if err != nil {
@@ -137,8 +141,27 @@ func TestCustomThemeTakesPrecedenceOverStandard(t *testing.T) {
 	}
 	writeTheme(t, path, "tokyo-night", "base = \"invalid\"\n")
 	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "base must be") {
-		t.Fatalf("invalid custom theme must not silently use the preset: %v", err)
+		t.Fatalf("invalid theme must not silently use a fallback: %v", err)
 	}
+}
+
+func TestStandardThemeRequiresLocalFile(t *testing.T) {
+	path := writeFile(t, "workspace = \"1\"\n[theme]\nname = \"one-dark\"\n")
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), `theme.name: no theme "one-dark"`) {
+		t.Fatalf("standard themes must not be embedded: %v", err)
+	}
+	if len(builtinThemes) != 2 {
+		t.Fatalf("only dark and light should be built in: %d themes", len(builtinThemes))
+	}
+}
+
+func installThemeFixture(t *testing.T, path, name string) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("..", "..", "themes", name+".toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTheme(t, path, name, string(data))
 }
 
 func TestPaletteLayersAndFallbacks(t *testing.T) {
