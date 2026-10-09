@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -16,7 +17,7 @@ import (
 // ThemeAuto picks Theme.Dark or Theme.Light from the terminal background.
 const ThemeAuto = "auto"
 
-// Theme selects the color theme: a built-in ("dark", "light"), a file in
+// Theme selects the color theme: an embedded built-in, a file in
 // ThemesDir, or ThemeAuto. Dark and Light are the themes ThemeAuto uses.
 type Theme struct {
 	Name  string `toml:"name"`
@@ -68,8 +69,8 @@ type MarkdownColors struct {
 	Rule      Style `toml:"rule"`
 }
 
-// ThemeFile is a theme: the built-in it starts from and its colors. Built-in
-// themes have no Base in their file; their name is their base.
+// ThemeFile is a theme: the dark or light base it starts from and its colors.
+// Only the root dark and light themes omit Base; their name is their base.
 type ThemeFile struct {
 	Base   string `toml:"base"`
 	Colors Colors `toml:"colors"`
@@ -93,8 +94,13 @@ var themeName = regexp.MustCompile(`^[a-z0-9_-]+$`)
 
 func mustBuiltinThemes() map[string]ThemeFile {
 	themes := map[string]ThemeFile{}
-	for _, name := range []string{"dark", "light"} {
-		path := "themes/" + name + ".toml"
+	entries, err := builtinThemeFiles.ReadDir("themes")
+	if err != nil {
+		panic(err)
+	}
+	for _, entry := range entries {
+		name := strings.TrimSuffix(entry.Name(), ".toml")
+		path := "themes/" + entry.Name()
 		data, err := builtinThemeFiles.ReadFile(path)
 		if err != nil {
 			panic(err)
@@ -103,8 +109,18 @@ func mustBuiltinThemes() map[string]ThemeFile {
 		if err != nil {
 			panic(err)
 		}
-		t.Base = name
+		if name == "dark" || name == "light" {
+			t.Base = name
+		} else if err := oneOf("base", t.Base, "dark", "light"); err != nil {
+			panic(fmt.Errorf("%s: %w", path, err))
+		}
 		themes[name] = t
+	}
+	for name, t := range themes {
+		if name != "dark" && name != "light" {
+			t.Colors = t.Colors.Over(themes[t.Base].Colors)
+			themes[name] = t
+		}
 	}
 	return themes
 }
@@ -131,7 +147,8 @@ func ThemesDir(configPath string) string {
 }
 
 // loadThemes reads every theme file t names from dir, layered over its base.
-// It also refuses files that would shadow a built-in theme.
+// It refuses files shadowing dark, light, or auto. Other built-ins are
+// fallbacks, so existing custom files keep their names and colors.
 func loadThemes(dir string, t Theme) (map[string]ThemeFile, error) {
 	for _, reserved := range []string{"dark", "light", ThemeAuto} {
 		path := filepath.Join(dir, reserved+".toml")
@@ -142,8 +159,8 @@ func loadThemes(dir string, t Theme) (map[string]ThemeFile, error) {
 	// nil when only built-ins are used, so Load's result equals Default's.
 	var themes map[string]ThemeFile
 	for _, ref := range []struct{ key, name string }{{"theme.name", t.Name}, {"theme.dark", t.Dark}, {"theme.light", t.Light}} {
-		switch _, builtin := builtinThemes[ref.name]; {
-		case builtin, ref.name == ThemeAuto && ref.key == "theme.name":
+		switch {
+		case ref.name == "dark", ref.name == "light", ref.name == ThemeAuto && ref.key == "theme.name":
 			continue
 		case ref.name == ThemeAuto:
 			return nil, fmt.Errorf("%s can't be %q", ref.key, ThemeAuto)
@@ -156,6 +173,9 @@ func loadThemes(dir string, t Theme) (map[string]ThemeFile, error) {
 		path := filepath.Join(dir, ref.name+".toml")
 		data, err := os.ReadFile(path)
 		if errors.Is(err, os.ErrNotExist) {
+			if _, builtin := builtinThemes[ref.name]; builtin {
+				continue
+			}
 			return nil, fmt.Errorf("%s: no theme %q in %s", ref.key, ref.name, dir)
 		}
 		if err != nil {

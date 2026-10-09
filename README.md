@@ -516,7 +516,7 @@ once. Run `asanamate doctor` to check a change without starting the TUI.
 | Key | Default | Meaning |
 |---|---|---|
 | `workspace` | set by setup | Asana workspace gid |
-| `theme.name` | `"auto"` | color theme: `auto` (follow the terminal background), `dark`, `light`, or a file in `themes/`; see [Themes](#themes) |
+| `theme.name` | `"auto"` | color theme: `auto` (follow the terminal background), a built-in preset, or a file in `themes/`; see [Themes](#themes) |
 | `theme.dark` / `theme.light` | `"dark"` / `"light"` | themes `auto` uses on dark and light backgrounds |
 | `colors.*` | the theme's | per-role overrides on top of the theme: a color (`0`–`255`, `#rgb`, or `#rrggbb`) or a style table `{ fg, bg, bold, italic, underline, faint, reverse }`; see [Themes](#themes) |
 | `default_filter` | `"is:open"` | filter applied at startup |
@@ -613,13 +613,44 @@ command = "sesh list -z"
 
 ### Themes
 
-`[theme] name` picks a built-in theme (`dark`, `light`), a theme file, or
+`[theme] name` picks a built-in theme, a theme file, or
 `auto`, which asks the terminal for its background color and uses
-`theme.dark` or `theme.light`. Built-in themes use ANSI color numbers, so they
-follow your terminal's color scheme.
+`theme.dark` or `theme.light`. The defaults `dark` and `light` use ANSI color
+numbers, so they follow your terminal's color scheme. These 15 additional
+presets ship inside the binary and use fixed hex palettes:
+
+| Dark presets | Light presets |
+|---|---|
+| `one-dark` | `one-light` |
+| `monokai` | `tokyo-day` |
+| `tokyo-night` | `gruvbox-light` |
+| `sonokai` | `catppuccin-latte` |
+| `dracula` | `solarized-light` |
+| `nord` | |
+| `gruvbox-dark` | |
+| `catppuccin-mocha` | |
+| `solarized-dark` | |
+| `rose-pine` | |
+
+For a fixed preset, set `name = "tokyo-night"` in `[theme]`. To switch with
+the terminal background:
+
+```toml
+[theme]
+name = "auto"
+dark = "one-dark"
+light = "one-light"
+```
+
+Presets adapt their palettes to the UI roles and reading pane Markdown.
+They do not change your terminal's background; use a matching terminal
+theme for the closest appearance. Palette references live in each bundled
+theme file under `internal/config/themes/`.
 
 A theme file is `themes/<name>.toml` next to `config.toml`; the names `dark`,
-`light`, and `auto` are reserved. Setup and `asanamate config update` write
+`light`, and `auto` are reserved. A custom file with another built-in name
+takes precedence, so existing custom themes keep their colors. Setup and
+`asanamate config update` write
 `themes/example.toml.example` to start from:
 
 ```toml

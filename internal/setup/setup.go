@@ -219,8 +219,8 @@ Defaults:
     Set [repo_source] command to use sesh, zoxide, or anything else.
   - Writes to Asana ask for confirmation (confirm_writes = true).
   - Actions: one file each in %s. Rename the .example file to enable it.
-  - Themes: "auto" follows the terminal background. Copy the example in
-    themes/ to make your own.
+  - Themes: "auto" follows the terminal background. Choose a built-in preset
+    (see README), or copy the example in themes/ to make your own.
   - Agent status and time tracking are off. See the Agents and Time tracking
     sections of the README to turn them on.
   - Repo links and recent projects are stored in %s.
@@ -254,7 +254,10 @@ branch_field = ""
 # reduced_motion = true
 
 [theme]
-# "auto", "dark", "light", or the name of a file in themes/ (without .toml).
+# "auto", a built-in theme, or the name of a file in themes/ (without .toml).
+# Built-ins: dark, light, one-dark, one-light, monokai, tokyo-night, tokyo-day,
+# sonokai, dracula, nord, gruvbox-dark, gruvbox-light, catppuccin-mocha,
+# catppuccin-latte, solarized-dark, solarized-light, rose-pine.
 # Copy themes/example.toml.example to start your own.
 name = "auto"
 # Themes "auto" uses on dark and light terminal backgrounds.

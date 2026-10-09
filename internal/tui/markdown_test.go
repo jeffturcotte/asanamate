@@ -15,7 +15,7 @@ import (
 )
 
 func TestMarkdownCodeBlocks(t *testing.T) {
-	for _, theme := range []string{"dark", "light"} {
+	for _, theme := range []string{"dark", "light", "one-dark", "one-light"} {
 		for _, bare := range []bool{true, false} {
 			for _, width := range []int{20, 40, 80} {
 				t.Run(fmt.Sprintf("%s/bare=%v/width=%d", theme, bare, width), func(t *testing.T) {
@@ -39,7 +39,7 @@ func TestMarkdownCodeBlocks(t *testing.T) {
 								if !strings.Contains(ansi.Strip(row), "    word") {
 									t.Fatalf("lost code indent: %q", ansi.Strip(row))
 								}
-								if !strings.Contains(row, ";48;5;") {
+								if !strings.Contains(row, ";48;5;") && !strings.Contains(row, ";48;2;") {
 									t.Fatalf("missing code background: %q", row)
 								}
 							}

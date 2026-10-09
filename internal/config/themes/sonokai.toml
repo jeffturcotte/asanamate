@@ -1,0 +1,35 @@
+# Sonokai palette adapted to asanamate's themed roles.
+# Palette reference: https://github.com/sainnhe/sonokai
+base = "dark"
+
+[colors]
+accent = { fg = "#76cce0", bold = true }
+border = "#595f6f"
+muted = { fg = "#7f8490", faint = false }
+highlight = { fg = "#e2e2e3", bg = "#414550", reverse = false }
+ok = "#9ed072"
+warn = "#e7c664"
+error = "#fc5d7c"
+working = "#85d3f2"
+pinned = { fg = "#f39660", bold = true }
+viewing = { fg = "#b39df3", bold = true }
+reacted = { fg = "#e2e2e3", bg = "#414550" }
+new = { fg = "#2c2e34", bg = "#fc5d7c", bold = true }
+more = { fg = "#2c2e34", bg = "#85d3f2", bold = true }
+authors = ["#76cce0", "#b39df3", "#85d3f2", "#9ed072", "#e7c664", "#fc5d7c"]
+
+[colors.mode]
+normal = { fg = "#2c2e34", bg = "#76cce0", bold = true }
+filter = { fg = "#2c2e34", bg = "#e7c664", bold = true }
+read = { fg = "#2c2e34", bg = "#85d3f2", bold = true }
+edit = { fg = "#2c2e34", bg = "#b39df3", bold = true }
+
+[colors.markdown]
+text = "#e2e2e3"
+heading = { fg = "#76cce0", bold = true }
+h1 = { fg = "#2c2e34", bg = "#76cce0", bold = true }
+link = { fg = "#85d3f2", underline = true }
+code = { fg = "#9ed072", bg = "#33353f" }
+code_block = { fg = "#e2e2e3", bg = "#33353f" }
+quote = { fg = "#7f8490", italic = true }
+rule = "#595f6f"

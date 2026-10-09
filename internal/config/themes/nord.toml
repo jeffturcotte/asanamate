@@ -1,0 +1,35 @@
+# Nord palette adapted to asanamate's themed roles.
+# Palette reference: https://www.nordtheme.com/docs/colors-and-palettes
+base = "dark"
+
+[colors]
+accent = { fg = "#88c0d0", bold = true }
+border = "#4c566a"
+muted = { fg = "#9099aa", faint = false }
+highlight = { fg = "#d8dee9", bg = "#434c5e", reverse = false }
+ok = "#a3be8c"
+warn = "#ebcb8b"
+error = "#bf616a"
+working = "#8fbcbb"
+pinned = { fg = "#d08770", bold = true }
+viewing = { fg = "#b48ead", bold = true }
+reacted = { fg = "#d8dee9", bg = "#434c5e" }
+new = { fg = "#2e3440", bg = "#bf616a", bold = true }
+more = { fg = "#2e3440", bg = "#8fbcbb", bold = true }
+authors = ["#88c0d0", "#b48ead", "#8fbcbb", "#a3be8c", "#ebcb8b", "#bf616a"]
+
+[colors.mode]
+normal = { fg = "#2e3440", bg = "#88c0d0", bold = true }
+filter = { fg = "#2e3440", bg = "#ebcb8b", bold = true }
+read = { fg = "#2e3440", bg = "#8fbcbb", bold = true }
+edit = { fg = "#2e3440", bg = "#b48ead", bold = true }
+
+[colors.markdown]
+text = "#d8dee9"
+heading = { fg = "#88c0d0", bold = true }
+h1 = { fg = "#2e3440", bg = "#88c0d0", bold = true }
+link = { fg = "#8fbcbb", underline = true }
+code = { fg = "#a3be8c", bg = "#3b4252" }
+code_block = { fg = "#d8dee9", bg = "#3b4252" }
+quote = { fg = "#9099aa", italic = true }
+rule = "#4c566a"

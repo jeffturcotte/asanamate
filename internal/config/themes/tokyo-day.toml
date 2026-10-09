@@ -1,0 +1,35 @@
+# Tokyo Day palette adapted to asanamate's themed roles.
+# Palette reference: https://github.com/folke/tokyonight.nvim
+base = "light"
+
+[colors]
+accent = { fg = "#2e7de9", bold = true }
+border = "#8990b3"
+muted = { fg = "#6172b0", faint = false }
+highlight = { fg = "#3760bf", bg = "#b6bfe2", reverse = false }
+ok = "#587539"
+warn = "#8c6c3e"
+error = "#f52a65"
+working = "#007197"
+pinned = { fg = "#b15c00", bold = true }
+viewing = { fg = "#9854f1", bold = true }
+reacted = { fg = "#3760bf", bg = "#b6bfe2" }
+new = { fg = "#e1e2e7", bg = "#f52a65", bold = true }
+more = { fg = "#e1e2e7", bg = "#007197", bold = true }
+authors = ["#2e7de9", "#9854f1", "#007197", "#587539", "#8c6c3e", "#f52a65"]
+
+[colors.mode]
+normal = { fg = "#e1e2e7", bg = "#2e7de9", bold = true }
+filter = { fg = "#e1e2e7", bg = "#8c6c3e", bold = true }
+read = { fg = "#e1e2e7", bg = "#007197", bold = true }
+edit = { fg = "#e1e2e7", bg = "#9854f1", bold = true }
+
+[colors.markdown]
+text = "#3760bf"
+heading = { fg = "#2e7de9", bold = true }
+h1 = { fg = "#e1e2e7", bg = "#2e7de9", bold = true }
+link = { fg = "#007197", underline = true }
+code = { fg = "#587539", bg = "#d0d5e3" }
+code_block = { fg = "#3760bf", bg = "#d0d5e3" }
+quote = { fg = "#6172b0", italic = true }
+rule = "#8990b3"
