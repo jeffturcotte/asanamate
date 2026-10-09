@@ -285,7 +285,7 @@ light = "light"
 # highlight = { reverse = true }
 # Status messages and due-date urgency (today: warn, overdue: error), also
 # on the Today and Overdue group headers.
-# Positive time logged today uses ok.
+# Positive time logged today uses ok; applied filter text uses warn.
 # ok = "2"
 # warn = "3"
 # error = "1"

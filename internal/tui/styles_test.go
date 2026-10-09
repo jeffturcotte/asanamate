@@ -114,4 +114,9 @@ func TestAdditionalColorsReachTicketSurfaces(t *testing.T) {
 	if !strings.Contains(ansi.Strip(body), "Client / QA") || !strings.Contains(body, branchStyle.Render("feature/color")) || !strings.Contains(body, markerStyle.Render(m.sym.icon(iconProjectColor))) {
 		t.Fatal("Details colors or section text lost")
 	}
+	m.filterInput.SetValue("is:open")
+	m.loading = false
+	if !strings.Contains(strings.Join(m.listSegs(), "|"), warnStyle.Render(m.sym.icon(iconFilter)+"is:open")) {
+		t.Fatal("applied filter not tinted")
+	}
 }
