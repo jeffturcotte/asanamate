@@ -74,6 +74,30 @@ func TestSharedFormEditsHoursAndCancelsPicker(t *testing.T) {
 	}
 }
 
+func TestSharedFormAppliesDefaultsAndTogglesBool(t *testing.T) {
+	spec := form.Spec{Fields: []form.Field{
+		{ID: "dry_run", Label: "Dry run", Type: form.Bool},
+		{ID: "note", Label: "Note", Type: form.String},
+		{ID: "count", Label: "Count", Type: form.Number},
+		{ID: "size", Label: "Size", Type: form.Number, Default: "3"},
+	}}
+	f := newFormModal("Run", spec, nil, func(map[string]string) tea.Cmd { return nil })
+	if f.cursor != 2 || f.values["dry_run"] != "false" || f.values["size"] != "3" {
+		t.Fatalf("cursor = %d, values = %v", f.cursor, f.values)
+	}
+	if f.spec.ValidateValues(f.values) == nil {
+		t.Fatal("accepted missing number")
+	}
+	f.update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	f.input.SetValue("-1.5")
+	f.update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	f.cursor = 0
+	f.update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if f.values["dry_run"] != "true" || f.values["count"] != "-1.5" || f.spec.ValidateValues(f.values) != nil {
+		t.Fatalf("form values = %v", f.values)
+	}
+}
+
 func builderPick(t *testing.T, m *Model, label string) {
 	t.Helper()
 	if m.builder == nil {
@@ -345,7 +369,7 @@ func TestActionBuilderHelpFollowsSelectionAndStaysWhileEditing(t *testing.T) {
 	m.Update(key("esc"))
 	builderPick(t, m, "Form fields")
 	builderPick(t, m, "Add field")
-	b.menu.cursor = 3 // Remember
+	b.menu.cursor = 4 // Remember
 	view = ansi.Strip(b.view(80, 16, m.accentStyle))
 	if !strings.Contains(view, "For select fields only") {
 		t.Fatal("nested field has no help")
@@ -419,7 +443,7 @@ func TestActionBuilderInfoIconFollowsSymbolSet(t *testing.T) {
 			}
 			m.Update(key("esc"))
 			builderPick(t, m, "Form fields")
-			if !strings.Contains(ansi.Strip(b.view(90, 16, m.accentStyle)), tc.icon+" Add a required") {
+			if !strings.Contains(ansi.Strip(b.view(90, 16, m.accentStyle)), tc.icon+" Add a prompt") {
 				t.Fatal("nested help used wrong info icon")
 			}
 		})

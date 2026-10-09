@@ -2,6 +2,22 @@ package form
 
 import "testing"
 
+func TestSpecValidatesScalarControls(t *testing.T) {
+	spec := Spec{Fields: []Field{
+		{ID: "dry_run", Label: "Dry run", Type: Bool, Default: "true"},
+		{ID: "count", Label: "Count", Type: Number, Default: "-2.5"},
+		{ID: "note", Label: "Note", Type: String, Default: "hi"},
+	}}
+	if err := spec.ValidateValues(map[string]string{"dry_run": "false", "count": "3", "note": ""}); err != nil {
+		t.Fatal(err)
+	}
+	for _, values := range []map[string]string{{"dry_run": "", "count": "3"}, {"dry_run": "true", "count": ""}, {"dry_run": "true", "count": "Inf"}} {
+		if err := spec.ValidateValues(values); err == nil {
+			t.Fatalf("accepted %v", values)
+		}
+	}
+}
+
 func TestSpecValidatesControlsAndValues(t *testing.T) {
 	spec := Spec{Fields: []Field{
 		{ID: "project_id", Label: "Project", Type: Select, Options: []Option{{ID: "123", Name: "Web"}}, Remember: true},
@@ -27,6 +43,10 @@ func TestSpecValidatesControlsAndValues(t *testing.T) {
 		{Fields: []Field{{ID: "x", Label: "X", Type: Hours}, {ID: "x", Label: "Again", Type: Hours}}},
 		{Fields: []Field{{ID: "x", Label: "X", Type: Select, Options: []Option{{ID: "1", Name: "One"}}, Default: "2"}}},
 		{Fields: []Field{{ID: "x", Label: "X", Type: Hours, Default: "1"}}},
+		{Fields: []Field{{ID: "x", Label: "X", Type: Bool, Default: "yes"}}},
+		{Fields: []Field{{ID: "x", Label: "X", Type: Number, Default: "two"}}},
+		{Fields: []Field{{ID: "x", Label: "X", Type: String, Remember: true}}},
+		{Fields: []Field{{ID: "x", Label: "X", Type: Bool, Options: []Option{{ID: "1", Name: "One"}}}}},
 	}
 	for _, candidate := range bad {
 		if err := candidate.Validate(); err == nil {

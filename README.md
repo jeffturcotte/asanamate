@@ -848,19 +848,49 @@ the command through `ASANAMATE_PARAM_<ID>`:
 # actions/deploy.toml
 name = "Deploy"
 key = "D"
-command = 'deploy --target "$ASANAMATE_PARAM_TARGET"'
+command = '''deploy --target "$ASANAMATE_PARAM_TARGET" --replicas "$ASANAMATE_PARAM_REPLICAS" \
+  --dry-run="$ASANAMATE_PARAM_DRY_RUN" --note "$ASANAMATE_PARAM_NOTE"'''
 [[form.fields]]
 id = "target"
 label = "Target"
 type = "select"
 remember = true
+default = "stage"
 [[form.fields.options]]
 id = "stage"
 name = "Staging"
 [[form.fields.options]]
 id = "prod"
 name = "Production"
+[[form.fields]]
+id = "replicas"
+label = "Replicas"
+type = "number"
+default = "2"
+[[form.fields]]
+id = "dry_run"
+label = "Dry run"
+type = "bool"
+default = "true"
+[[form.fields]]
+id = "note"
+label = "Note"
+type = "string"
 ```
+
+Each field has an `id`, a `label`, a `type`, and an optional `default`:
+
+| Type | Value passed to the command | `default` |
+|---|---|---|
+| `select` | the chosen option's `id`; needs `options` | an option `id` |
+| `bool` | `true` or `false`; enter toggles it | `"true"` or `"false"`; `"false"` when omitted |
+| `number` | any decimal, such as `-1` or `2.5` | a decimal |
+| `string` | any single-line text; may be empty | any text |
+| `hours` | positive decimal hours | not allowed |
+
+Write `default` as a TOML string, even for `bool` and `number`
+(`default = "true"`). Every field except `string` needs a value before the
+form submits. Only `select` takes `options` and `remember`.
 
 Remembered action choices use the chosen Asana project and action key. They
 are saved when the form is submitted. Existing `input` actions keep their text
