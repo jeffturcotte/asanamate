@@ -1,0 +1,36 @@
+# Sonokai Andromeda palette adapted to asanamate's themed roles.
+# Palette reference: https://github.com/sainnhe/sonokai/blob/b023c5280b16fe2366f5e779d8d2756b3e5ee9c3/autoload/sonokai.vim
+# Copyright (c) 2020 sainnhe. MIT license: LICENSE.sonokai.
+base = "dark"
+
+[colors]
+accent = { fg = "#6dcae8", bold = true }
+border = "#5a5e7a"
+muted = { fg = "#7e8294", faint = false }
+highlight = { fg = "#e1e3e4", bg = "#3f445b", reverse = false }
+ok = "#9ed06c"
+warn = "#edc763"
+error = "#fb617e"
+working = "#77d5f0"
+pinned = { fg = "#f89860", bold = true }
+viewing = { fg = "#bb97ee", bold = true }
+reacted = { fg = "#e1e3e4", bg = "#3f445b" }
+new = { fg = "#2b2d3a", bg = "#fb617e", bold = true }
+more = { fg = "#2b2d3a", bg = "#77d5f0", bold = true }
+authors = ["#6dcae8", "#bb97ee", "#77d5f0", "#9ed06c", "#edc763", "#fb617e"]
+
+[colors.mode]
+normal = { fg = "#2b2d3a", bg = "#6dcae8", bold = true }
+filter = { fg = "#2b2d3a", bg = "#edc763", bold = true }
+read = { fg = "#2b2d3a", bg = "#77d5f0", bold = true }
+edit = { fg = "#2b2d3a", bg = "#bb97ee", bold = true }
+
+[colors.markdown]
+text = "#e1e3e4"
+heading = { fg = "#6dcae8", bold = true }
+h1 = { fg = "#2b2d3a", bg = "#6dcae8", bold = true }
+link = { fg = "#77d5f0", underline = true }
+code = { fg = "#9ed06c", bg = "#333648" }
+code_block = { fg = "#e1e3e4", bg = "#333648" }
+quote = { fg = "#7e8294", italic = true }
+rule = "#5a5e7a"

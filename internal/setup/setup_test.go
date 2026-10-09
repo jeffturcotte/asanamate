@@ -427,9 +427,17 @@ func TestThemeInstallerKeepsEditsAndAddsMissingFiles(t *testing.T) {
 	install()
 	path := filepath.Join(root, "asanamate", "config.toml")
 	dir := config.ThemesDir(path)
+	sources, err := filepath.Glob(filepath.Join("..", "..", "themes", "*.toml"))
+	if err != nil || len(sources) == 0 {
+		t.Fatalf("source themes = %v, err = %v", sources, err)
+	}
 	files, err := filepath.Glob(filepath.Join(dir, "*.toml"))
-	if err != nil || len(files) != 15 {
-		t.Fatalf("installed files = %v, err = %v; want 15", files, err)
+	if err != nil || len(files) != len(sources) {
+		t.Fatalf("installed files = %v, err = %v; want %d", files, err, len(sources))
+	}
+	license, err := os.ReadFile(filepath.Join(dir, "LICENSE.sonokai"))
+	if err != nil || !strings.Contains(string(license), "Copyright (c) 2020 sainnhe") {
+		t.Fatalf("Sonokai license missing: %v", err)
 	}
 	for _, file := range files {
 		want, err := os.ReadFile(filepath.Join("..", "..", "themes", filepath.Base(file)))
