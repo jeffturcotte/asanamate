@@ -278,11 +278,13 @@ light = "light"
 # accent = { fg = "4", bold = true }
 # Unfocused panel and card borders.
 # border = "8"
-# Secondary text such as distant due dates.
+# Secondary text: distant due dates, list fields, and tickets in the Later
+# and No due date groups.
 # muted = { faint = true }
 # Bar selection and the views panel cursor.
 # highlight = { reverse = true }
-# Status messages and due-date urgency (today: warn, overdue: error).
+# Status messages and due-date urgency (today: warn, overdue: error), also
+# on the Today and Overdue group headers.
 # ok = "2"
 # warn = "3"
 # error = "1"

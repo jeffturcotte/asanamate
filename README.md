@@ -701,9 +701,9 @@ purples and pinks in `viewing`, and cool gray in `muted`.
 |---|---|
 | `accent` | reader headings, focused panel border, NORMAL and VIEWS pills |
 | `border` | unfocused panel and card borders |
-| `muted` | secondary text such as distant due dates |
+| `muted` | secondary text: distant due dates, list fields, and tickets in the Later and No due date groups |
 | `highlight` | bar selection and the views panel cursor |
-| `ok`, `warn`, `error` | status messages and due-date urgency |
+| `ok`, `warn`, `error` | status messages, due-date urgency, and the Today and Overdue group headers |
 | `working` | working coding agents |
 | `header`, `selection` | group headers, selection marker |
 | `pinned`, `viewing` | Pinned and Viewing section headers |
