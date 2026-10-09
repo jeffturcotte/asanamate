@@ -29,6 +29,73 @@ func activityModel(t *testing.T, width int) *Model {
 	return m
 }
 
+// activityRunModel opens Activity on three events in a row on openTask, one
+// on sideTask, then one more on openTask.
+func activityRunModel(t *testing.T) *Model {
+	t.Helper()
+	m := wideModel(t, 160)
+	m.openActivity()
+	var entries []activity.Entry
+	for i, task := range []asana.Task{openTask, openTask, openTask, sideTask, openTask} {
+		text := fmt.Sprintf("event %d", i+1)
+		if i == 0 || i == 4 {
+			text += " alpha"
+		}
+		entries = append(entries, activity.Entry{Task: task, Story: asana.Story{GID: fmt.Sprint("s", i+1), Text: text}, At: testToday.Add(-time.Duration(i) * time.Minute), Mine: true})
+	}
+	m.Update(activityMsg{seq: m.activity.seq, report: activity.Report{Entries: entries, Since: testToday.Add(-7 * 24 * time.Hour), Until: testToday}})
+	t.Cleanup(func() { m.closeActivity() })
+	return m
+}
+
+func TestActivityGroupsEventsInARowOnOneTicket(t *testing.T) {
+	m := activityRunModel(t)
+	a := m.activity
+	if len(a.rows) != 3 || a.rows[0].more != 2 || a.rows[2].more != 0 {
+		t.Fatalf("rows = %+v", a.rows)
+	}
+	list := ansi.Strip(m.activityList(60, 30))
+	if strings.Count(list, "+2 more") != 1 || strings.Count(list, openTask.Name) != 2 {
+		t.Fatalf("collapsed list:\n%s", list)
+	}
+	sendKeys(m, "space")
+	if len(a.rows) != 5 || !a.rows[1].child || !a.rows[2].last {
+		t.Fatalf("expanded rows = %+v", a.rows)
+	}
+	list = ansi.Strip(m.activityList(40, 30))
+	if strings.Contains(list, "more") || strings.Count(list, openTask.Name) != 2 || !strings.Contains(list, "└ event 3") {
+		t.Fatalf("expanded list:\n%s", list)
+	}
+	for _, line := range strings.Split(m.activityList(40, 30), "\n") {
+		if ansi.StringWidth(line) > 40 {
+			t.Fatalf("row wider than 40: %q", ansi.Strip(line))
+		}
+	}
+	sendKeys(m, "j")
+	if e, _ := a.selected(); e.Story.GID != "s2" {
+		t.Fatalf("selected %s, want the first earlier event", e.Story.GID)
+	}
+	// Hiding from an earlier event selects the run's row.
+	sendKeys(m, "space")
+	if e, _ := a.selected(); len(a.rows) != 3 || a.cursor != 0 || e.Story.GID != "s1" {
+		t.Fatalf("collapsed cursor %d on %s", a.cursor, e.Story.GID)
+	}
+	// The window keeps the cursor's row in view.
+	sendKeys(m, "G")
+	if list := ansi.Strip(m.activityList(60, 4)); !strings.Contains(list, "event 5") {
+		t.Fatalf("cursor row scrolled out:\n%s", list)
+	}
+}
+
+func TestActivityGroupsAfterSearch(t *testing.T) {
+	m := activityRunModel(t)
+	m.activity.query.SetValue("alpha")
+	m.filterActivity()
+	if rows := m.activity.rows; len(rows) != 1 || rows[0].more != 1 {
+		t.Fatalf("events in a row after search must group: %+v", rows)
+	}
+}
+
 func TestActivityFiltersAndAutomatedToggle(t *testing.T) {
 	m := activityModel(t, 160)
 	if len(m.activity.visible) != 2 {

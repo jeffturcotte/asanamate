@@ -394,6 +394,9 @@ then scans when you open it.
 - `/` searches ticket names, actors, and activity text. Words combine;
   Activity search is separate from the saved ticket filter.
 - `j` / `k` selects an event. `Tab` or `2` focuses its reader to scroll it.
+- Events in a row on the same ticket share one entry, its newest event, with
+  a `+N more` badge (styled by `colors.reacted`). `Space` shows the earlier
+  events indented under it, where each can be selected, and hides them again.
 - `Enter` opens the existing ticket reader, where the usual edit and action
   keys work; `Esc` returns to Activity. On narrow screens, the first `Enter`
   shows the event, and the next opens the ticket. In list-only mode, opening
