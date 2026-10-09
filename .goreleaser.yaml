@@ -57,6 +57,9 @@ archives:
       - src: themes/*.toml
         dst: themes
         strip_parent: true
+      - src: themes/LICENSE*
+        dst: themes
+        strip_parent: true
 
 checksum:
   name_template: checksums.txt

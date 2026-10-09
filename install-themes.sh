@@ -9,9 +9,9 @@ mkdir -p "$theme_dir"
 
 installed=0
 kept=0
-for source in "$source_dir"/themes/*.toml; do
+for source in "$source_dir"/themes/*.toml "$source_dir"/themes/LICENSE*; do
     if [ ! -f "$source" ]; then
-        printf 'No standard themes found in %s/themes\n' "$source_dir" >&2
+        printf 'Missing theme files in %s/themes\n' "$source_dir" >&2
         exit 1
     fi
     target="$theme_dir/${source##*/}"
@@ -23,4 +23,4 @@ for source in "$source_dir"/themes/*.toml; do
     (set -C; cat "$source" > "$target")
     installed=$((installed + 1))
 done
-printf 'Themes: installed %s, kept %s in %s\n' "$installed" "$kept" "$theme_dir"
+printf 'Theme files: installed %s, kept %s in %s\n' "$installed" "$kept" "$theme_dir"

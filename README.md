@@ -622,7 +622,7 @@ command = "sesh list -z"
 `[theme] name` picks a built-in theme, a theme file, or
 `auto`, which asks the terminal for its background color and uses
 `theme.dark` or `theme.light`. The defaults `dark` and `light` use ANSI color
-numbers, so they follow your terminal's color scheme. These 15 additional
+numbers, so they follow your terminal's color scheme. These 20 additional
 presets ship as separate TOML files in release archives and the source
 checkout. The installation steps run `install-themes.sh`, which copies them
 to `themes/<name>.toml` next to `config.toml`. It respects `XDG_CONFIG_HOME`
@@ -640,6 +640,16 @@ and keeps existing files, including any edits you made:
 | `catppuccin-mocha` | |
 | `solarized-dark` | |
 | `rose-pine` | |
+| `sonokai-andromeda` | |
+| `sonokai-atlantis` | |
+| `sonokai-maia` | |
+| `sonokai-shusia` | |
+| `sonokai-espresso` | |
+
+`sonokai` uses Sonokai's default style. The five `sonokai-*` files use the
+corresponding [upstream Sonokai styles](https://github.com/sainnhe/sonokai).
+For example, set `name = "sonokai-espresso"` in `[theme]` for Espresso.
+Sonokai's MIT license ships alongside the theme files as `LICENSE.sonokai`.
 
 For a fixed preset, set `name = "tokyo-night"` in `[theme]`. To switch with
 the terminal background:

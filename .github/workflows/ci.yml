@@ -47,7 +47,10 @@ jobs:
               grep -qx asanamate-ccmux files.txt
               grep -qx asanamate-hub files.txt
               grep -qx install-themes.sh files.txt
-              test "$(grep -c '^themes/.*\.toml$' files.txt)" -eq 15
+              for theme in ../themes/*.toml; do
+                grep -qx "themes/${theme##*/}" files.txt
+              done
+              grep -qx themes/LICENSE.sonokai files.txt
             done
           done
       - uses: actions/upload-artifact@v4
@@ -81,7 +84,8 @@ jobs:
           export HOME="$(mktemp -d)" PATH=/usr/bin:/bin
           unset XDG_CONFIG_HOME XDG_STATE_HOME ASANA_ACCESS_TOKEN
           sh ./install-themes.sh
-          test "$(find "$HOME/.config/asanamate/themes" -name '*.toml' | wc -l)" -eq 15
+          test "$(find "$HOME/.config/asanamate/themes" -name '*.toml' | wc -l)" -eq "$(find themes -name '*.toml' | wc -l)"
+          test -f "$HOME/.config/asanamate/themes/LICENSE.sonokai"
           ./asanamate version
           ./asanamate help > /dev/null
           ./asanamate-hrvst -h > /dev/null

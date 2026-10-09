@@ -258,6 +258,8 @@ branch_field = ""
 # Standard files: one-dark, one-light, monokai, tokyo-night, tokyo-day,
 # sonokai, dracula, nord, gruvbox-dark, gruvbox-light, catppuccin-mocha,
 # catppuccin-latte, solarized-dark, solarized-light, rose-pine.
+# Sonokai variants: sonokai-andromeda, sonokai-atlantis, sonokai-maia,
+# sonokai-shusia, sonokai-espresso.
 # Install standard files with install-themes.sh; edit them in themes/.
 # Copy themes/example.toml.example to start your own.
 name = "auto"
