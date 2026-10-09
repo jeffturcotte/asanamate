@@ -135,6 +135,9 @@ func TestMarkdownProseUnchanged(t *testing.T) {
 	for _, theme := range []string{"dark", "light"} {
 		for _, bare := range []bool{true, false} {
 			style := *styles.DefaultStyles[theme]
+			// The built-in themes recolor only inline code.
+			code := config.Config{Theme: config.Theme{Name: theme}}.Palette(true).Colors.Markdown.Code.FG
+			style.Code.Color = &code
 			if bare {
 				style.Document.Margin = new(uint)
 				style.Document.BlockPrefix, style.Document.BlockSuffix = "", ""

@@ -32,8 +32,14 @@ type Membership struct {
 	Section *Ref `json:"section,omitempty"`
 }
 
-// EnumOption is one choice of an enum custom field.
-type EnumOption = Ref
+// EnumOption is one choice of an enum custom field. Color is Asana's name for
+// its color, such as "red" or "cool-gray", and "none" when it has none; list
+// and detail requests fill it only for a field's chosen option.
+type EnumOption struct {
+	GID   string `json:"gid"`
+	Name  string `json:"name"`
+	Color string `json:"color,omitempty"`
+}
 
 // Custom field types (resource_subtype values).
 const (
@@ -55,6 +61,7 @@ type CustomField struct {
 	IsValueReadOnly    bool         `json:"is_value_read_only,omitempty"`
 	IsFormulaField     bool         `json:"is_formula_field,omitempty"`
 	EnumOptions        []EnumOption `json:"enum_options,omitempty"`
+	EnumValue          *EnumOption  `json:"enum_value,omitempty"`
 	MultiEnumValues    []EnumOption `json:"multi_enum_values,omitempty"`
 	PeopleValue        []Ref        `json:"people_value,omitempty"`
 	DateValue          *DateValue   `json:"date_value,omitempty"`
@@ -181,6 +188,15 @@ func (f CustomField) Value() string {
 		return ""
 	}
 	return *f.DisplayValue
+}
+
+// Color returns the Asana color of an enum field's chosen option, or "" when
+// it has none.
+func (f CustomField) Color() string {
+	if f.EnumValue == nil || f.EnumValue.Color == "none" {
+		return ""
+	}
+	return f.EnumValue.Color
 }
 
 // Names returns the refs' names, in order.

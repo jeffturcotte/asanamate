@@ -692,20 +692,25 @@ Colors layer in order: the built-in base, the theme file, then `[colors]` in
 `mode.normal` use `accent`; unset `mode.filter` uses `warn`. A mode pill
 without a background is drawn reversed.
 
+Enum custom field values keep the color their option has in Asana, drawn in
+the theme role nearest in hue: red in `error`, orange in `pinned`, yellow in
+`warn`, greens in `ok`, aqua in `working`, blue and indigo in `accent`,
+purples and pinks in `viewing`, and cool gray in `muted`.
+
 | Role | Used for |
 |---|---|
 | `accent` | reader headings, focused panel border, NORMAL and VIEWS pills |
 | `border` | unfocused panel and card borders |
-| `muted` | secondary text such as distant due dates |
+| `muted` | secondary text: distant due dates, list fields, and tickets in the Later and No due date groups |
 | `highlight` | bar selection and the views panel cursor |
-| `ok`, `warn`, `error` | status messages and due-date urgency |
+| `ok`, `warn`, `error` | status messages, due-date urgency, and the Today and Overdue group headers |
 | `working` | working coding agents |
 | `header`, `selection` | group headers, selection marker |
 | `pinned`, `viewing` | Pinned and Viewing section headers |
 | `reacted` | comment reactions you made, drawn as pills |
 | `new` | `NEW` badge on My Tasks tickets changed since you last viewed them |
 | `more` | `+N more` badge on Activity events in a row on one ticket |
-| `authors` | comment author names, cycled |
+| `authors` | comment authors' dots and gutters and `initials` badges, cycled |
 | `mode.normal`, `mode.filter`, `mode.read`, `mode.edit` | statusline mode pills |
 | `markdown.text`, `.heading`, `.h1`, `.link`, `.code`, `.code_block`, `.quote`, `.rule` | reading pane Markdown, on top of glamour's dark or light style |
 

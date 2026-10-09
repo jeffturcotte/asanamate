@@ -233,7 +233,7 @@ func (m *Model) progress(done, total int) string {
 }
 
 // comment renders one comment of the timeline: a colored dot, the author, and
-// the day, over the body behind a faint gutter.
+// the day, over the body behind a gutter in the author's color.
 func (m *Model) comment(c asana.Story, width int, selected bool) string {
 	author := ticket.Author(c)
 	day, err := time.Parse(time.DateOnly, ticket.Day(c.CreatedAt))
@@ -246,7 +246,7 @@ func (m *Model) comment(c asana.Story, width int, selected bool) string {
 		head = m.fieldStyle().Render(ansi.Strip(head))
 	}
 	body := m.renderRich(c.HTMLText, width-2)
-	gutterStyle := lipgloss.NewStyle().Foreground(borderColor)
+	gutterStyle := authorStyle(author)
 	if selected {
 		gutterStyle = m.markerStyle
 	}
@@ -357,6 +357,10 @@ func (m *Model) detailsBody(t ticket.Ticket, width, top int) string {
 			switch {
 			case f.Label == "Status" && f.Key == "":
 				value = m.statusBadge(t.Completed)
+			case strings.HasPrefix(f.Key, ticket.KeyField+":"):
+				if style, ok := fieldEnumStyle(t, f.Key); ok {
+					value = style.Render("● " + value)
+				}
 			case f.Key == ticket.KeyDue:
 				if due, _, ok := asana.DueDays(t.DueOn, m.now()); ok {
 					rel, style := dueLabel(t.DueOn, m.now())
@@ -395,6 +399,17 @@ func (m *Model) detailsBody(t ticket.Ticket, width, top int) string {
 		lines = append(lines, style.Render(label))
 	}
 	return strings.Join(lines, "\n")
+}
+
+// fieldEnumStyle is the enum color style of t's custom field with key, and
+// whether it has one.
+func fieldEnumStyle(t ticket.Ticket, key string) (lipgloss.Style, bool) {
+	for _, f := range t.CustomFields {
+		if ticket.FieldKey(f.GID) == key {
+			return enumStyle(f)
+		}
+	}
+	return lipgloss.Style{}, false
 }
 
 func (m *Model) statusBadge(completed bool) string {

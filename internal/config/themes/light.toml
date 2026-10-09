@@ -1,6 +1,7 @@
 # Built-in light theme. ANSI numbers follow the terminal's own color scheme.
-# Roles left out here (header, selection, mode.normal, mode.filter, and all
-# Markdown roles) fall back to accent, warn, or glamour's light style.
+# Roles left out here (header, selection, mode.normal, mode.filter, and the
+# Markdown roles other than code) fall back to accent, warn, or glamour's
+# light style.
 
 [colors]
 accent = { fg = "4", bold = true }
@@ -14,10 +15,14 @@ working = "6"
 pinned = { fg = "166", bold = true }
 viewing = { fg = "5", bold = true }
 reacted = { bg = "254" }
-new = { fg = "15", bg = "1", bold = true }
+new = { fg = "15", bg = "4", bold = true }
 more = { fg = "15", bg = "6", bold = true }
 authors = ["4", "5", "6", "2", "3", "1"]
 
 [colors.mode]
 read = "6"
 edit = "5"
+
+[colors.markdown]
+# Glamour colors inline code red, which reads as an error.
+code = "2"

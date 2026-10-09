@@ -35,7 +35,7 @@ func columnValue(t asana.Task, column state.Column, rc rowContext, today time.Ti
 	}
 	for _, f := range t.CustomFields {
 		if f.GID == column.GID {
-			return ticket.OneLine(f.Value()), lipgloss.Style{}
+			return ticket.OneLine(f.Value()), fieldCellStyle(f)
 		}
 	}
 	return "", lipgloss.Style{}

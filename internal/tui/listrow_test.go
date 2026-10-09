@@ -12,6 +12,7 @@ import (
 
 	"github.com/sadmachine/asanamate/internal/asana"
 	"github.com/sadmachine/asanamate/internal/config"
+	"github.com/sadmachine/asanamate/internal/state"
 	"github.com/sadmachine/asanamate/internal/ticket"
 )
 
@@ -402,5 +403,64 @@ func TestChangedMyTasksRowsMarked(t *testing.T) {
 	m.Update(tasksMsg{project: m.viewProject, tasks: []asana.Task{c}})
 	if got := listLines(m, 20, 1); !slices.Equal(got, []string{"□  C"}) {
 		t.Fatalf("project view rows = %q", got)
+	}
+}
+
+func TestDueGroupsShowUrgency(t *testing.T) {
+	tasks := []asana.Task{
+		{GID: "1", Name: "Late", DueOn: strp("2026-09-27")},
+		{GID: "2", Name: "Now", DueOn: strp("2026-09-28")},
+		{GID: "3", Name: "Far", DueOn: strp("2026-10-20")},
+		{GID: "4", Name: "Undated"},
+	}
+	m, _ := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle, GroupBy: "due"}})
+	m.Update(tasksMsg{tasks: tasks})
+	if got := m.groupStyle(dueOverdue).GetForeground(); got != errorStyle.GetForeground() {
+		t.Fatalf("Overdue header = %v, want the error color", got)
+	}
+	if got := m.groupStyle(dueToday).GetForeground(); got != warnStyle.GetForeground() {
+		t.Fatalf("Today header = %v, want the warn color", got)
+	}
+	if got := m.groupStyle(dueLater).GetForeground(); got != m.headerStyle.GetForeground() {
+		t.Fatalf("Later header = %v, want the header color", got)
+	}
+	for i, want := range []bool{false, false, true, true} {
+		if m.distant(i) != want {
+			t.Fatalf("distant(%d) = %v, want %v", i, !want, want)
+		}
+	}
+	if view := m.listView(30, 12); !strings.Contains(view, dimStyle.Render("Far")) || strings.Contains(view, dimStyle.Render("Now")) {
+		t.Fatal("only Later and No due date titles fade")
+	}
+
+	m.groupBy = "section"
+	m.Update(tasksMsg{tasks: tasks})
+	if m.groupStyle(dueOverdue).GetForeground() != m.headerStyle.GetForeground() || slices.ContainsFunc([]int{0, 1, 2, 3}, m.distant) {
+		t.Fatal("urgency styling applies only when grouped by due date")
+	}
+}
+
+func TestFieldCellsMutedUnlessEnumColored(t *testing.T) {
+	testModel(t, config.Config{})
+	task := asana.Task{CustomFields: []asana.CustomField{
+		{GID: "f1", Name: "Priority", DisplayValue: strp("High"), EnumValue: &asana.EnumOption{Name: "High", Color: "red"}},
+		{GID: "f2", Name: "Stage", DisplayValue: strp("QA"), EnumValue: &asana.EnumOption{Name: "QA", Color: "none"}},
+	}}
+	if v, style := cellValue(task, "Priority", rowContext{}, testToday); v != "High" || style.GetForeground() != errorStyle.GetForeground() {
+		t.Fatalf("red enum = %q %v, want the error color", v, style.GetForeground())
+	}
+	if _, style := columnValue(task, state.Column{GID: "f1"}, rowContext{}, testToday); style.GetForeground() != errorStyle.GetForeground() {
+		t.Fatal("a column by ID keeps the enum color")
+	}
+	for _, name := range []string{"Stage", "section"} {
+		if _, style := cellValue(task, name, rowContext{}, testToday); style.Render("x") != dimStyle.Render("x") {
+			t.Fatalf("%s cell is not muted", name)
+		}
+	}
+	if got, ok := fieldEnumStyle(ticket.Ticket{Task: task}, ticket.FieldKey("f1")); !ok || got.GetForeground() != errorStyle.GetForeground() {
+		t.Fatal("details enum value lacks its color")
+	}
+	if _, ok := fieldEnumStyle(ticket.Ticket{Task: task}, ticket.FieldKey("f2")); ok {
+		t.Fatal(`an enum colored "none" has no color`)
 	}
 }

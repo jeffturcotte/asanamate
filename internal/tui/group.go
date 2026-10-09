@@ -168,6 +168,29 @@ func (m *Model) listViewChanged() tea.Cmd {
 	return m.selectionChanged()
 }
 
+// groupStyle is a group header's style. Grouped by due date, the Overdue and
+// Today headers take the urgency colors of their due dates.
+func (m *Model) groupStyle(label string) lipgloss.Style {
+	if isDue(m.groupBy) {
+		switch label {
+		case dueOverdue:
+			return m.headerStyle.Foreground(errorStyle.GetForeground())
+		case dueToday:
+			return m.headerStyle.Foreground(warnStyle.GetForeground())
+		}
+	}
+	return m.headerStyle
+}
+
+// distant reports whether visible ticket i is far enough off to fade: grouped
+// by due date, in the Later or No due date group and not retained.
+func (m *Model) distant(i int) bool {
+	if label, _ := m.retainedSection(i); label != "" || !isDue(m.groupBy) {
+		return false
+	}
+	return m.groups[i] == dueLater || m.groups[i] == dueNone
+}
+
 // groupHeaderWidth is the width that shows a group's header in full, rule or bar.
 func groupHeaderWidth(label string, n int) int {
 	return ansi.StringWidth("── " + label + " (" + strconv.Itoa(n) + ") ─")

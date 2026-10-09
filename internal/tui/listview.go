@@ -199,7 +199,7 @@ func (m *Model) listView(width, height int) string {
 				}
 				lines = append(lines, m.groupHeader(style, label, n, width))
 			} else {
-				lines = append(lines, m.groupHeader(m.headerStyle, m.groups[i], counts[m.groups[i]], width))
+				lines = append(lines, m.groupHeader(m.groupStyle(m.groups[i]), m.groups[i], counts[m.groups[i]], width))
 			}
 			for range spacing {
 				lines = append(lines, "")
@@ -284,6 +284,8 @@ func (m *Model) listRow(i int, cols []int) (row []string, tail string) {
 		name = stateStyles[agents.Waiting].Render(name)
 	case t.Completed:
 		name = dimStyle.Strikethrough(true).Render(name)
+	case m.distant(i):
+		name = dimStyle.Render(name)
 	}
 	title := dimStyle.Render(mark) + "  " + name
 	rc, today := m.rowContext(), m.now()
@@ -293,9 +295,6 @@ func (m *Model) listRow(i int, cols []int) (row []string, tail string) {
 			v, style := columnValue(t, column, rc, today)
 			if v == "" {
 				continue
-			}
-			if n := strings.TrimSpace(column.Field); column.GID != "" || (!isDue(n) && !strings.EqualFold(n, initialsField)) {
-				style = dimStyle
 			}
 			parts = append(parts, style.Render(v))
 		}

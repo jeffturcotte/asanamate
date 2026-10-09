@@ -278,11 +278,13 @@ light = "light"
 # accent = { fg = "4", bold = true }
 # Unfocused panel and card borders.
 # border = "8"
-# Secondary text such as distant due dates.
+# Secondary text: distant due dates, list fields, and tickets in the Later
+# and No due date groups.
 # muted = { faint = true }
 # Bar selection and the views panel cursor.
 # highlight = { reverse = true }
-# Status messages and due-date urgency (today: warn, overdue: error).
+# Status messages and due-date urgency (today: warn, overdue: error), also
+# on the Today and Overdue group headers.
 # ok = "2"
 # warn = "3"
 # error = "1"
@@ -297,10 +299,10 @@ light = "light"
 # Comment reactions you made, drawn as pills.
 # reacted = { bg = "236" }
 # NEW badge on My Tasks tickets changed since you last viewed them.
-# new = { fg = "15", bg = "1", bold = true }
+# new = { fg = "15", bg = "4", bold = true }
 # +N more badge on Activity events in a row on one ticket.
 # more = { fg = "0", bg = "6", bold = true }
-# Comment authors cycle through these.
+# Comment authors, their dots and gutters, cycle through these.
 # authors = ["4", "5", "6", "2", "3", "1"]
 
 [colors.mode]
@@ -312,12 +314,13 @@ light = "light"
 # edit = "5"
 
 [colors.markdown]
-# Reading pane Markdown, on top of the theme's glamour style. Unset by default.
+# Reading pane Markdown, on top of the theme's glamour style. Unset by default,
+# except code.
 # text = ""
 # heading = ""
 # h1 = { fg = "228", bg = "63", bold = true }
 # link = ""
-# code = ""
+# code = "2"
 # code_block = ""
 # quote = ""
 # rule = ""
