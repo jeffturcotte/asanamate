@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -404,5 +405,65 @@ func TestUpdateWritesThemeExample(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(config.ThemesDir(path), "example.toml.example")); err != nil {
 		t.Fatalf("config update must add the theme example: %v", err)
+	}
+}
+
+func TestThemeInstallerKeepsEditsAndAddsMissingFiles(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "config home")
+	t.Setenv("XDG_CONFIG_HOME", root)
+	script, err := filepath.Abs(filepath.Join("..", "..", "install-themes.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	workingDir := t.TempDir()
+	install := func() {
+		t.Helper()
+		cmd := exec.Command("sh", script)
+		cmd.Dir = workingDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("install themes: %v\n%s", err, out)
+		}
+	}
+	install()
+	path := filepath.Join(root, "asanamate", "config.toml")
+	dir := config.ThemesDir(path)
+	files, err := filepath.Glob(filepath.Join(dir, "*.toml"))
+	if err != nil || len(files) != 15 {
+		t.Fatalf("installed files = %v, err = %v; want 15", files, err)
+	}
+	for _, file := range files {
+		want, err := os.ReadFile(filepath.Join("..", "..", "themes", filepath.Base(file)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(file)
+		if err != nil || string(got) != string(want) {
+			t.Fatalf("installed theme differs: %s, err = %v", file, err)
+		}
+		info, err := os.Stat(file)
+		if err != nil || info.Mode().Perm() != 0o600 {
+			t.Fatalf("theme permissions: %s, err = %v", file, err)
+		}
+	}
+	custom := "base = \"dark\"\n[colors]\naccent = \"#123456\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "one-dark.toml"), []byte(custom), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(dir, "one-light.toml")); err != nil {
+		t.Fatal(err)
+	}
+	install()
+	if got, err := os.ReadFile(filepath.Join(dir, "one-dark.toml")); err != nil || string(got) != custom {
+		t.Fatalf("reinstall must keep theme edits: %q, err = %v", got, err)
+	}
+	if err := os.WriteFile(path, []byte("workspace = \"1\"\n[theme]\nname = \"auto\"\ndark = \"one-dark\"\nlight = \"one-light\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Palette(true).Colors.Accent.FG != "#123456" || cfg.Palette(false).Colors.Accent.FG != "#4078f2" {
+		t.Fatal("installed themes must load local edits and restore missing files")
 	}
 }

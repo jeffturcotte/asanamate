@@ -50,6 +50,13 @@ builds:
 archives:
   - formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE*
+      - install-themes.sh
+      - src: themes/*.toml
+        dst: themes
+        strip_parent: true
 
 checksum:
   name_template: checksums.txt
@@ -72,6 +79,7 @@ homebrew_casks:
     hooks:
       post:
         install: |
+          system_command "/bin/sh", args: ["#{staged_path}/install-themes.sh"]
           if OS.mac?
             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/asanamate", "#{staged_path}/asanamate-hrvst", "#{staged_path}/asanamate-ccmux", "#{staged_path}/asanamate-hub"]
           end

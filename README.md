@@ -68,8 +68,9 @@ archive=asanamate_${os}_${arch}.tar.gz
 base=https://github.com/sadmachine/asanamate/releases/download/$version
 curl -fL -O "$base/$archive" -O "$base/checksums.txt"
 grep " $archive\$" checksums.txt | sha256sum -c   # macOS: shasum -a 256 -c
-tar -xzf "$archive" asanamate
+tar -xzf "$archive" asanamate themes install-themes.sh
 mkdir -p ~/.local/bin && mv asanamate ~/.local/bin/
+sh ./install-themes.sh
 asanamate version
 ```
 
@@ -105,13 +106,17 @@ xattr -d com.apple.quarantine ~/.local/bin/asanamate-hub     # if you use it
 
 ### From source
 
-Needs Go 1.26 or later.
+Needs Go 1.26 or later. Install from a checkout so the standard theme files
+are available alongside the binaries:
 
 ```sh
-go install github.com/sadmachine/asanamate/cmd/asanamate@latest
-go install github.com/sadmachine/asanamate/cmd/asanamate-hrvst@latest   # Harvest time tracking
-go install github.com/sadmachine/asanamate/cmd/asanamate-ccmux@latest   # ccmux agents
-go install github.com/sadmachine/asanamate/cmd/asanamate-hub@latest     # Hub project links
+git clone https://github.com/sadmachine/asanamate.git
+cd asanamate
+go install ./cmd/asanamate
+sh ./install-themes.sh
+go install ./cmd/asanamate-hrvst   # Harvest time tracking
+go install ./cmd/asanamate-ccmux   # ccmux agents
+go install ./cmd/asanamate-hub     # Hub project links
 ```
 
 This installs to `$(go env GOBIN)`, else `$(go env GOPATH)/bin` (usually
@@ -120,8 +125,9 @@ This installs to `$(go env GOBIN)`, else `$(go env GOPATH)/bin` (usually
 ### Upgrade and uninstall
 
 Upgrade the way you installed: replace the binary with a newer archive, or
-rerun `go install`. Upgrades never touch
-your config, actions, or state.
+rerun `go install` from an updated checkout. Run `sh ./install-themes.sh`
+to add any new themes; existing theme files are never overwritten. Upgrades
+never touch your config, actions, or state.
 
 To uninstall, delete the binaries (`asanamate`, plus `asanamate-hrvst`,
 `asanamate-ccmux`, and `asanamate-hub` if you installed them). Your
@@ -617,7 +623,10 @@ command = "sesh list -z"
 `auto`, which asks the terminal for its background color and uses
 `theme.dark` or `theme.light`. The defaults `dark` and `light` use ANSI color
 numbers, so they follow your terminal's color scheme. These 15 additional
-presets ship inside the binary and use fixed hex palettes:
+presets ship as separate TOML files in release archives and the source
+checkout. The installation steps run `install-themes.sh`, which copies them
+to `themes/<name>.toml` next to `config.toml`. It respects `XDG_CONFIG_HOME`
+and keeps existing files, including any edits you made:
 
 | Dark presets | Light presets |
 |---|---|
@@ -644,13 +653,13 @@ light = "one-light"
 
 Presets adapt their palettes to the UI roles and reading pane Markdown.
 They do not change your terminal's background; use a matching terminal
-theme for the closest appearance. Palette references live in each bundled
-theme file under `internal/config/themes/`.
+theme for the closest appearance. Palette references live in each standard
+theme file under the repository's `themes/` directory. Standard themes are
+not embedded in the binary; selecting one requires its installed file.
 
 A theme file is `themes/<name>.toml` next to `config.toml`; the names `dark`,
-`light`, and `auto` are reserved. A custom file with another built-in name
-takes precedence, so existing custom themes keep their colors. Setup and
-`asanamate config update` write
+`light`, and `auto` are reserved. Edit a standard file directly or copy it
+under another name. Setup and `asanamate config update` write
 `themes/example.toml.example` to start from:
 
 ```toml
