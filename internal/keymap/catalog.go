@@ -64,6 +64,7 @@ var catalog = []Scope{
 		{Name: "prev_mode", Keys: []string{"["}, Desc: "previous filter"},
 		{Name: "period", Keys: []string{"D"}, Desc: "activity period"},
 		{Name: "automated", Keys: []string{"!"}, Desc: "include / hide automated reminders"},
+		{Name: "expand", Keys: []string{"space"}, Desc: "show / hide a ticket's earlier events in a row"},
 	}},
 	{Name: "views", Doc: "Views panel (0). Other keys fall through to [keys.main].", Bindings: []Binding{
 		{Name: "down", Keys: []string{"j", "down"}, Desc: "next row"},

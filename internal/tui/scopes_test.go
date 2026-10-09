@@ -217,6 +217,11 @@ func TestEveryScopeBindingRuns(t *testing.T) {
 				m.Update(firstKey("activity", "automated"))
 				expect(t, m.activity.automated, "automated toggle")
 			},
+			"expand": func(t *testing.T) {
+				m := activityRunModel(t)
+				m.Update(firstKey("activity", "expand"))
+				expect(t, len(m.activity.rows) == 5, "expanded run")
+			},
 		},
 		"notice": {
 			"dismiss": func(t *testing.T) {
