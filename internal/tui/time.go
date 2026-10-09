@@ -204,7 +204,11 @@ func (m *Model) gotTimeSummary(msg timeSummaryMsg) {
 	}
 }
 
-func (m *Model) timeSummaryValue(gid string) string {
+func (m *Model) timeSummaryValue(gid string) string { return m.timeSummary(gid, false) }
+
+func (m *Model) timeSummaryStyled(gid string) string { return m.timeSummary(gid, true) }
+
+func (m *Model) timeSummary(gid string, styled bool) string {
 	if !m.deps.Config.TimeTrackingEnabled() {
 		return ""
 	}
@@ -219,11 +223,19 @@ func (m *Model) timeSummaryValue(gid string) string {
 	default:
 		value = trackedDuration(state.summary.TotalSeconds)
 		if today := state.summary.TodaySeconds; today != nil {
-			value += " (" + trackedDuration(*today) + " today)"
+			label := trackedDuration(*today) + " today"
+			if styled && *today > 0 {
+				label = okStyle.Faint(false).Render(label)
+			}
+			value += " (" + label + ")"
 		}
 		value += " · visible entries"
 	}
-	return value + " · " + ticket.OneLine(m.deps.Config.TimeTracking.ID)
+	value += " · " + ticket.OneLine(m.deps.Config.TimeTracking.ID)
+	if styled {
+		return dimStyle.Render(value)
+	}
+	return value
 }
 
 func trackedDuration(seconds int64) string {

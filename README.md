@@ -723,7 +723,7 @@ pink = "#f76c7c"
 | `border` | unfocused panel and card borders |
 | `muted` | secondary text: distant due dates, list fields, and tickets in the Later and No due date groups |
 | `highlight` | bar selection and the views panel cursor |
-| `ok`, `warn`, `error` | status messages, due-date urgency, and the Today and Overdue group headers |
+| `ok`, `warn`, `error` | status messages, due-date urgency, Today and Overdue group headers, positive time logged today (`ok`) |
 | `working` | working coding agents |
 | `header`, `selection` | group headers, selection marker |
 | `pinned`, `viewing` | Pinned and Viewing section headers |

@@ -35,9 +35,9 @@ func (m *Model) renderCards(t ticket.Ticket, width int) string {
 	if line := m.repoLine(t.Task, width); line != "" {
 		head += "\n" + line
 	}
-	if value := m.timeSummaryValue(t.GID); value != "" {
-		line := m.sym.icon(iconClock) + "Time tracked · " + value
-		head += "\n" + dimStyle.Render(ansi.Truncate(line, width, "…"))
+	if value := m.timeSummaryStyled(t.GID); value != "" {
+		line := dimStyle.Render(m.sym.icon(iconClock)+"Time tracked · ") + value
+		head += "\n" + ansi.Truncate(line, width, "…")
 	}
 	m.fieldLines, m.fieldEnds = map[string]int{}, map[string]int{}
 	fields := m.fieldTargets(t)

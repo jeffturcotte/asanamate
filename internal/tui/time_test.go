@@ -253,3 +253,22 @@ func TestTimeSummaryLivesInHeaderWithClock(t *testing.T) {
 		})
 	}
 }
+
+func TestTodayTimeUsesThemeOKOnlyWhenPositive(t *testing.T) {
+	m, _ := timeModel(t)
+	m.timeSummaries = map[string]timeSummaryState{}
+	defer applyPalette(config.Config{}.Palette(true))
+	m.deps.Config.Colors.OK = config.Style{FG: "#123456"}
+	applyPalette(m.deps.Config.Palette(true))
+	for _, seconds := range []int64{0, 3600} {
+		m.timeSummaries["42"] = timeSummaryState{summary: timetracking.Summary{TotalSeconds: seconds, TodaySeconds: &seconds}}
+		plain, styled := m.timeSummaryValue("42"), m.timeSummaryStyled("42")
+		if ansi.Strip(styled) != plain {
+			t.Fatalf("styling changed text: %q vs %q", styled, plain)
+		}
+		tinted := okStyle.Faint(false).Render(trackedDuration(seconds) + " today")
+		if strings.Contains(styled, tinted) != (seconds > 0) {
+			t.Fatalf("today tint for %d: %q", seconds, styled)
+		}
+	}
+}
