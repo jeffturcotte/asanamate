@@ -823,8 +823,9 @@ asanamate comment "$ASANAMATE_GID" -'''
 
 Input: set `input` to a title, and asanamate asks for free-form text right
 before running the action. Enter adds a newline, ctrl+s runs, and esc cancels.
-Leaving it empty is fine. Each ticket has one input file, so an action that
-starts on the same ticket overwrites the text from the one before. For example, to put notes above the ticket in
+Leaving it empty is fine. Each action run has its own input file and ticket
+snapshot, so another run on the same ticket cannot overwrite its context.
+For example, to put notes above the ticket in
 Claude's first prompt:
 
 ```toml

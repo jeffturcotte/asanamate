@@ -121,6 +121,40 @@ func TestWriteFiles(t *testing.T) {
 	}
 }
 
+func TestWriteFilesKeepsEachRunSnapshot(t *testing.T) {
+	dir := t.TempDir()
+	first, err := WriteFiles(dir, ticket.Ticket{Task: asana.Task{GID: "9", Name: "First"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.WriteInput("first input"); err != nil {
+		t.Fatal(err)
+	}
+	second, err := WriteFiles(dir, ticket.Ticket{Task: asana.Task{GID: "9", Name: "Second"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := second.WriteInput("second input"); err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Dir(first.JSON) == filepath.Dir(second.JSON) {
+		t.Fatal("runs share an export directory")
+	}
+	info, err := os.Stat(filepath.Dir(first.JSON))
+	if err != nil || info.Mode().Perm() != 0o700 {
+		t.Fatalf("run directory: info = %v, err = %v", info, err)
+	}
+	for path, want := range map[string]string{
+		first.JSON: `"name": "First"`, first.Markdown: "# First", first.Input: "first input",
+		second.JSON: `"name": "Second"`, second.Markdown: "# Second", second.Input: "second input",
+	} {
+		data, err := os.ReadFile(path)
+		if err != nil || !strings.Contains(string(data), want) {
+			t.Fatalf("snapshot %s = %q, err = %v; want %q", path, data, err, want)
+		}
+	}
+}
+
 func TestCommandIsInjectionSafe(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("ASANAMATE_FIELD_STALE", "old")

@@ -69,8 +69,10 @@ The variables above are set on every run, empty when they do not apply,
 except `ASANAMATE_PARAM_*` and `ASANAMATE_FIELD_*`, which exist only for the
 action's form fields and the ticket's custom fields. Control characters other
 than newline and tab are removed from values. The files live in
-`~/.local/state/asanamate/tickets/<gid>/` (`ticket.json`, `ticket.md`,
-`input.md`) and are rewritten on each run of an action on that ticket.
+`~/.local/state/asanamate/tickets/<gid>/run-<unique>/` (`ticket.json`,
+`ticket.md`, `input.md`). Each run keeps its own private snapshot, so later
+actions on the same ticket cannot overwrite a running action's context.
+Snapshots remain until you remove them; commands must use the exported paths.
 Foreground and exit actions read stdin from the terminal; background actions
 get empty stdin.
 
