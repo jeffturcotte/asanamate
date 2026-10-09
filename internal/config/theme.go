@@ -42,9 +42,26 @@ type Colors struct {
 	Reacted   Style          `toml:"reacted"` // comment reactions the user made
 	New       Style          `toml:"new"`     // NEW badge on My Tasks tickets changed since last viewed
 	More      Style          `toml:"more"`    // +N more badge on Activity events in a row on one ticket
+	Branch    Style          `toml:"branch"`  // git branch names
 	Authors   []Style        `toml:"authors"`
+	TitleTags []Style        `toml:"title_tags"` // a ticket title's leading [TAG], picked by tag
 	Mode      ModeColors     `toml:"mode"`
+	Asana     AsanaColors    `toml:"asana"`
 	Markdown  MarkdownColors `toml:"markdown"`
+}
+
+// AsanaColors draw the colors Asana gives projects and enum options, one
+// style per hue family.
+type AsanaColors struct {
+	Red    Style `toml:"red"`
+	Orange Style `toml:"orange"` // also Asana's brown
+	Yellow Style `toml:"yellow"` // also yellow-orange
+	Green  Style `toml:"green"`  // also yellow-green
+	Teal   Style `toml:"teal"`   // also blue-green and aqua
+	Blue   Style `toml:"blue"`   // also indigo
+	Purple Style `toml:"purple"`
+	Pink   Style `toml:"pink"` // also magenta and hot-pink
+	Gray   Style `toml:"gray"` // cool and warm gray
 }
 
 // ModeColors styles the statusline mode pills. A pill without a background
@@ -200,8 +217,27 @@ func (c Config) Palette(darkBackground bool) Palette {
 	colors.Selection = colors.Selection.Over(colors.Accent)
 	colors.Mode.Normal = colors.Mode.Normal.Over(colors.Accent)
 	colors.Mode.Filter = colors.Mode.Filter.Over(colors.Warn)
+	colors.Branch = colors.Branch.Over(hue(colors.Viewing))
+	if colors.TitleTags == nil {
+		colors.TitleTags = colors.Authors
+	}
+	a := &colors.Asana
+	for _, f := range []struct {
+		dst  *Style
+		role Style
+	}{
+		{&a.Red, colors.Error}, {&a.Orange, colors.Pinned}, {&a.Yellow, colors.Warn},
+		{&a.Green, colors.OK}, {&a.Teal, colors.Working}, {&a.Blue, colors.Accent},
+		{&a.Purple, colors.Viewing}, {&a.Pink, colors.Viewing}, {&a.Gray, colors.Muted},
+	} {
+		*f.dst = f.dst.Over(hue(f.role))
+	}
 	return Palette{Base: t.Base, Colors: colors}
 }
+
+// hue is the color of a role without its emphasis, for roles that fall back
+// to another role's color.
+func hue(s Style) Style { return Style{FG: s.FG, Faint: s.Faint} }
 
 // Over returns c with every unset role, or unset field of a role, taken from
 // base. A set Authors list replaces base's whole list.

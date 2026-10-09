@@ -304,6 +304,23 @@ light = "light"
 # more = { fg = "0", bg = "6", bold = true }
 # Comment authors, their dots and gutters, cycle through these.
 # authors = ["4", "5", "6", "2", "3", "1"]
+# Git branch names; unset uses viewing foreground.
+# branch = "5"
+# Leading [TAG] in ticket titles; unset uses authors. [] disables tag colors.
+# title_tags = ["4", "5", "6", "2", "3", "1"]
+
+[colors.asana]
+# Project markers and enum options use these hue families. Unset values
+# use error, pinned, warn, ok, working, accent, viewing, viewing, and muted.
+# red = "1"
+# orange = "208"
+# yellow = "3"
+# green = "2"
+# teal = "14"
+# blue = "4"
+# purple = "5"
+# pink = "5"
+# gray = "8"
 
 [colors.mode]
 # Statusline mode pills. A pill without bg is drawn reversed.

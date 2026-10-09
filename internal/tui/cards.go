@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"hash/fnv"
 	"image/color"
 	"path/filepath"
 	"slices"
@@ -29,7 +28,7 @@ const sideBySideW = 90
 // width columns wide. It records the line of each editable row in
 // m.fieldLines, and the last line of each multi-line one in m.fieldEnds.
 func (m *Model) renderCards(t ticket.Ticket, width int) string {
-	head := lipgloss.NewStyle().Bold(true).Width(width).Render(ticket.Clean(t.Name))
+	head := lipgloss.NewStyle().Width(width).Render(tagTitle(ticket.Clean(t.Name), titleStyle))
 	if chips := m.summaryLine(t.Task, width); chips != "" {
 		head += "\n" + chips
 	}
@@ -156,11 +155,11 @@ func (m *Model) summaryLine(t asana.Task, width int) string {
 	rc := m.rowContext()
 	for _, ms := range t.Memberships {
 		if rc.projectGID == "" || ms.Project.GID == rc.projectGID {
-			chip := m.sym.icon(iconFolder) + ticket.OneLine(ms.Project.Name)
+			chip := m.projectLabel(ms.Project, dimStyle)
 			if ms.Section != nil {
-				chip += " › " + ticket.OneLine(ms.Section.Name)
+				chip += dimStyle.Render(" › " + ticket.OneLine(ms.Section.Name))
 			}
-			chips = append(chips, dimStyle.Render(chip))
+			chips = append(chips, chip)
 			break
 		}
 	}
@@ -169,7 +168,7 @@ func (m *Model) summaryLine(t asana.Task, width int) string {
 		chips = append(chips, style.Render(m.sym.icon(iconDue)+shortDate(due, m.now())+" · "+rel))
 	}
 	if branch := action.Branch(t, m.deps.State.TaskBranches[t.GID], m.deps.Config.BranchField, rc.preferred); branch != action.Slug(t.Name) {
-		chips = append(chips, dimStyle.Render(m.sym.icon(iconBranch)+ticket.OneLine(branch)))
+		chips = append(chips, branchStyle.Render(m.sym.icon(iconBranch)+ticket.OneLine(branch)))
 	}
 	return ansi.Truncate(strings.Join(chips, "   "), width, "…")
 }
@@ -292,11 +291,7 @@ func (m *Model) reactions(rs []asana.Reaction) string {
 }
 
 // authorStyle colors an author the same way every time, from colors.authors.
-func authorStyle(name string) lipgloss.Style {
-	h := fnv.New32a()
-	h.Write([]byte(name))
-	return authorStyles[h.Sum32()%uint32(len(authorStyles))]
-}
+func authorStyle(name string) lipgloss.Style { return hashStyle(authorStyles, name) }
 
 // shortDate shows a date as "Sep 26", with the year when it is not this year's.
 func shortDate(d, today time.Time) string {
@@ -357,7 +352,24 @@ func (m *Model) detailsBody(t ticket.Ticket, width, top int) string {
 			switch {
 			case f.Label == "Status" && f.Key == "":
 				value = m.statusBadge(t.Completed)
+			case strings.HasPrefix(f.Key, ticket.KeyProject+":"):
+				gid := strings.TrimPrefix(f.Key, ticket.KeyProject+":")
+				for _, membership := range t.Memberships {
+					if membership.Project.GID == gid {
+						value = m.projectLabel(membership.Project, lipgloss.NewStyle())
+						if membership.Section != nil {
+							value += " / " + ticket.Clean(membership.Section.Name)
+						}
+						break
+					}
+				}
 			case strings.HasPrefix(f.Key, ticket.KeyField+":"):
+				for _, field := range t.CustomFields {
+					if f.Key == ticket.FieldKey(field.GID) && m.deps.Config.BranchField != "" && asana.SameFieldName(field.Name, m.deps.Config.BranchField) {
+						value = branchStyle.Render(value)
+						break
+					}
+				}
 				if style, ok := fieldEnumStyle(t, f.Key); ok {
 					value = style.Render("● " + value)
 				}

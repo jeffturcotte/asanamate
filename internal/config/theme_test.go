@@ -253,3 +253,52 @@ func TestConfigColorsAreValidated(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestAdditionalColorRoles(t *testing.T) {
+	cfg := Default()
+	fallback := cfg.Palette(true).Colors
+	if fallback.Branch.FG != fallback.Viewing.FG || fallback.Branch.Bold != nil || fallback.Asana.Orange.FG != fallback.Pinned.FG || fallback.Asana.Red.FG != fallback.Error.FG || len(fallback.TitleTags) != len(fallback.Authors) {
+		t.Fatalf("unexpected fallback roles: %+v", fallback)
+	}
+	cfg, err := Load(writeFile(t, `workspace = "1"
+[colors]
+branch = "#112233"
+title_tags = ["#445566"]
+[colors.asana]
+red = "#778899"
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	colors := cfg.Palette(true).Colors
+	if colors.Branch.FG != "#112233" || len(colors.TitleTags) != 1 || colors.TitleTags[0].FG != "#445566" || colors.Asana.Red.FG != "#778899" {
+		t.Fatalf("overrides not applied: %+v", colors)
+	}
+	theme, err := parseTheme("custom.toml", []byte(`base = "dark"
+[colors]
+branch = "#112233"
+title_tags = []
+[colors.asana]
+blue = "#445566"
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Colors = Colors{}
+	cfg.Theme.Name = "custom"
+	cfg.Themes = map[string]ThemeFile{"custom": {Base: "dark", Colors: theme.Colors.Over(builtinThemes["dark"].Colors)}}
+	colors = cfg.Palette(true).Colors
+	if len(colors.TitleTags) != 0 || colors.TitleTags == nil || colors.Asana.Blue.FG != "#445566" {
+		t.Fatal("theme override or empty tag palette lost")
+	}
+	for _, tc := range []struct{ body, key string }{
+		{"[colors]\nbranch = \"bad\"", "colors.branch"},
+		{"[colors]\ntitle_tags = [\"bad\"]", "colors.title_tags[0]"},
+		{"[colors.asana]\nred = \"bad\"", "colors.asana.red"},
+	} {
+		_, err := Load(writeFile(t, "workspace = \"1\"\n"+tc.body))
+		if err == nil || !strings.Contains(err.Error(), tc.key) {
+			t.Fatalf("validation for %s: %v", tc.key, err)
+		}
+	}
+}

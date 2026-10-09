@@ -22,8 +22,9 @@ func DueDays(dueOn *string, today time.Time) (due time.Time, days int, ok bool) 
 
 // Ref is a compact Asana object: a gid and a display name.
 type Ref struct {
-	GID  string `json:"gid"`
-	Name string `json:"name"`
+	GID   string `json:"gid"`
+	Name  string `json:"name"`
+	Color string `json:"color,omitempty"` // project color, when requested
 }
 
 // Membership places a task in a project section.
@@ -260,5 +261,6 @@ type User struct {
 type Project struct {
 	GID     string `json:"gid"`
 	Name    string `json:"name"`
+	Color   string `json:"color,omitempty"` // Asana's name for it, such as "dark-green"; "none" for none
 	Members []Ref  `json:"members"`
 }

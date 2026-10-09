@@ -692,10 +692,30 @@ Colors layer in order: the built-in base, the theme file, then `[colors]` in
 `mode.normal` use `accent`; unset `mode.filter` uses `warn`. A mode pill
 without a background is drawn reversed.
 
-Enum custom field values keep the color their option has in Asana, drawn in
-the theme role nearest in hue: red in `error`, orange in `pinned`, yellow in
-`warn`, greens in `ok`, aqua in `working`, blue and indigo in `accent`,
-purples and pinks in `viewing`, and cool gray in `muted`.
+Project markers in the sidebar, ticket header, and Details, and enum custom
+field values use `colors.asana` hue families. Asana dark and light shades
+share the same family. Unset red, orange, yellow, green, teal, blue, purple,
+pink, and gray use the foreground of `error`, `pinned`, `warn`, `ok`,
+`working`, `accent`, `viewing`, `viewing`, and `muted`, respectively. Unknown
+or unset Asana colors have no marker.
+
+Leading bracket tags such as `[MOCPA]` use a stable color from `title_tags`
+(case-insensitive), which defaults to `authors`. Set `title_tags = []` to
+disable tag colors. Branch custom fields use `branch`, defaulting to the
+`viewing` foreground. Existing themes need no new keys. Selected bars retain
+their selection colors.
+
+For example, in either a theme file or `config.toml`:
+
+```toml
+[colors]
+branch = "#baa0f8"
+title_tags = ["#78cee9", "#baa0f8", "#e3d367"]
+
+[colors.asana]
+orange = "#f3a96a"
+pink = "#f76c7c"
+```
 
 | Role | Used for |
 |---|---|
@@ -710,6 +730,9 @@ purples and pinks in `viewing`, and cool gray in `muted`.
 | `reacted` | comment reactions you made, drawn as pills |
 | `new` | `NEW` badge on My Tasks tickets changed since you last viewed them |
 | `more` | `+N more` badge on Activity events in a row on one ticket |
+| `branch` | branch column, ticket header chip, and Details branch field |
+| `title_tags` | stable colors for leading bracket tags in ticket titles; defaults to `authors` |
+| `asana.red`, `.orange`, `.yellow`, `.green`, `.teal`, `.blue`, `.purple`, `.pink`, `.gray` | Asana project markers and enum option colors |
 | `authors` | comment authors' dots and gutters and `initials` badges, cycled |
 | `mode.normal`, `mode.filter`, `mode.read`, `mode.edit` | statusline mode pills |
 | `markdown.text`, `.heading`, `.h1`, `.link`, `.code`, `.code_block`, `.quote`, `.rule` | reading pane Markdown, on top of glamour's dark or light style |
