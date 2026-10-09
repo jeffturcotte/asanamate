@@ -95,7 +95,7 @@ func (m *Model) listSegs() []string {
 	if m.filtering {
 		segs = append(segs, m.filterInput.View())
 	} else if f := m.filterInput.Value(); f != "" {
-		segs = append(segs, m.sym.icon(iconFilter)+f)
+		segs = append(segs, warnStyle.Render(m.sym.icon(iconFilter)+f))
 	}
 	if m.groupBy != "" {
 		segs = append(segs, m.sym.icon(iconGroup)+m.groupBy)
@@ -103,7 +103,7 @@ func (m *Model) listSegs() []string {
 	if m.sortBy.By != "" {
 		segs = append(segs, "sort: "+sortLabel(m.sortBy))
 	}
-	segs = append(segs, fmt.Sprintf("%d/%d", len(m.visible), len(m.tasks)), m.refreshLabel())
+	segs = append(segs, fmt.Sprintf("%d/%d", len(m.visible), len(m.tasks)), dimStyle.Render(m.refreshLabel()))
 	if s := m.sym.summary(m.linkedAgents(), m.frame); s != "" {
 		segs = append(segs, s)
 	}

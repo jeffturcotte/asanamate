@@ -16,14 +16,15 @@ import (
 
 // rowContext is what a row needs beyond the task itself.
 type rowContext struct {
-	projectGID string          // viewed project, "" for My Tasks
-	preferred  map[string]bool // the viewed project's custom field gids
+	branchField string          // configured branch custom field name
+	projectGID  string          // viewed project, "" for My Tasks
+	preferred   map[string]bool // the viewed project's custom field gids
 }
 
 // rowContext builds the row context for t in the current view.
 func (m *Model) rowContext() rowContext {
 	view := gidOf(m.viewProject)
-	return rowContext{projectGID: view, preferred: m.projectFields[view]}
+	return rowContext{projectGID: view, preferred: m.projectFields[view], branchField: m.deps.Config.BranchField}
 }
 
 // ticketAgents returns the running agents on the ticket's branch in the repos
@@ -130,10 +131,18 @@ func cellValue(t asana.Task, name string, rc rowContext, today time.Time) (strin
 	v := ticket.OneLine(fieldValue(t, name, rc))
 	if !slices.Contains(builtinFields, strings.ToLower(name)) {
 		if f, ok := t.Field(name, rc.preferred); ok {
-			return v, fieldCellStyle(f)
+			return v, customCellStyle(f, rc.branchField)
 		}
 	}
 	return v, dimStyle
+}
+
+// customCellStyle gives the configured branch field its theme role.
+func customCellStyle(f asana.CustomField, branchField string) lipgloss.Style {
+	if branchField != "" && asana.SameFieldName(f.Name, branchField) {
+		return branchStyle
+	}
+	return fieldCellStyle(f)
 }
 
 // fieldCellStyle is a custom field's list cell style: its enum color, else muted.

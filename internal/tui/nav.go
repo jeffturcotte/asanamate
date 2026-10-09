@@ -204,6 +204,9 @@ func (m *Model) navView(width, height int) string {
 			mark = m.accentStyle.Render("▌") + " "
 		}
 		label := it.label
+		if it.project != nil {
+			label = m.projectLabel(*it.project, lipgloss.NewStyle())
+		}
 		switch {
 		case it.dim:
 			label = dimStyle.Render(label)

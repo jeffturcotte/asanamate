@@ -30,16 +30,17 @@ type symbolSet struct {
 
 // Icon names, for symbolSet.icon.
 const (
-	iconView    = "view"
-	iconFilter  = "filter"
-	iconGroup   = "group"
-	iconFolder  = "folder"
-	iconDue     = "due"
-	iconClock   = "clock"
-	iconBranch  = "branch"
-	iconClip    = "clip"
-	iconRepo    = "repo"
-	iconRefresh = "refresh"
+	iconView         = "view"
+	iconFilter       = "filter"
+	iconGroup        = "group"
+	iconFolder       = "folder"
+	iconProjectColor = "project_color"
+	iconDue          = "due"
+	iconClock        = "clock"
+	iconBranch       = "branch"
+	iconClip         = "clip"
+	iconRepo         = "repo"
+	iconRefresh      = "refresh"
 )
 
 // Spinners use dense glyphs, so a working agent stands out at a glance.
@@ -48,9 +49,9 @@ var braille = []string{"⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"}
 // Each set only sets what it changes: nerd falls back to unicode, unicode to
 // ascii, which defines everything.
 var (
-	asciiSymbols = symbolSet{open: "[ ]", done: "[x]", cursor: ">", robot: "@", barOn: "#", barOff: "-", codeWrap: ">", info: "(i)", icons: map[string]string{iconClock: "(time)"}, border: lipgloss.ASCIIBorder(), states: map[agents.State]string{
+	asciiSymbols = symbolSet{open: "[ ]", done: "[x]", cursor: ">", robot: "@", barOn: "#", barOff: "-", codeWrap: ">", info: "(i)", icons: map[string]string{iconClock: "(time)", iconProjectColor: "*"}, border: lipgloss.ASCIIBorder(), states: map[agents.State]string{
 		agents.Waiting: "(!)", agents.Working: "(~)", agents.Completed: "(+)", agents.Idle: "(-)", agents.Unknown: "(?)"}}
-	unicodeSymbols = asciiSymbols.with(symbolSet{open: "□", done: "✓", cursor: "▌", robot: "🤖", barOn: "▰", barOff: "▱", codeWrap: "↪", emoji: true, spinner: braille, icons: map[string]string{iconClock: "◷"}, border: lipgloss.RoundedBorder(), states: map[agents.State]string{
+	unicodeSymbols = asciiSymbols.with(symbolSet{open: "□", done: "✓", cursor: "▌", robot: "🤖", barOn: "▰", barOff: "▱", codeWrap: "↪", emoji: true, spinner: braille, icons: map[string]string{iconClock: "◷", iconProjectColor: "●"}, border: lipgloss.RoundedBorder(), states: map[agents.State]string{
 		agents.Waiting: "⚠", agents.Working: "◐", agents.Completed: "●", agents.Idle: "○", agents.Unknown: "?"}})
 	// Nerd Font (Font Awesome) glyphs; needs a Nerd Font.
 	nerdSymbols = unicodeSymbols.with(symbolSet{open: "", done: "", robot: "󰚩", info: "\uf05a", states: map[agents.State]string{

@@ -279,14 +279,16 @@ func (m *Model) listRow(i int, cols []int) (row []string, tail string) {
 	linked := m.viewAgents(t)
 	bar := i == m.cursor && m.selectionBar()
 	badge := m.sym.badge(linked, m.frame, bar)
+	nameStyle := lipgloss.NewStyle()
 	switch {
 	case len(linked) > 0 && linked[0].State == agents.Waiting && i != m.cursor:
-		name = stateStyles[agents.Waiting].Render(name)
+		nameStyle = stateStyles[agents.Waiting]
 	case t.Completed:
-		name = dimStyle.Strikethrough(true).Render(name)
+		nameStyle = dimStyle.Strikethrough(true)
 	case m.distant(i):
-		name = dimStyle.Render(name)
+		nameStyle = dimStyle
 	}
+	name = tagTitle(name, nameStyle)
 	title := dimStyle.Render(mark) + "  " + name
 	rc, today := m.rowContext(), m.now()
 	if m.deps.Config.List.Layout == config.LayoutMulti {
