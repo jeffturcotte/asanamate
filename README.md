@@ -682,10 +682,13 @@ To turn time tracking off, remove the `[time_tracking]` keys.
 
 Press `t` on a ticket. If ticket belongs to several Asana projects, choose one.
 The form shows the Harvest projects where your task is active, the task under
-its real name, and decimal hours; an error naming the task ID means it is not
-active on any of your projects. Press
+its real name, decimal hours, and the date; an error naming the task ID means
+it is not active on any of your projects. Press
 Enter to edit a field, Tab to move, and Ctrl+S to log. Project and task choices
-are remembered per Asana project after a successful log; hours starts empty.
+are remembered per Asana project after a successful log; hours starts empty,
+and the date starts as today. Type the date as `YYYY-MM-DD` or `date -d` text
+such as `yesterday` (relative dates need GNU date; see the CLI notes in
+[Writing back to Asana](#writing-back-to-asana)).
 Harvest notes contain ticket title; external reference links to Asana ticket
 and chosen Asana project.
 
@@ -887,8 +890,9 @@ Each field has an `id`, a `label`, a `type`, and an optional `default`:
 | `number` | any decimal, such as `-1` or `2.5` | a decimal |
 | `string` | any single-line text; may be empty | any text |
 | `hours` | positive decimal hours | not allowed |
+| `date` | `YYYY-MM-DD`; typed as a date or `date -d` text such as `+1 day` | a `YYYY-MM-DD` date; today when omitted |
 
-Write `default` as a TOML string, even for `bool` and `number`
+Write `default` as a TOML string, even for `bool`, `number`, and `date`
 (`default = "true"`). Every field except `string` needs a value before the
 form submits. Only `select` takes `options` and `remember`.
 
@@ -1103,19 +1107,22 @@ name or `me` like `asanamate assign`, and `--notes` takes the description in
 Markdown like a comment (`-` reads stdin), without image uploads.
 
 `asanamate assign` takes a workspace user's full name (case-insensitive), or
-`me` for yourself, and refuses a name two users share. `asanamate due` takes
-`YYYY-MM-DD` only. `asanamate move --my-tasks` works only on tickets assigned
-to you, since Asana shows a ticket's My Tasks section only to its assignee.
-Wherever a command takes a name (a section, field, option, or user), a gid
-works too.
+`me` for yourself, and refuses a name two users share. Dates, in `asanamate
+due`, `create --due`, `field`, and the TUI, take `YYYY-MM-DD` or anything
+`date -d` accepts, such as `tomorrow` or `+1 day`, and are saved as
+`YYYY-MM-DD`. Relative dates need GNU date; on macOS, `brew install coreutils`
+provides `gdate`, which asanamate uses when installed. `asanamate move
+--my-tasks` works only on tickets assigned to you, since Asana shows a
+ticket's My Tasks section only to its assignee. Wherever a command takes a
+name (a section, field, option, or user), a gid works too.
 
 `asanamate react` takes a comment's gid, which `asanamate show --format json
 <gid>` lists under `comments`. Asana does not document writing reactions, so
 asanamate reads the comment back after each one and fails if the reaction did
 not change.
 
-`asanamate field` takes the value as typed for text fields, a number, a date
-as `YYYY-MM-DD`, or an option name (case-insensitive). Multi-select and people
+`asanamate field` takes the value as typed for text fields, a number, a date,
+or an option name (case-insensitive). Multi-select and people
 fields take a comma-separated list of option names or users' full names, such
 as `"Frontend, Backend"`; the list replaces the field's current value. `""`
 clears any field.

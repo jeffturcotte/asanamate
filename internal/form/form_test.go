@@ -7,14 +7,23 @@ func TestSpecValidatesScalarControls(t *testing.T) {
 		{ID: "dry_run", Label: "Dry run", Type: Bool, Default: "true"},
 		{ID: "count", Label: "Count", Type: Number, Default: "-2.5"},
 		{ID: "note", Label: "Note", Type: String, Default: "hi"},
+		{ID: "on", Label: "On", Type: Date, Default: "2026-10-09"},
 	}}
-	if err := spec.ValidateValues(map[string]string{"dry_run": "false", "count": "3", "note": ""}); err != nil {
+	if err := spec.ValidateValues(map[string]string{"dry_run": "false", "count": "3", "note": "", "on": "2026-02-28"}); err != nil {
 		t.Fatal(err)
 	}
-	for _, values := range []map[string]string{{"dry_run": "", "count": "3"}, {"dry_run": "true", "count": ""}, {"dry_run": "true", "count": "Inf"}} {
+	for _, values := range []map[string]string{
+		{"dry_run": "", "count": "3", "on": "2026-10-09"}, {"dry_run": "true", "count": "", "on": "2026-10-09"},
+		{"dry_run": "true", "count": "Inf", "on": "2026-10-09"}, {"dry_run": "true", "count": "3", "on": ""},
+		{"dry_run": "true", "count": "3", "on": "2026-02-30"}, {"dry_run": "true", "count": "3", "on": "+1 day"},
+	} {
 		if err := spec.ValidateValues(values); err == nil {
 			t.Fatalf("accepted %v", values)
 		}
+	}
+	spec.Fields[3].Default = "tomorrow"
+	if err := spec.Validate(); err == nil {
+		t.Fatal("accepted date default that is not YYYY-MM-DD")
 	}
 }
 

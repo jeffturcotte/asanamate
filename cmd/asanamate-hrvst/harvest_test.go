@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -53,7 +54,7 @@ func TestHarvestAdapterUsesExternalReference(t *testing.T) {
 		t.Fatal(err)
 	}
 	var spec form.Spec
-	if err := json.Unmarshal(out.Bytes(), &spec); err != nil || len(spec.Fields) != 3 || spec.Fields[0].Options[0].ID != "123" || spec.Fields[1].Options[0] != (form.Option{ID: "456", Name: "Development"}) || !spec.Fields[0].Remember || !spec.Fields[1].Remember {
+	if err := json.Unmarshal(out.Bytes(), &spec); err != nil || len(spec.Fields) != 4 || spec.Fields[3].Type != form.Date || spec.Fields[0].Options[0].ID != "123" || spec.Fields[1].Options[0] != (form.Option{ID: "456", Name: "Development"}) || !spec.Fields[0].Remember || !spec.Fields[1].Remember {
 		t.Fatalf("response = %s, err = %v", out.String(), err)
 	}
 	out.Reset()
@@ -68,7 +69,7 @@ func TestHarvestAdapterUsesExternalReference(t *testing.T) {
 	if string(projectArgs) != "users\nproject-assignments\nme\n--output=json\n--page=all\n" {
 		t.Fatalf("assignment command args = %s", projectArgs)
 	}
-	request := `{"operation":"log","values":{"project_id":"123","task_id":"456","hours":"1.25"},"asana":{"task_gid":"1","project_gid":"2","title":"Fix login","url":"https://app.asana.com/0/2/1"}}`
+	request := `{"operation":"log","values":{"project_id":"123","task_id":"456","hours":"1.25","spent_date":"2026-10-05"},"asana":{"task_gid":"1","project_gid":"2","title":"Fix login","url":"https://app.asana.com/0/2/1"}}`
 	credentials := filepath.Join(dir, "config.json")
 	if err := os.WriteFile(credentials, []byte(`{"accessToken":"test-token","accountId":"789"}`), 0o600); err != nil {
 		t.Fatal(err)
@@ -80,6 +81,7 @@ func TestHarvestAdapterUsesExternalReference(t *testing.T) {
 		var payload struct {
 			ProjectID         string  `json:"project_id"`
 			TaskID            string  `json:"task_id"`
+			SpentDate         string  `json:"spent_date"`
 			Hours             float64 `json:"hours"`
 			Notes             string  `json:"notes"`
 			ExternalReference struct {
@@ -91,7 +93,7 @@ func TestHarvestAdapterUsesExternalReference(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Error(err)
 		}
-		if payload.ProjectID != "123" || payload.TaskID != "456" || payload.Hours != 1.25 || payload.Notes != "Fix login" || payload.ExternalReference.ID != "1" || payload.ExternalReference.GroupID != "2" || payload.ExternalReference.Permalink != "https://app.asana.com/0/2/1" {
+		if payload.ProjectID != "123" || payload.TaskID != "456" || payload.SpentDate != "2026-10-05" || payload.Hours != 1.25 || payload.Notes != "Fix login" || payload.ExternalReference.ID != "1" || payload.ExternalReference.GroupID != "2" || payload.ExternalReference.Permalink != "https://app.asana.com/0/2/1" {
 			t.Errorf("Harvest payload = %+v", payload)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -103,6 +105,12 @@ func TestHarvestAdapterUsesExternalReference(t *testing.T) {
 	}
 	if err := runHarvest(context.Background(), strings.NewReader(request), &out, "", credentials, server.URL); err == nil {
 		t.Fatal("missing default task ID accepted")
+	}
+	for _, date := range []string{"", "+1 day", "2026-02-30"} {
+		bad := strings.Replace(request, `"2026-10-05"`, strconv.Quote(date), 1)
+		if err := runHarvest(context.Background(), strings.NewReader(bad), &out, "456", credentials, "http://unused.invalid"); err == nil || !strings.Contains(err.Error(), "spent_date") {
+			t.Errorf("spent_date %q: err = %v", date, err)
+		}
 	}
 }
 
@@ -116,7 +124,7 @@ func TestHarvestRejectsCreatedEntryWithoutAsanaLink(t *testing.T) {
 		w.Write([]byte(`{"id":987,"external_reference":null}`))
 	}))
 	defer server.Close()
-	err := createHarvestEntry(context.Background(), credentials, server.URL, "123", "456", 1.25, timetracking.Asana{TaskGID: "1", ProjectGID: "2", URL: "https://app.asana.com/0/2/1"})
+	err := createHarvestEntry(context.Background(), credentials, server.URL, "123", "456", "2026-10-05", 1.25, timetracking.Asana{TaskGID: "1", ProjectGID: "2", URL: "https://app.asana.com/0/2/1"})
 	if err == nil || !strings.Contains(err.Error(), "without the Asana link") || !strings.Contains(err.Error(), "do not submit again") {
 		t.Fatalf("missing link error = %v", err)
 	}

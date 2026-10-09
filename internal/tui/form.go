@@ -1,15 +1,18 @@
 package tui
 
 import (
+	"context"
 	"maps"
 	"strconv"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/sadmachine/asanamate/internal/dateinput"
 	"github.com/sadmachine/asanamate/internal/form"
 	"github.com/sadmachine/asanamate/internal/ticket"
 )
@@ -42,6 +45,8 @@ func newFormModal(title string, spec form.Spec, defaults map[string]string, onSu
 			f.values[field.ID] = field.Options[0].ID
 		case field.Type == form.Bool:
 			f.values[field.ID] = "false"
+		case field.Type == form.Date:
+			f.values[field.ID] = time.Now().Format(time.DateOnly)
 		case field.Type == form.String:
 		case firstMissing < 0:
 			firstMissing = i
@@ -95,7 +100,17 @@ func (f *formModal) update(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 			f.editing = false
 			return false, nil
 		case "done", "next":
-			f.values[field.ID] = strings.TrimSpace(f.input.Value())
+			value := strings.TrimSpace(f.input.Value())
+			if field.Type == form.Date {
+				// date -d answers in milliseconds, so it runs inline.
+				date, err := dateinput.Resolve(context.Background(), value)
+				if err != nil {
+					f.err = err.Error()
+					return false, nil
+				}
+				value = date
+			}
+			f.values[field.ID] = value
 			f.editing = false
 			f.err = ""
 			if name == "next" {

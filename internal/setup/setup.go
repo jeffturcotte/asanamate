@@ -436,7 +436,7 @@ var actionFiles = []struct{ name, body string }{
 # Commands run with /bin/sh -c. Ticket data arrives in ASANAMATE_* environment
 # variables and in the files $ASANAMATE_TICKET_JSON and $ASANAMATE_TICKET_MD.
 # Never paste ticket text into the command; always use the variables.
-# Optional [form] fields provide select, bool, number, string, or hours
+# Optional [form] fields provide select, bool, number, string, hours, or date
 # controls, each with an optional default. Values reach the
 # command as $ASANAMATE_PARAM_<ID>. See README for an example.
 # mode: "foreground" (suspend the TUI), "background" (detached, logged), or

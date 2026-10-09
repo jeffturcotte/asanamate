@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -17,6 +18,7 @@ const (
 	Bool   = "bool"
 	Number = "number"
 	String = "string"
+	Date   = "date"
 )
 
 var fieldID = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
@@ -31,7 +33,8 @@ type Option struct {
 // Remember associates a select choice with the chosen Asana project after
 // submission. Default is the initial value: a select option ID when no
 // remembered choice applies, "true" or "false" for Bool, a decimal for
-// Number, or any text for String.
+// Number, any text for String, or YYYY-MM-DD for Date. Date values are always
+// YYYY-MM-DD; whoever collects one resolves typed text with dateinput.
 type Field struct {
 	ID       string   `json:"id" toml:"id"`
 	Label    string   `json:"label" toml:"label"`
@@ -76,7 +79,7 @@ func (s Spec) Validate() error {
 			if field.Remember || len(field.Options) != 0 || field.Default != "" {
 				return fmt.Errorf("form hours %q cannot have options, a default, or be remembered", field.ID)
 			}
-		case Bool, Number, String:
+		case Bool, Number, String, Date:
 			if field.Remember || len(field.Options) != 0 {
 				return fmt.Errorf("form %s %q cannot have options or be remembered", field.Type, field.ID)
 			}
@@ -123,6 +126,10 @@ func (f Field) check(value string) error {
 	case Number:
 		if _, err := decimal(value); err != nil {
 			return errors.New("enter a decimal number")
+		}
+	case Date:
+		if _, err := time.Parse(time.DateOnly, value); err != nil {
+			return errors.New("enter a date as YYYY-MM-DD")
 		}
 	}
 	return nil

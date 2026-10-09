@@ -46,7 +46,7 @@ func TestProviderProtocol(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			var payload harvestEntryRequest
-			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.ProjectID != "123" || payload.TaskID != "456" || payload.Hours != 1.25 || payload.ExternalReference.ID != "42" {
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.ProjectID != "123" || payload.TaskID != "456" || payload.SpentDate != "2026-10-05" || payload.Hours != 1.25 || payload.ExternalReference.ID != "42" {
 				t.Errorf("Harvest payload = %+v, err = %v", payload, err)
 			}
 			logged.Store(true)
@@ -68,10 +68,10 @@ func TestProviderProtocol(t *testing.T) {
 	asana := timetracking.Asana{TaskGID: "42", ProjectGID: "7", Title: "Fix login", URL: "https://app.asana.com/0/7/42"}
 
 	spec, err := provider.Form(ctx, asana, []projectlinks.Link{{Type: projectlinks.HarvestProject, Value: "123"}})
-	if err != nil || len(spec.Fields) != 3 || spec.Fields[0].Options[0].ID != "123" || spec.Fields[0].Default != "123" {
+	if err != nil || len(spec.Fields) != 4 || spec.Fields[0].Options[0].ID != "123" || spec.Fields[0].Default != "123" {
 		t.Fatalf("form = %+v, err = %v", spec, err)
 	}
-	if err := provider.Log(ctx, spec, map[string]string{"project_id": "123", "task_id": "456", "hours": "1.25"}, asana); err != nil || !logged.Load() {
+	if err := provider.Log(ctx, spec, map[string]string{"project_id": "123", "task_id": "456", "hours": "1.25", "spent_date": "2026-10-05"}, asana); err != nil || !logged.Load() {
 		t.Fatalf("log err = %v, logged = %v", err, logged.Load())
 	}
 	summary, err := provider.Summary(ctx, asana)

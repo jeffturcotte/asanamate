@@ -5,7 +5,7 @@ request=$(cat)
 printf '%s\n' "$request" >> "$1"
 case $request in
 *'"operation":"form"'*)
-	printf '%s\n' '{"fields":[{"id":"project_id","label":"Project","type":"select","remember":true,"options":[{"id":"123","name":"Web"}]},{"id":"hours","label":"Hours","type":"hours"}]}'
+	printf '%s\n' '{"fields":[{"id":"project_id","label":"Project","type":"select","remember":true,"options":[{"id":"123","name":"Web"}]},{"id":"hours","label":"Hours","type":"hours"},{"id":"spent_date","label":"Date","type":"date"}]}'
 	;;
 *'"operation":"log"'*)
 	;;

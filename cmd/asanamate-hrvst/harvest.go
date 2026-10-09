@@ -98,6 +98,7 @@ func runHarvest(ctx context.Context, in io.Reader, out io.Writer, taskID, config
 			project,
 			{ID: "task_id", Label: "Harvest task", Type: form.Select, Options: []form.Option{task}, Remember: true},
 			{ID: "hours", Label: "Hours", Type: form.Hours},
+			{ID: "spent_date", Label: "Date", Type: form.Date},
 		}})
 	case "summary":
 		if req.Asana == nil || !digits(req.Asana.TaskGID) {
@@ -126,19 +127,23 @@ func runHarvest(ctx context.Context, in io.Reader, out io.Writer, taskID, config
 		if selectedTask != taskID {
 			return errors.New("hrvst task is not the configured default task")
 		}
-		return createHarvestEntry(ctx, configPath, endpoint, projectID, selectedTask, hours, *req.Asana)
+		spentDate := req.Values["spent_date"]
+		if _, err := time.Parse(time.DateOnly, spentDate); err != nil {
+			return errors.New("hrvst log needs spent_date as YYYY-MM-DD")
+		}
+		return createHarvestEntry(ctx, configPath, endpoint, projectID, selectedTask, spentDate, hours, *req.Asana)
 	default:
 		return fmt.Errorf("unknown time provider operation %q", req.Operation)
 	}
 }
 
-func createHarvestEntry(ctx context.Context, configPath, endpoint, projectID, taskID string, hours float64, asana timetracking.Asana) error {
+func createHarvestEntry(ctx context.Context, configPath, endpoint, projectID, taskID, spentDate string, hours float64, asana timetracking.Asana) error {
 	credentials, err := loadHarvestCredentials(configPath)
 	if err != nil {
 		return err
 	}
 	body, err := json.Marshal(harvestEntryRequest{
-		ProjectID: projectID, TaskID: taskID, SpentDate: time.Now().Format("2006-01-02"), Hours: hours, Notes: asana.Title,
+		ProjectID: projectID, TaskID: taskID, SpentDate: spentDate, Hours: hours, Notes: asana.Title,
 		ExternalReference: harvestExternalReference{ID: asana.TaskGID, GroupID: asana.ProjectGID, Permalink: asana.URL},
 	})
 	if err != nil {

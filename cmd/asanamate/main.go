@@ -59,8 +59,9 @@ const usage = `usage:
                                                    and people; "" clears it)
   asanamate assign  [--yes] <gid> <name | me | "">
                                                    assign a task ("" unassigns it)
-  asanamate due     [--yes] <gid> <YYYY-MM-DD | "">
-                                                   set a task's due date ("" clears it)
+  asanamate due     [--yes] <gid> <date | "">
+                                                   set a task's due date: YYYY-MM-DD or date -d
+                                                   text, such as "+1 day" ("" clears it)
   asanamate project add|remove [--yes] <gid> <project-gid>
                                                    add a task to a project or remove it
   asanamate complete [--yes] [--reopen] <gid>        mark a task complete (--reopen reopens it)
@@ -68,7 +69,7 @@ const usage = `usage:
                                                    react to a comment (--remove takes it back;
                                                    comment gids are in show --format json)
   asanamate create  [--yes] [--project <gid> [--section <name>] | --parent <gid>]
-                    [--assignee <name | me>] [--due <YYYY-MM-DD>] [--notes <markdown | ->] <title>
+                    [--assignee <name | me>] [--due <date>] [--notes <markdown | ->] <title>
                                                    create a ticket (default: in My Tasks, assigned
                                                    to you) or a subtask; prints its gid
   asanamate doctor [<gid>]                         check setup and optional tools; for a ticket, why agents link (or not)
@@ -270,7 +271,7 @@ func runCreate(args []string, stdin io.Reader, stdout io.Writer, writer func(yes
 	fs.StringVar(&nt.Section, "section", "", "section of --project, by name or gid")
 	fs.StringVar(&nt.Parent, "parent", "", "parent task gid; makes a subtask")
 	fs.StringVar(&nt.Assignee, "assignee", "", `full name or gid of the assignee, or "me"`)
-	fs.StringVar(&nt.Due, "due", "", "due date as YYYY-MM-DD")
+	fs.StringVar(&nt.Due, "due", "", "due date as YYYY-MM-DD or date -d text, such as +1 day")
 	fs.StringVar(&nt.Notes, "notes", "", `description in Markdown ("-" reads stdin)`)
 	if err := fs.Parse(args); err != nil {
 		return err
