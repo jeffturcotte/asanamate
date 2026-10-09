@@ -276,11 +276,18 @@ ignore.
 - `log`: nothing. Exit zero only after the entry exists. asanamate never
   retries a failed log, because the provider may have created the entry
   before failing.
-- `summary`: `{"total_seconds":13500}`, a nonnegative integer: all-time,
+- `summary`: `{"total_seconds":13500,"today_seconds":4500}`. `total_seconds`
+  is a required nonnegative integer: all-time,
   unrounded time from stopped entries linked to this exact ticket, across
   projects, visible to the account. Return `0` when there are none. Match by
   the ticket, not its title, and fetch every page first; never return a
-  partial total. A provider without totals returns `{"unsupported":true}`.
+  partial total. Optional `today_seconds` is a nonnegative integer no greater
+  than `total_seconds`: the subset logged on today's local calendar date,
+  using the entry's logged date rather than its creation time. Return `0`
+  when none were logged today; omit it or return `null` when daily totals
+  are unavailable. The header shows the total followed by today's value,
+  when supplied. Harvest calculates both values from the same pages.
+  A provider without totals returns `{"unsupported":true}`.
 
 **Exit status.** Non-zero is a failure; asanamate shows the provider's stderr
 with the error. A failed `form` or `log` shows in the status line or the

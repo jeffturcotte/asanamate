@@ -292,6 +292,7 @@ func (credentials harvestCredentials) call(ctx context.Context, method, endpoint
 }
 
 func harvestSummary(ctx context.Context, configPath, endpoint, gid string) (timetracking.Summary, error) {
+	today := time.Now().Format(time.DateOnly)
 	credentials, err := loadHarvestCredentials(configPath)
 	if err != nil {
 		return timetracking.Summary{}, err
@@ -300,7 +301,7 @@ func harvestSummary(ctx context.Context, configPath, endpoint, gid string) (time
 	if err != nil {
 		return timetracking.Summary{}, err
 	}
-	var hours float64
+	var hours, todayHours float64
 	for page := 1; ; {
 		query := base.Query()
 		query.Set("external_reference_id", gid)
@@ -316,6 +317,7 @@ func harvestSummary(ctx context.Context, configPath, endpoint, gid string) (time
 			Entries *[]struct {
 				Hours     *float64                  `json:"hours"`
 				Running   *bool                     `json:"is_running"`
+				SpentDate string                    `json:"spent_date"`
 				Reference *harvestExternalReference `json:"external_reference"`
 			} `json:"time_entries"`
 			NextPage json.RawMessage `json:"next_page"`
@@ -334,7 +336,13 @@ func harvestSummary(ctx context.Context, configPath, endpoint, gid string) (time
 				return timetracking.Summary{}, errors.New("Harvest time summary: invalid entry duration or timer state")
 			}
 			if !*entry.Running {
+				if _, err := time.Parse(time.DateOnly, entry.SpentDate); err != nil {
+					return timetracking.Summary{}, errors.New("Harvest time summary: missing or invalid spent_date")
+				}
 				hours += *entry.Hours
+				if entry.SpentDate == today {
+					todayHours += *entry.Hours
+				}
 			}
 		}
 		var nextPage *int
@@ -353,5 +361,6 @@ func harvestSummary(ctx context.Context, configPath, endpoint, gid string) (time
 	if math.IsInf(seconds, 0) || seconds >= float64(math.MaxInt64) {
 		return timetracking.Summary{}, errors.New("Harvest time summary: duration overflow")
 	}
-	return timetracking.Summary{TotalSeconds: int64(seconds)}, nil
+	todaySeconds := int64(math.Round(todayHours * 3600))
+	return timetracking.Summary{TotalSeconds: int64(seconds), TodaySeconds: &todaySeconds}, nil
 }

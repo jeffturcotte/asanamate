@@ -747,8 +747,11 @@ Harvest notes contain ticket title; external reference links to Asana ticket
 and chosen Asana project.
 
 The ticket's header shows **Time tracked** with a clock icon below the local
-repo information; the Markdown reader shows an equivalent summary. This is
-all-time, unrounded time from stopped entries linked to that exact ticket,
+repo information; the Markdown reader shows an equivalent summary. It shows
+total time first, then today's time: **3h 45m (1h 15m today)**. Today uses your
+local calendar date and the entry's logged date, so backdated entries count
+only toward the total. Providers without daily totals show only the total.
+Both values use unrounded time from stopped entries linked to that exact ticket,
 across projects and visible to your authenticated
 account. Harvest permissions may limit this to your own entries. Running timers
 and older entries without the ticket's external reference are excluded. The

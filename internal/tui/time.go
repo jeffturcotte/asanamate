@@ -217,21 +217,28 @@ func (m *Model) timeSummaryValue(gid string) string {
 	case state.err != nil:
 		value = "unavailable"
 	default:
-		seconds := state.summary.TotalSeconds
-		parts := []string{}
-		if seconds >= 3600 {
-			parts = append(parts, fmt.Sprintf("%dh", seconds/3600))
+		value = trackedDuration(state.summary.TotalSeconds)
+		if today := state.summary.TodaySeconds; today != nil {
+			value += " (" + trackedDuration(*today) + " today)"
 		}
-		if minutes := seconds / 60 % 60; minutes > 0 {
-			parts = append(parts, fmt.Sprintf("%dm", minutes))
-		}
-		if remainder := seconds % 60; remainder > 0 {
-			parts = append(parts, fmt.Sprintf("%ds", remainder))
-		}
-		if len(parts) == 0 {
-			parts = append(parts, "0m")
-		}
-		value = strings.Join(parts, " ") + " (visible entries)"
+		value += " · visible entries"
 	}
 	return value + " · " + ticket.OneLine(m.deps.Config.TimeTracking.ID)
+}
+
+func trackedDuration(seconds int64) string {
+	parts := []string{}
+	if seconds >= 3600 {
+		parts = append(parts, fmt.Sprintf("%dh", seconds/3600))
+	}
+	if minutes := seconds / 60 % 60; minutes > 0 {
+		parts = append(parts, fmt.Sprintf("%dm", minutes))
+	}
+	if remainder := seconds % 60; remainder > 0 {
+		parts = append(parts, fmt.Sprintf("%ds", remainder))
+	}
+	if len(parts) == 0 {
+		return "0m"
+	}
+	return strings.Join(parts, " ")
 }

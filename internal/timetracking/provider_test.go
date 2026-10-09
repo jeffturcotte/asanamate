@@ -138,3 +138,36 @@ func TestSummaryRejectsInvalidResponses(t *testing.T) {
 		t.Fatal("legacy provider failure treated as zero")
 	}
 }
+
+func TestSummaryTodayIsOptionalAndValidated(t *testing.T) {
+	for _, tc := range []struct {
+		response string
+		today    *int64
+	}{
+		{`{"total_seconds":13500}`, nil},
+		{`{"total_seconds":13500,"today_seconds":null}`, nil},
+		{`{"total_seconds":13500,"today_seconds":4500}`, new(int64(4500))},
+		{`{"total_seconds":13500,"today_seconds":0}`, new(int64(0))},
+	} {
+		provider := Provider{Command: "printf '%s' '" + tc.response + "'"}
+		summary, err := provider.Summary(context.Background(), Asana{TaskGID: "42"})
+		if err != nil || summary.TotalSeconds != 13500 || (summary.TodaySeconds == nil) != (tc.today == nil) {
+			t.Fatalf("response %s: summary = %+v, err = %v", tc.response, summary, err)
+		}
+		if tc.today != nil && *summary.TodaySeconds != *tc.today {
+			t.Fatalf("today = %d, want %d", *summary.TodaySeconds, *tc.today)
+		}
+	}
+	for _, response := range []string{
+		`{"total_seconds":60,"today_seconds":-1}`,
+		`{"total_seconds":60,"today_seconds":61}`,
+		`{"total_seconds":60,"today_seconds":1.5}`,
+		`{"total_seconds":60,"today_seconds":"1"}`,
+		`{"total_seconds":60,"today_seconds":9223372036854775808}`,
+	} {
+		provider := Provider{Command: "printf '%s' '" + response + "'"}
+		if _, err := provider.Summary(context.Background(), Asana{TaskGID: "42"}); err == nil {
+			t.Fatalf("invalid today accepted: %s", response)
+		}
+	}
+}

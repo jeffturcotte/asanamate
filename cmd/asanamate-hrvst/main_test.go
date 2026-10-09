@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/sadmachine/asanamate/internal/projectlinks"
 	"github.com/sadmachine/asanamate/internal/timetracking"
@@ -53,7 +54,7 @@ func TestProviderProtocol(t *testing.T) {
 			fmt.Fprint(w, `{"id":987,"external_reference":{"id":"42","permalink":"https://app.asana.com/0/7/42"}}`)
 			return
 		}
-		fmt.Fprint(w, `{"time_entries":[{"hours":3.75,"is_running":false,"external_reference":{"id":"42"}}],"next_page":null}`)
+		fmt.Fprintf(w, `{"time_entries":[{"hours":3.75,"spent_date":%q,"is_running":false,"external_reference":{"id":"42"}}],"next_page":null}`, time.Now().Format(time.DateOnly))
 	}))
 	defer server.Close()
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
@@ -75,7 +76,7 @@ func TestProviderProtocol(t *testing.T) {
 		t.Fatalf("log err = %v, logged = %v", err, logged.Load())
 	}
 	summary, err := provider.Summary(ctx, asana)
-	if err != nil || summary.TotalSeconds != 13500 {
+	if err != nil || summary.TotalSeconds != 13500 || summary.TodaySeconds == nil || *summary.TodaySeconds != 13500 {
 		t.Fatalf("summary = %+v, err = %v", summary, err)
 	}
 }

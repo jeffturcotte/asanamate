@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sadmachine/asanamate/internal/form"
 	"github.com/sadmachine/asanamate/internal/timetracking"
@@ -131,6 +132,7 @@ func TestHarvestRejectsCreatedEntryWithoutAsanaLink(t *testing.T) {
 }
 
 func TestHarvestSummaryFiltersTicketAndPaginates(t *testing.T) {
+	today := time.Now().Format(time.DateOnly)
 	credentials := filepath.Join(t.TempDir(), "config.json")
 	if err := os.WriteFile(credentials, []byte(`{"accessToken":"test-token","accountId":"789"}`), 0o600); err != nil {
 		t.Fatal(err)
@@ -147,9 +149,9 @@ func TestHarvestSummaryFiltersTicketAndPaginates(t *testing.T) {
 		pages = append(pages, query.Get("page"))
 		switch query.Get("page") {
 		case "1":
-			fmt.Fprint(w, `{"time_entries":[{"hours":1.25,"rounded_hours":2,"is_running":false,"external_reference":{"id":"42","group_id":"1"}},{"hours":99,"is_running":false,"external_reference":{"id":"99"}},{"hours":10,"is_running":true,"external_reference":{"id":"42"}},{"hours":20,"is_running":false,"external_reference":null}],"next_page":2}`)
+			fmt.Fprintf(w, `{"time_entries":[{"hours":1.25,"rounded_hours":2,"spent_date":%q,"is_running":false,"external_reference":{"id":"42","group_id":"1"}},{"hours":99,"spent_date":%q,"is_running":false,"external_reference":{"id":"99"}},{"hours":10,"spent_date":%q,"is_running":true,"external_reference":{"id":"42"}},{"hours":20,"spent_date":%q,"is_running":false,"external_reference":null}],"next_page":2}`, today, today, today, today)
 		case "2":
-			fmt.Fprint(w, `{"time_entries":[{"hours":2.5,"is_running":false,"external_reference":{"id":"42","group_id":"2"}}],"next_page":null}`)
+			fmt.Fprint(w, `{"time_entries":[{"hours":2.5,"spent_date":"2000-01-01","is_running":false,"external_reference":{"id":"42","group_id":"2"}}],"next_page":null}`)
 		default:
 			t.Errorf("unexpected page: %v", query)
 			http.Error(w, "bad page", 400)
@@ -160,7 +162,7 @@ func TestHarvestSummaryFiltersTicketAndPaginates(t *testing.T) {
 	if err := runHarvest(context.Background(), strings.NewReader(`{"operation":"summary","asana":{"task_gid":"42"}}`), &out, "", credentials, server.URL); err != nil {
 		t.Fatal(err)
 	}
-	if out.String() != "{\"total_seconds\":13500}\n" || strings.Join(pages, ",") != "1,2" {
+	if out.String() != "{\"total_seconds\":13500,\"today_seconds\":4500}\n" || strings.Join(pages, ",") != "1,2" {
 		t.Fatalf("summary = %s, pages = %v", out.String(), pages)
 	}
 }
@@ -176,7 +178,9 @@ func TestHarvestSummaryRejectsPartialOrInvalidData(t *testing.T) {
 		`{"time_entries":[{"hours":-1,"is_running":false,"external_reference":{"id":"42"}}],"next_page":null}`,
 		`{"time_entries":[{"is_running":false,"external_reference":{"id":"42"}}],"next_page":null}`,
 		`{"time_entries":[{"hours":1,"external_reference":{"id":"42"}}],"next_page":null}`,
-		`{"time_entries":[{"hours":1e100,"is_running":false,"external_reference":{"id":"42"}}],"next_page":null}`,
+		`{"time_entries":[{"hours":1e100,"spent_date":"2000-01-01","is_running":false,"external_reference":{"id":"42"}}],"next_page":null}`,
+		`{"time_entries":[{"hours":1,"is_running":false,"external_reference":{"id":"42"}}],"next_page":null}`,
+		`{"time_entries":[{"hours":1,"spent_date":"2026-02-30","is_running":false,"external_reference":{"id":"42"}}],"next_page":null}`,
 	} {
 		t.Run(response, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, response) }))
@@ -188,7 +192,7 @@ func TestHarvestSummaryRejectsPartialOrInvalidData(t *testing.T) {
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("page") == "1" {
-			fmt.Fprint(w, `{"time_entries":[{"hours":1,"is_running":false,"external_reference":{"id":"42"}}],"next_page":2}`)
+			fmt.Fprint(w, `{"time_entries":[{"hours":1,"spent_date":"2000-01-01","is_running":false,"external_reference":{"id":"42"}}],"next_page":2}`)
 		} else {
 			http.Error(w, "denied", http.StatusForbidden)
 		}
@@ -209,14 +213,37 @@ func TestHarvestSummaryZeroAndUnitConversion(t *testing.T) {
 		seconds  int64
 	}{
 		{`{"time_entries":[],"next_page":null}`, 0},
-		{`{"time_entries":[{"hours":0.0002777778,"is_running":false,"external_reference":{"id":"42"}}],"next_page":null}`, 1},
+		{`{"time_entries":[{"hours":0.0002777778,"spent_date":"2000-01-01","is_running":false,"external_reference":{"id":"42"}}],"next_page":null}`, 1},
 	} {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, tc.response) }))
 		summary, err := harvestSummary(context.Background(), credentials, server.URL, "42")
 		server.Close()
-		if err != nil || summary.TotalSeconds != tc.seconds {
+		if err != nil || summary.TotalSeconds != tc.seconds || summary.TodaySeconds == nil || *summary.TodaySeconds != 0 {
 			t.Fatalf("summary = %+v, err = %v; want %d seconds", summary, err, tc.seconds)
 		}
+	}
+}
+
+func TestHarvestSummaryTodayAcrossPagesAndDates(t *testing.T) {
+	credentials := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(credentials, []byte(`{"accessToken":"test-token","accountId":"789"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	today := now.Format(time.DateOnly)
+	yesterday := now.AddDate(0, 0, -1).Format(time.DateOnly)
+	tomorrow := now.AddDate(0, 0, 1).Format(time.DateOnly)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("page") == "1" {
+			fmt.Fprintf(w, `{"time_entries":[{"hours":1,"spent_date":%q,"is_running":false,"external_reference":{"id":"42","group_id":"1"}},{"hours":2,"spent_date":%q,"is_running":false,"external_reference":{"id":"42"}},{"hours":3,"spent_date":%q,"is_running":false,"external_reference":{"id":"42"}}],"next_page":2}`, today, yesterday, tomorrow)
+		} else {
+			fmt.Fprintf(w, `{"time_entries":[{"hours":0.0002777778,"spent_date":%q,"is_running":false,"external_reference":{"id":"42","group_id":"2"}}],"next_page":null}`, today)
+		}
+	}))
+	defer server.Close()
+	summary, err := harvestSummary(context.Background(), credentials, server.URL, "42")
+	if err != nil || summary.TotalSeconds != 21601 || summary.TodaySeconds == nil || *summary.TodaySeconds != 3601 {
+		t.Fatalf("summary = %+v, err = %v", summary, err)
 	}
 }
 

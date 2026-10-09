@@ -135,7 +135,7 @@ func TestTimeSummaryStatesAndReaderViews(t *testing.T) {
 			task := m.details["42"].Task
 			task.HTMLNotes = "<body>" + strings.Repeat("<p>line</p>", 40) + "</body>"
 			m.details["42"] = ticket.Ticket{Task: task}
-			m.deps.Config.TimeTracking.Command = "printf '%s' '{\"total_seconds\":13500}'"
+			m.deps.Config.TimeTracking.Command = "printf '%s' '{\"total_seconds\":13500,\"today_seconds\":4500}'"
 			cmd := m.loadTimeSummary(task)
 			m.renderDetail(false)
 			if !strings.Contains(ansi.Strip(m.reader.GetContent()), "loading") {
@@ -143,7 +143,7 @@ func TestTimeSummaryStatesAndReaderViews(t *testing.T) {
 			}
 			m.Update(cmd())
 			content := ansi.Strip(m.reader.GetContent())
-			if !strings.Contains(content, "Time tracked") || !strings.Contains(content, "3h 45m") || !strings.Contains(content, "visible entries") {
+			if !strings.Contains(content, "Time tracked") || !strings.Contains(content, "3h 45m (1h 15m today)") || !strings.Contains(content, "visible entries") {
 				t.Fatalf("summary missing: %s", content)
 			}
 			m.reader.SetYOffset(8)
@@ -167,6 +167,24 @@ func TestTimeSummaryStatesAndReaderViews(t *testing.T) {
 				t.Fatal("disabled tracker shown or called")
 			}
 		})
+	}
+}
+
+func TestTimeSummaryTodayFormatting(t *testing.T) {
+	m, _ := timeModel(t)
+	for _, tc := range []struct {
+		summary timetracking.Summary
+		want    string
+	}{
+		{timetracking.Summary{TotalSeconds: 13500}, "3h 45m · visible entries · hrvst"},
+		{timetracking.Summary{TotalSeconds: 13500, TodaySeconds: new(int64(0))}, "3h 45m (0m today) · visible entries · hrvst"},
+		{timetracking.Summary{TotalSeconds: 3661, TodaySeconds: new(int64(61))}, "1h 1m 1s (1m 1s today) · visible entries · hrvst"},
+		{timetracking.Summary{TodaySeconds: new(int64(0))}, "0m (0m today) · visible entries · hrvst"},
+	} {
+		m.timeSummaries = map[string]timeSummaryState{"42": {summary: tc.summary}}
+		if got := m.timeSummaryValue("42"); got != tc.want {
+			t.Errorf("summary = %q, want %q", got, tc.want)
+		}
 	}
 }
 
