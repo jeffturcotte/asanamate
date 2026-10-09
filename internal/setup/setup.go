@@ -297,7 +297,7 @@ light = "light"
 # Comment reactions you made, drawn as pills.
 # reacted = { bg = "236" }
 # NEW badge on My Tasks tickets changed since you last viewed them.
-# new = { fg = "15", bg = "1", bold = true }
+# new = { fg = "15", bg = "4", bold = true }
 # +N more badge on Activity events in a row on one ticket.
 # more = { fg = "0", bg = "6", bold = true }
 # Comment authors cycle through these.
@@ -312,12 +312,13 @@ light = "light"
 # edit = "5"
 
 [colors.markdown]
-# Reading pane Markdown, on top of the theme's glamour style. Unset by default.
+# Reading pane Markdown, on top of the theme's glamour style. Unset by default,
+# except code.
 # text = ""
 # heading = ""
 # h1 = { fg = "228", bg = "63", bold = true }
 # link = ""
-# code = ""
+# code = "2"
 # code_block = ""
 # quote = ""
 # rule = ""
