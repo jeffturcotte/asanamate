@@ -1,0 +1,35 @@
+# Catppuccin Mocha palette adapted to asanamate's themed roles.
+# Palette reference: https://github.com/catppuccin/catppuccin
+base = "dark"
+
+[colors]
+accent = { fg = "#89b4fa", bold = true }
+border = "#585b70"
+muted = { fg = "#a6adc8", faint = false }
+highlight = { fg = "#cdd6f4", bg = "#313244", reverse = false }
+ok = "#a6e3a1"
+warn = "#f9e2af"
+error = "#f38ba8"
+working = "#94e2d5"
+pinned = { fg = "#fab387", bold = true }
+viewing = { fg = "#cba6f7", bold = true }
+reacted = { fg = "#cdd6f4", bg = "#313244" }
+new = { fg = "#1e1e2e", bg = "#f38ba8", bold = true }
+more = { fg = "#1e1e2e", bg = "#94e2d5", bold = true }
+authors = ["#89b4fa", "#cba6f7", "#94e2d5", "#a6e3a1", "#f9e2af", "#f38ba8"]
+
+[colors.mode]
+normal = { fg = "#1e1e2e", bg = "#89b4fa", bold = true }
+filter = { fg = "#1e1e2e", bg = "#f9e2af", bold = true }
+read = { fg = "#1e1e2e", bg = "#94e2d5", bold = true }
+edit = { fg = "#1e1e2e", bg = "#cba6f7", bold = true }
+
+[colors.markdown]
+text = "#cdd6f4"
+heading = { fg = "#89b4fa", bold = true }
+h1 = { fg = "#1e1e2e", bg = "#89b4fa", bold = true }
+link = { fg = "#94e2d5", underline = true }
+code = { fg = "#a6e3a1", bg = "#181825" }
+code_block = { fg = "#cdd6f4", bg = "#181825" }
+quote = { fg = "#a6adc8", italic = true }
+rule = "#585b70"

@@ -1,0 +1,35 @@
+# Dracula palette adapted to asanamate's themed roles.
+# Palette reference: https://github.com/dracula/dracula-theme
+base = "dark"
+
+[colors]
+accent = { fg = "#bd93f9", bold = true }
+border = "#6272a4"
+muted = { fg = "#8892bf", faint = false }
+highlight = { fg = "#f8f8f2", bg = "#44475a", reverse = false }
+ok = "#50fa7b"
+warn = "#f1fa8c"
+error = "#ff5555"
+working = "#8be9fd"
+pinned = { fg = "#ffb86c", bold = true }
+viewing = { fg = "#ff79c6", bold = true }
+reacted = { fg = "#f8f8f2", bg = "#44475a" }
+new = { fg = "#282a36", bg = "#ff5555", bold = true }
+more = { fg = "#282a36", bg = "#8be9fd", bold = true }
+authors = ["#bd93f9", "#ff79c6", "#8be9fd", "#50fa7b", "#f1fa8c", "#ff5555"]
+
+[colors.mode]
+normal = { fg = "#282a36", bg = "#bd93f9", bold = true }
+filter = { fg = "#282a36", bg = "#f1fa8c", bold = true }
+read = { fg = "#282a36", bg = "#8be9fd", bold = true }
+edit = { fg = "#282a36", bg = "#ff79c6", bold = true }
+
+[colors.markdown]
+text = "#f8f8f2"
+heading = { fg = "#bd93f9", bold = true }
+h1 = { fg = "#282a36", bg = "#bd93f9", bold = true }
+link = { fg = "#8be9fd", underline = true }
+code = { fg = "#50fa7b", bg = "#21222c" }
+code_block = { fg = "#f8f8f2", bg = "#21222c" }
+quote = { fg = "#8892bf", italic = true }
+rule = "#6272a4"

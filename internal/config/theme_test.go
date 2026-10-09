@@ -34,6 +34,113 @@ func TestBuiltinThemesLoad(t *testing.T) {
 	}
 }
 
+func TestStandardThemesLoadWithoutFiles(t *testing.T) {
+	for _, tc := range []struct{ name, base, accent string }{
+		{"one-dark", "dark", "#61afef"},
+		{"one-light", "light", "#4078f2"},
+		{"monokai", "dark", "#a6e22e"},
+		{"tokyo-night", "dark", "#7aa2f7"},
+		{"tokyo-day", "light", "#2e7de9"},
+		{"sonokai", "dark", "#76cce0"},
+		{"dracula", "dark", "#bd93f9"},
+		{"nord", "dark", "#88c0d0"},
+		{"gruvbox-dark", "dark", "#83a598"},
+		{"gruvbox-light", "light", "#076678"},
+		{"catppuccin-mocha", "dark", "#89b4fa"},
+		{"catppuccin-latte", "light", "#1e66f5"},
+		{"solarized-dark", "dark", "#268bd2"},
+		{"solarized-light", "light", "#268bd2"},
+		{"rose-pine", "dark", "#c4a7e7"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeFile(t, "workspace = \"1\"\n[theme]\nname = \""+tc.name+"\"\n")
+			cfg, err := Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.Themes != nil {
+				t.Fatal("built-ins must not need local theme files")
+			}
+			for _, darkBackground := range []bool{false, true} {
+				p := cfg.Palette(darkBackground)
+				if p.Base != tc.base || p.Colors.Accent.FG != tc.accent {
+					t.Fatalf("palette = %+v, want base %s and accent %s", p, tc.base, tc.accent)
+				}
+				c := p.Colors
+				for role, style := range map[string]Style{
+					"accent": c.Accent, "border": c.Border, "muted": c.Muted, "highlight": c.Highlight,
+					"ok": c.OK, "warn": c.Warn, "error": c.Error, "working": c.Working,
+					"header": c.Header, "selection": c.Selection, "pinned": c.Pinned,
+					"viewing": c.Viewing, "reacted": c.Reacted, "new": c.New, "more": c.More,
+					"mode.normal": c.Mode.Normal, "mode.filter": c.Mode.Filter,
+					"mode.read": c.Mode.Read, "mode.edit": c.Mode.Edit,
+					"markdown.text": c.Markdown.Text, "markdown.heading": c.Markdown.Heading,
+					"markdown.h1": c.Markdown.H1, "markdown.link": c.Markdown.Link,
+					"markdown.code": c.Markdown.Code, "markdown.code_block": c.Markdown.CodeBlock,
+					"markdown.quote": c.Markdown.Quote, "markdown.rule": c.Markdown.Rule,
+				} {
+					if !strings.HasPrefix(style.FG, "#") {
+						t.Errorf("%s must use the preset palette, got %+v", role, style)
+					}
+				}
+				if len(c.Authors) != 6 {
+					t.Fatalf("authors = %+v, want six colors", c.Authors)
+				}
+				for _, style := range c.Authors {
+					if !strings.HasPrefix(style.FG, "#") {
+						t.Errorf("author must use the preset palette, got %+v", style)
+					}
+				}
+				if c.Highlight.BG == "" || c.Highlight.Reverse == nil || *c.Highlight.Reverse {
+					t.Errorf("highlight must use explicit colors without reverse: %+v", c.Highlight)
+				}
+				if c.Muted.Faint == nil || *c.Muted.Faint {
+					t.Errorf("muted must not dim the preset color: %+v", c.Muted)
+				}
+			}
+		})
+	}
+}
+
+func TestStandardThemesAutoAndOverrides(t *testing.T) {
+	path := writeFile(t, "workspace = \"1\"\n[theme]\nname = \"auto\"\ndark = \"one-dark\"\nlight = \"one-light\"\n[colors]\npinned = \"#123456\"\n")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		darkBackground bool
+		base, accent   string
+	}{
+		{true, "dark", "#61afef"},
+		{false, "light", "#4078f2"},
+	} {
+		p := cfg.Palette(tc.darkBackground)
+		if p.Base != tc.base || p.Colors.Accent.FG != tc.accent {
+			t.Fatalf("palette = %+v", p)
+		}
+		if s := p.Colors.Pinned; s.FG != "#123456" || s.Bold == nil || !*s.Bold {
+			t.Fatalf("config must override preset foreground and retain bold: %+v", s)
+		}
+	}
+}
+
+func TestCustomThemeTakesPrecedenceOverStandard(t *testing.T) {
+	path := writeFile(t, "workspace = \"1\"\n[theme]\nname = \"tokyo-night\"\n")
+	writeTheme(t, path, "tokyo-night", "base = \"light\"\n[colors]\naccent = \"#123456\"\n")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := cfg.Palette(true); p.Base != "light" || p.Colors.Accent.FG != "#123456" {
+		t.Fatalf("existing custom theme must retain its colors: %+v", p)
+	}
+	writeTheme(t, path, "tokyo-night", "base = \"invalid\"\n")
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "base must be") {
+		t.Fatalf("invalid custom theme must not silently use the preset: %v", err)
+	}
+}
+
 func TestPaletteLayersAndFallbacks(t *testing.T) {
 	path := writeFile(t, "workspace = \"1\"\n[theme]\nname = \"night\"\n[colors]\naccent = \"#7aa2f7\"\n[colors.mode]\nread = { bg = \"0\" }\n")
 	writeTheme(t, path, "night", "base = \"dark\"\n[colors]\nborder = \"#3b4261\"\npinned = { fg = \"#ff9e64\" }\n[colors.markdown]\nlink = { underline = true }\n")

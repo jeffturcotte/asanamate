@@ -1,0 +1,35 @@
+# One Dark palette adapted to asanamate's themed roles.
+# Palette reference: https://github.com/atom/one-dark-syntax
+base = "dark"
+
+[colors]
+accent = { fg = "#61afef", bold = true }
+border = "#5c6370"
+muted = { fg = "#5c6370", faint = false }
+highlight = { fg = "#abb2bf", bg = "#3e4451", reverse = false }
+ok = "#98c379"
+warn = "#e5c07b"
+error = "#e06c75"
+working = "#56b6c2"
+pinned = { fg = "#d19a66", bold = true }
+viewing = { fg = "#c678dd", bold = true }
+reacted = { fg = "#abb2bf", bg = "#3e4451" }
+new = { fg = "#282c34", bg = "#e06c75", bold = true }
+more = { fg = "#282c34", bg = "#56b6c2", bold = true }
+authors = ["#61afef", "#c678dd", "#56b6c2", "#98c379", "#e5c07b", "#e06c75"]
+
+[colors.mode]
+normal = { fg = "#282c34", bg = "#61afef", bold = true }
+filter = { fg = "#282c34", bg = "#e5c07b", bold = true }
+read = { fg = "#282c34", bg = "#56b6c2", bold = true }
+edit = { fg = "#282c34", bg = "#c678dd", bold = true }
+
+[colors.markdown]
+text = "#abb2bf"
+heading = { fg = "#61afef", bold = true }
+h1 = { fg = "#282c34", bg = "#61afef", bold = true }
+link = { fg = "#56b6c2", underline = true }
+code = { fg = "#98c379", bg = "#21252b" }
+code_block = { fg = "#abb2bf", bg = "#21252b" }
+quote = { fg = "#5c6370", italic = true }
+rule = "#5c6370"

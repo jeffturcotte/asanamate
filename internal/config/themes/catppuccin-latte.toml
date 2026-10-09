@@ -1,0 +1,35 @@
+# Catppuccin Latte palette adapted to asanamate's themed roles.
+# Palette reference: https://github.com/catppuccin/catppuccin
+base = "light"
+
+[colors]
+accent = { fg = "#1e66f5", bold = true }
+border = "#9ca0b0"
+muted = { fg = "#6c6f85", faint = false }
+highlight = { fg = "#4c4f69", bg = "#ccd0da", reverse = false }
+ok = "#40a02b"
+warn = "#df8e1d"
+error = "#d20f39"
+working = "#179299"
+pinned = { fg = "#fe640b", bold = true }
+viewing = { fg = "#8839ef", bold = true }
+reacted = { fg = "#4c4f69", bg = "#ccd0da" }
+new = { fg = "#eff1f5", bg = "#d20f39", bold = true }
+more = { fg = "#eff1f5", bg = "#179299", bold = true }
+authors = ["#1e66f5", "#8839ef", "#179299", "#40a02b", "#df8e1d", "#d20f39"]
+
+[colors.mode]
+normal = { fg = "#eff1f5", bg = "#1e66f5", bold = true }
+filter = { fg = "#eff1f5", bg = "#df8e1d", bold = true }
+read = { fg = "#eff1f5", bg = "#179299", bold = true }
+edit = { fg = "#eff1f5", bg = "#8839ef", bold = true }
+
+[colors.markdown]
+text = "#4c4f69"
+heading = { fg = "#1e66f5", bold = true }
+h1 = { fg = "#eff1f5", bg = "#1e66f5", bold = true }
+link = { fg = "#179299", underline = true }
+code = { fg = "#40a02b", bg = "#e6e9ef" }
+code_block = { fg = "#4c4f69", bg = "#e6e9ef" }
+quote = { fg = "#6c6f85", italic = true }
+rule = "#9ca0b0"
