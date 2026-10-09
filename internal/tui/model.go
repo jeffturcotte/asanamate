@@ -166,9 +166,10 @@ func New(d Deps) *Model {
 	m := &Model{
 		deps: d,
 		listState: listState{
-			filterInput: in,
-			separator:   *cmp.Or(d.State.Display.Separator, &d.Config.List.Separator),
-			spacing:     *cmp.Or(d.State.Display.HeaderSpacing, &d.Config.List.Header.Spacing),
+			filterInput:    in,
+			separator:      *cmp.Or(d.State.Display.Separator, &d.Config.List.Separator),
+			spacing:        *cmp.Or(d.State.Display.HeaderSpacing, &d.Config.List.Header.Spacing),
+			selectionStyle: d.Config.List.Selection.Style,
 		},
 		readerState: readerState{
 			reader:     viewport.New(),
@@ -191,6 +192,9 @@ func New(d Deps) *Model {
 		loading:         true,
 		now:             time.Now,
 		readerHidden:    d.NoPreview || !d.Config.Layout.Reader,
+	}
+	if saved := d.State.Display.SelectionStyle; saved == config.StyleMarker || saved == config.StyleBar {
+		m.selectionStyle = saved
 	}
 	for _, p := range d.State.Projects {
 		m.projects = append(m.projects, asana.Project{GID: p.GID, Name: p.Name})

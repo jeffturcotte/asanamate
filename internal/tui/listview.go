@@ -33,11 +33,12 @@ type listState struct {
 	changed     map[string]bool // My Tasks tickets modified since last shown
 	filterInput textinput.Model
 	// filterBefore is the filter when editing started; the filter cancel key restores it.
-	filterBefore string
-	filtering    bool
-	separator    bool        // lines frame each ticket; starts at list.separator
-	spacing      bool        // blank lines around group headers; starts at list.header.spacing
-	viewing      *asana.Task // edited ticket kept listed after a reload drops it, until the selection moves
+	filterBefore   string
+	filtering      bool
+	separator      bool        // lines frame each ticket; starts at list.separator
+	spacing        bool        // blank lines around group headers; starts at list.header.spacing
+	selectionStyle string      // selected row style; starts at list.selection.style
+	viewing        *asana.Task // edited ticket kept listed after a reload drops it, until the selection moves
 }
 
 // listTitle is the list panel's title and its right-hand count, or a
@@ -81,7 +82,7 @@ func (m *Model) skeleton(width, height int) string {
 // selectionBar reports whether the selected ticket is drawn as a reversed bar
 // (the list has focus and selection.style is bar).
 func (m *Model) selectionBar() bool {
-	return m.deps.Config.List.Selection.Style == config.StyleBar && !m.focusReader
+	return m.selectionStyle == config.StyleBar && !m.focusReader
 }
 
 // renderRowLine fits line into width with flag after it and tail
@@ -259,7 +260,7 @@ func (m *Model) groupCounts() map[string]int {
 // marker is the selected row's left marker with its gap, or "" unless
 // selection.style is marker.
 func (m *Model) marker() string {
-	if m.deps.Config.List.Selection.Style != config.StyleMarker {
+	if m.selectionStyle != config.StyleMarker {
 		return ""
 	}
 	return m.sym.cursor + " "

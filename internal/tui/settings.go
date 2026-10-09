@@ -3,6 +3,7 @@ package tui
 import (
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/sadmachine/asanamate/internal/config"
 	"github.com/sadmachine/asanamate/internal/state"
 )
 
@@ -35,6 +36,14 @@ func (m *Model) openSettings(cursor int) {
 			m.openRefreshInterval()
 			return nil
 		}},
+		{Label: "Selection style", Hint: m.selectionStyle, Key: "l", Value: toggle(4, func() {
+			if m.selectionStyle == config.StyleBar {
+				m.selectionStyle = config.StyleMarker
+			} else {
+				m.selectionStyle = config.StyleBar
+			}
+			m.fitList()
+		})},
 	}
 	items = append(items, pickItem{Label: "Build / edit actions", Key: "a", Value: func() tea.Cmd { m.modal = nil; m.openActionBuilder(); return nil }})
 	items = append(items, pickItem{Label: "List columns for this project", Key: "c", Value: m.openColumns})
@@ -50,6 +59,7 @@ func (m *Model) saveDisplay() {
 	m.deps.State.Display = state.Display{
 		Separator:       &separator,
 		HeaderSpacing:   &spacing,
+		SelectionStyle:  m.selectionStyle,
 		ReaderView:      m.readerView,
 		RefreshInterval: shortDuration(m.refreshInterval),
 	}
