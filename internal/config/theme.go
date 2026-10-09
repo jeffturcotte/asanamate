@@ -41,6 +41,7 @@ type Colors struct {
 	Viewing   Style          `toml:"viewing"`
 	Reacted   Style          `toml:"reacted"` // comment reactions the user made
 	New       Style          `toml:"new"`     // NEW badge on My Tasks tickets changed since last viewed
+	More      Style          `toml:"more"`    // +N more badge on Activity events in a row on one ticket
 	Authors   []Style        `toml:"authors"`
 	Mode      ModeColors     `toml:"mode"`
 	Markdown  MarkdownColors `toml:"markdown"`

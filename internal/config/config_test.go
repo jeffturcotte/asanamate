@@ -220,6 +220,7 @@ func TestListConfig(t *testing.T) {
 		"int spacing":   "[list.header]\nspacing = 1\n",
 		"bad selection": "[list.selection]\nstyle = \"rule\"\n",
 		"bad accent":    "[colors]\naccent = \"blue\"\n",
+		"bad more":      "[colors]\nmore = { bg = \"cyan\" }\n",
 	} {
 		if _, err := Load(writeFile(t, "workspace = \"1\"\n"+body)); err == nil {
 			t.Errorf("%s: expected an error", name)
