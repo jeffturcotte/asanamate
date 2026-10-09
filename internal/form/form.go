@@ -14,6 +14,9 @@ import (
 const (
 	Select = "select"
 	Hours  = "hours"
+	Bool   = "bool"
+	Number = "number"
+	String = "string"
 )
 
 var fieldID = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
@@ -24,16 +27,18 @@ type Option struct {
 	Name string `json:"name" toml:"name"`
 }
 
-// Field describes one required control. Remember associates a select choice
-// with the chosen Asana project after submission. Default preselects a select
-// option when no remembered choice applies; only providers set it.
+// Field describes one control. Every type except String needs a value.
+// Remember associates a select choice with the chosen Asana project after
+// submission. Default is the initial value: a select option ID when no
+// remembered choice applies, "true" or "false" for Bool, a decimal for
+// Number, or any text for String.
 type Field struct {
 	ID       string   `json:"id" toml:"id"`
 	Label    string   `json:"label" toml:"label"`
 	Type     string   `json:"type" toml:"type"`
 	Options  []Option `json:"options,omitempty" toml:"options"`
 	Remember bool     `json:"remember,omitempty" toml:"remember"`
-	Default  string   `json:"default,omitempty" toml:"-"`
+	Default  string   `json:"default,omitempty" toml:"default,omitempty"`
 }
 
 // Spec contains the controls rendered in one modal.
@@ -71,6 +76,15 @@ func (s Spec) Validate() error {
 			if field.Remember || len(field.Options) != 0 || field.Default != "" {
 				return fmt.Errorf("form hours %q cannot have options, a default, or be remembered", field.ID)
 			}
+		case Bool, Number, String:
+			if field.Remember || len(field.Options) != 0 {
+				return fmt.Errorf("form %s %q cannot have options or be remembered", field.Type, field.ID)
+			}
+			if field.Default != "" {
+				if err := field.check(field.Default); err != nil {
+					return fmt.Errorf("form %s %q default: %w", field.Type, field.ID, err)
+				}
+			}
 		default:
 			return fmt.Errorf("form field %q has unknown type %q", field.ID, field.Type)
 		}
@@ -84,20 +98,43 @@ func (s Spec) ValidateValues(values map[string]string) error {
 		return err
 	}
 	for _, field := range s.Fields {
-		value := strings.TrimSpace(values[field.ID])
-		switch field.Type {
-		case Select:
-			if !field.HasOption(value) {
-				return fmt.Errorf("%s: choose a current option", field.Label)
-			}
-		case Hours:
-			hours, err := strconv.ParseFloat(value, 64)
-			if err != nil || hours <= 0 || math.IsNaN(hours) || math.IsInf(hours, 0) {
-				return fmt.Errorf("%s: enter positive decimal hours", field.Label)
-			}
+		if err := field.check(strings.TrimSpace(values[field.ID])); err != nil {
+			return fmt.Errorf("%s: %w", field.Label, err)
 		}
 	}
 	return nil
+}
+
+// check reports whether value is valid for the field's type.
+func (f Field) check(value string) error {
+	switch f.Type {
+	case Select:
+		if !f.HasOption(value) {
+			return errors.New("choose a current option")
+		}
+	case Hours:
+		if hours, err := decimal(value); err != nil || hours <= 0 {
+			return errors.New("enter positive decimal hours")
+		}
+	case Bool:
+		if value != "true" && value != "false" {
+			return errors.New(`must be "true" or "false"`)
+		}
+	case Number:
+		if _, err := decimal(value); err != nil {
+			return errors.New("enter a decimal number")
+		}
+	}
+	return nil
+}
+
+// decimal parses a finite decimal number.
+func decimal(value string) (float64, error) {
+	n, err := strconv.ParseFloat(value, 64)
+	if err == nil && (math.IsNaN(n) || math.IsInf(n, 0)) {
+		err = errors.New("not finite")
+	}
+	return n, err
 }
 
 // HasOption reports whether id is a current select choice.

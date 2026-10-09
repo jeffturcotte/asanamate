@@ -261,7 +261,7 @@ type Action struct {
 	// where it is listed first; "" shows it everywhere.
 	Context string `toml:"context"`
 	Command string `toml:"command"`
-	// Form optionally asks for select or hours values before running the command.
+	// Form optionally asks for parameter values before running the command.
 	Form form.Spec `toml:"form"`
 	// Input, when set, is the title of a text box shown before the action
 	// runs; the typed text reaches the command as $ASANAMATE_INPUT_FILE.

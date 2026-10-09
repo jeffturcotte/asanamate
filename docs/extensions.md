@@ -251,13 +251,16 @@ ignore.
 
 **Output.** One JSON object on stdout, depending on the operation:
 
-- `form`: a form spec. Every field is required; IDs are unique snake_case
-  names, and labels are not empty. Types are `select` (needs `options`, each
-  with a stable, unique `id` and a `name`) and `hours`. A time form needs
-  exactly one `hours` field. `remember: true` on a select saves the choice
-  per Asana project. A select's optional `default` names one of its options
-  to preselect, such as the project a `links` entry suggests; a remembered
-  choice that is still offered wins over it.
+- `form`: a form spec. IDs are unique snake_case names, and labels are not
+  empty. Types are `select` (needs `options`, each with a stable, unique `id`
+  and a `name`), `bool` (`"true"` or `"false"`), `number` (any decimal),
+  `string` (any text, may be empty), and `hours` (positive decimal hours).
+  Every field except `string` needs a value. A time form needs exactly one
+  `hours` field. `remember: true` on a select saves the choice per Asana
+  project. The optional string `default` sets a field's initial value; hours
+  cannot have one. A select's `default` names one of its options, such as the
+  project a `links` entry suggests; a remembered choice that is still offered
+  wins over it. A `bool` without a default starts as `"false"`.
 
   ```json
   {"fields":[

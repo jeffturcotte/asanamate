@@ -188,7 +188,7 @@ func (b *actionBuilder) showAction() {
 				}
 			}, b.showAction)
 		}),
-		builderRow("Form fields", fmt.Sprint(len(a.Form.Fields)), "Optional select/hour prompts before running. Answers become ASANAMATE_PARAM_<ID>.", func() { b.descend(b.showAction, b.showFields) }),
+		builderRow("Form fields", fmt.Sprint(len(a.Form.Fields)), "Optional select, true/false, number, string, or hours prompts before running. Answers become ASANAMATE_PARAM_<ID>.", func() { b.descend(b.showAction, b.showFields) }),
 		builderRow("Save action", keyLabel("builder", "save"), "Validate and write the action file. Changes become available immediately.", b.submit),
 	}
 	b.show("Action builder", rows)
@@ -196,12 +196,12 @@ func (b *actionBuilder) showAction() {
 }
 
 func (b *actionBuilder) showFields() {
-	rows := []pickItem{builderRow("Add field", "select or hours", "Add a required select or hours prompt. Fields appear in the order listed.", func() {
+	rows := []pickItem{builderRow("Add field", "select, bool, number, string, hours", "Add a prompt. Fields appear in the order listed.", func() {
 		b.file.Action.Form.Fields = append(b.file.Action.Form.Fields, form.Field{Type: form.Select})
 		b.openField(len(b.file.Action.Form.Fields) - 1)
 	})}
 	for i, field := range b.file.Action.Form.Fields {
-		rows = append(rows, builderRow(fmt.Sprintf("%d. %s", i+1, field.Label), field.ID+" · "+field.Type, "Edit this field’s ID, label, type, remembered choices, and options.", func() { b.openField(i) }))
+		rows = append(rows, builderRow(fmt.Sprintf("%d. %s", i+1, field.Label), field.ID+" · "+field.Type, "Edit this field’s ID, label, type, default, remembered choices, and options.", func() { b.openField(i) }))
 	}
 	b.show("Form fields (ordered; esc returns)", rows)
 }
@@ -219,18 +219,21 @@ func (b *actionBuilder) showField(i int) {
 			b.text("Field ID", &f.ID, parent, false)
 		}),
 		builderRow("Label", f.Label, "Required label shown beside this prompt when the action runs.", func() { b.text("Field label", &f.Label, parent, false) }),
-		builderRow("Type", f.Type, "Select requires options; hours requires a positive decimal number.", func() {
-			b.choice("Field type", []string{form.Select, form.Hours}, func(v string) { f.Type = v }, parent)
+		builderRow("Type", f.Type, "Select requires options; bool is true/false; number is any decimal; string may be empty; hours is positive decimal hours.", func() {
+			b.choice("Field type", []string{form.Select, form.Bool, form.Number, form.String, form.Hours}, func(v string) { f.Type = v }, parent)
+		}),
+		builderRow("Default", f.Default, "Optional initial value: a select option ID, true or false, a number, or text. Hours cannot have one.", func() {
+			b.text("Default value", &f.Default, parent, false)
 		}),
 		builderRow("Remember", onOff(f.Remember), "For select fields only: remember the chosen option for the Asana project.", func() { f.Remember = !f.Remember; parent() }),
-		builderRow("Options", fmt.Sprint(len(f.Options)), "Select choices need unique IDs and display names. Hours fields cannot have options.", func() { b.descend(parent, func() { b.showOptions(i) }) }),
+		builderRow("Options", fmt.Sprint(len(f.Options)), "Select choices need unique IDs and display names. Other types cannot have options.", func() { b.descend(parent, func() { b.showOptions(i) }) }),
 		builderRow("Delete field", "Remove from draft", "Remove this field and its options from the draft. File changes only on Save action.", func() {
 			fields := b.file.Action.Form.Fields
 			b.file.Action.Form.Fields = append(fields[:i], fields[i+1:]...)
 			b.goBack()
 		}),
 	}
-	b.show("Field (hours cannot have options or remember)", rows)
+	b.show("Field (only select has options or remember)", rows)
 }
 
 func (b *actionBuilder) showOptions(field int) {
