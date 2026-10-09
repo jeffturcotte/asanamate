@@ -1,11 +1,13 @@
 package tui
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/sadmachine/asanamate/internal/agents"
@@ -69,6 +71,55 @@ func TestAgentColumnGroupsManyAgents(t *testing.T) {
 	m.Update(agentsMsg{list: list})
 	if first := strings.Split(ansi.Strip(m.listView(40, 4)), "\n")[0]; !strings.HasSuffix(first, "⚠1 ◐3 ●2 ") {
 		t.Fatalf("row = %q", first)
+	}
+}
+
+func TestAgentColumnUsesSelectionTheme(t *testing.T) {
+	for _, reverse := range []bool{false, true} {
+		for _, layout := range []string{config.LayoutSingle, config.LayoutMulti} {
+			for _, set := range []string{config.SymbolsASCII, config.SymbolsUnicode, config.SymbolsNerd} {
+				t.Run(layout+"/"+set+"/reverse="+fmt.Sprint(reverse), func(t *testing.T) {
+					m := agentModel(t, set, true)
+					m.deps.Config.List.Layout = layout
+					highlight := config.Style{Reverse: &reverse}
+					if !reverse {
+						highlight.FG, highlight.BG = "#dddddd", "#504945"
+					}
+					cfg := config.Config{Colors: config.Colors{Highlight: highlight}}
+					applyPalette(cfg.Palette(true))
+					for _, count := range []int{2, 6} {
+						list := []agents.Agent{onBranch(agents.Working, ""), onBranch(agents.Idle, "")}
+						m.Update(agentsMsg{list: slices.Repeat(list, count/2)})
+						row := strings.Split(m.listView(40, 4), "\n")[0]
+						if !strings.Contains(row, selectedStyle.Bold(true).Render(m.sym.robot)) {
+							t.Fatal("robot does not use the selection theme")
+						}
+						for _, st := range []agents.State{agents.Working, agents.Idle} {
+							style := stateStyles[st].Bold(true).Reverse(true)
+							if !reverse {
+								style = selectedStyle.Foreground(stateStyles[st].GetForeground()).Bold(true)
+							}
+							text := m.sym.agent(st, 0)
+							if count > 4 {
+								text += fmt.Sprint(count / 2)
+							}
+							if !strings.Contains(row, style.Render(text)) {
+								t.Fatalf("%s does not use the selection theme", st)
+							}
+						}
+						if ansi.StringWidth(row) != 40-listGutter {
+							t.Fatalf("highlight changed row width: %d", ansi.StringWidth(row))
+						}
+						m.focusReader = true
+						row = strings.Split(m.listView(40, 4), "\n")[0]
+						if !strings.Contains(row, lipgloss.NewStyle().Bold(true).Render(m.sym.robot)) {
+							t.Fatal("reader focus must leave the badge unhighlighted")
+						}
+						m.focusReader = false
+					}
+				})
+			}
+		}
 	}
 }
 
