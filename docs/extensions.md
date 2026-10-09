@@ -234,13 +234,13 @@ choices stay separate.
 |---|---|
 | `version` | protocol version, `1` |
 | `operation` | `form`, `log`, or `summary` |
-| `values` | `log` only: form values keyed by field ID. Select values are option IDs; `hours` is positive decimal hours as typed, such as `"1.25"` |
+| `values` | `log` only: form values keyed by field ID. Select values are option IDs; `hours` is positive decimal hours as typed, such as `"1.25"`; `date` is `YYYY-MM-DD` |
 | `asana` | `task_gid`, `project_gid`, `title`, `url`. `summary` sends only `task_gid` and `url`; the others are empty |
 | `links` | `form` only, when [project links](#project-links) knows the chosen Asana project: its links, best first. Omitted otherwise |
 
 ```json
 {"version":1,"operation":"form","asana":{"task_gid":"42","project_gid":"7","title":"Fix login","url":"https://app.asana.com/0/7/42"},"links":[{"type":"harvest_project","value":"123"}]}
-{"version":1,"operation":"log","values":{"hours":"1.5","project_id":"123"},"asana":{"task_gid":"42","project_gid":"7","title":"Fix login","url":"https://app.asana.com/0/7/42"}}
+{"version":1,"operation":"log","values":{"hours":"1.5","project_id":"123","spent_date":"2026-10-05"},"asana":{"task_gid":"42","project_gid":"7","title":"Fix login","url":"https://app.asana.com/0/7/42"}}
 {"version":1,"operation":"summary","asana":{"task_gid":"42","project_gid":"","title":"","url":"https://app.asana.com/0/7/42"}}
 ```
 
@@ -254,19 +254,22 @@ ignore.
 - `form`: a form spec. IDs are unique snake_case names, and labels are not
   empty. Types are `select` (needs `options`, each with a stable, unique `id`
   and a `name`), `bool` (`"true"` or `"false"`), `number` (any decimal),
-  `string` (any text, may be empty), and `hours` (positive decimal hours).
-  Every field except `string` needs a value. A time form needs exactly one
+  `string` (any text, may be empty), `hours` (positive decimal hours), and
+  `date` (`YYYY-MM-DD`; the user may type `date -d` text such as `+1 day`,
+  which asanamate resolves first). Every field except `string` needs a value. A time form needs exactly one
   `hours` field. `remember: true` on a select saves the choice per Asana
   project. The optional string `default` sets a field's initial value; hours
   cannot have one. A select's `default` names one of its options, such as the
   project a `links` entry suggests; a remembered choice that is still offered
-  wins over it. A `bool` without a default starts as `"false"`.
+  wins over it. A `bool` without a default starts as `"false"`, and a `date`
+  as today.
 
   ```json
   {"fields":[
     {"id":"project_id","label":"Project","type":"select","remember":true,
      "options":[{"id":"123","name":"Web"}]},
-    {"id":"hours","label":"Hours","type":"hours"}
+    {"id":"hours","label":"Hours","type":"hours"},
+    {"id":"spent_date","label":"Date","type":"date"}
   ]}
   ```
 

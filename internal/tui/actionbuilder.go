@@ -188,7 +188,7 @@ func (b *actionBuilder) showAction() {
 				}
 			}, b.showAction)
 		}),
-		builderRow("Form fields", fmt.Sprint(len(a.Form.Fields)), "Optional select, true/false, number, string, or hours prompts before running. Answers become ASANAMATE_PARAM_<ID>.", func() { b.descend(b.showAction, b.showFields) }),
+		builderRow("Form fields", fmt.Sprint(len(a.Form.Fields)), "Optional select, true/false, number, string, hours, or date prompts before running. Answers become ASANAMATE_PARAM_<ID>.", func() { b.descend(b.showAction, b.showFields) }),
 		builderRow("Save action", keyLabel("builder", "save"), "Validate and write the action file. Changes become available immediately.", b.submit),
 	}
 	b.show("Action builder", rows)
@@ -196,7 +196,7 @@ func (b *actionBuilder) showAction() {
 }
 
 func (b *actionBuilder) showFields() {
-	rows := []pickItem{builderRow("Add field", "select, bool, number, string, hours", "Add a prompt. Fields appear in the order listed.", func() {
+	rows := []pickItem{builderRow("Add field", "select, bool, number, string, hours, date", "Add a prompt. Fields appear in the order listed.", func() {
 		b.file.Action.Form.Fields = append(b.file.Action.Form.Fields, form.Field{Type: form.Select})
 		b.openField(len(b.file.Action.Form.Fields) - 1)
 	})}
@@ -219,10 +219,10 @@ func (b *actionBuilder) showField(i int) {
 			b.text("Field ID", &f.ID, parent, false)
 		}),
 		builderRow("Label", f.Label, "Required label shown beside this prompt when the action runs.", func() { b.text("Field label", &f.Label, parent, false) }),
-		builderRow("Type", f.Type, "Select requires options; bool is true/false; number is any decimal; string may be empty; hours is positive decimal hours.", func() {
-			b.choice("Field type", []string{form.Select, form.Bool, form.Number, form.String, form.Hours}, func(v string) { f.Type = v }, parent)
+		builderRow("Type", f.Type, "Select requires options; bool is true/false; number is any decimal; string may be empty; hours is positive decimal hours; date is typed like 2026-10-09 or +1 day and becomes YYYY-MM-DD.", func() {
+			b.choice("Field type", []string{form.Select, form.Bool, form.Number, form.String, form.Hours, form.Date}, func(v string) { f.Type = v }, parent)
 		}),
-		builderRow("Default", f.Default, "Optional initial value: a select option ID, true or false, a number, or text. Hours cannot have one.", func() {
+		builderRow("Default", f.Default, "Optional initial value: a select option ID, true or false, a number, text, or a YYYY-MM-DD date (dates start as today without one). Hours cannot have one.", func() {
 			b.text("Default value", &f.Default, parent, false)
 		}),
 		builderRow("Remember", onOff(f.Remember), "For select fields only: remember the chosen option for the Asana project.", func() { f.Remember = !f.Remember; parent() }),

@@ -59,10 +59,10 @@ func TestProviderFixture(t *testing.T) {
 	asana := Asana{TaskGID: "42", ProjectGID: "7", Title: "Fix login", URL: "https://app.asana.com/0/7/42"}
 
 	spec, err := provider.Form(ctx, asana, []projectlinks.Link{{Type: projectlinks.HarvestProject, Value: "123"}})
-	if err != nil || len(spec.Fields) != 2 || spec.Fields[0].Options[0].ID != "123" {
+	if err != nil || len(spec.Fields) != 3 || spec.Fields[0].Options[0].ID != "123" {
 		t.Fatalf("form = %+v, err = %v", spec, err)
 	}
-	if err := provider.Log(ctx, spec, map[string]string{"project_id": "123", "hours": "1.5"}, asana); err != nil {
+	if err := provider.Log(ctx, spec, map[string]string{"project_id": "123", "hours": "1.5", "spent_date": "2026-10-05"}, asana); err != nil {
 		t.Fatal(err)
 	}
 	summary, err := provider.Summary(ctx, Asana{TaskGID: asana.TaskGID, URL: asana.URL})
@@ -76,7 +76,7 @@ func TestProviderFixture(t *testing.T) {
 	}
 	want := []string{
 		`{"version":1,"operation":"form","asana":{"task_gid":"42","project_gid":"7","title":"Fix login","url":"https://app.asana.com/0/7/42"},"links":[{"type":"harvest_project","value":"123"}]}`,
-		`{"version":1,"operation":"log","values":{"hours":"1.5","project_id":"123"},"asana":{"task_gid":"42","project_gid":"7","title":"Fix login","url":"https://app.asana.com/0/7/42"}}`,
+		`{"version":1,"operation":"log","values":{"hours":"1.5","project_id":"123","spent_date":"2026-10-05"},"asana":{"task_gid":"42","project_gid":"7","title":"Fix login","url":"https://app.asana.com/0/7/42"}}`,
 		`{"version":1,"operation":"summary","asana":{"task_gid":"42","project_gid":"","title":"","url":"https://app.asana.com/0/7/42"}}`,
 	}
 	got := strings.Split(strings.TrimSpace(string(data)), "\n")

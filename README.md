@@ -887,8 +887,9 @@ Each field has an `id`, a `label`, a `type`, and an optional `default`:
 | `number` | any decimal, such as `-1` or `2.5` | a decimal |
 | `string` | any single-line text; may be empty | any text |
 | `hours` | positive decimal hours | not allowed |
+| `date` | `YYYY-MM-DD`; typed as a date or `date -d` text such as `+1 day` | a `YYYY-MM-DD` date; today when omitted |
 
-Write `default` as a TOML string, even for `bool` and `number`
+Write `default` as a TOML string, even for `bool`, `number`, and `date`
 (`default = "true"`). Every field except `string` needs a value before the
 form submits. Only `select` takes `options` and `remember`.
 
