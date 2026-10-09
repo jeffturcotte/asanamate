@@ -254,8 +254,8 @@ func TestEditRejectsBadDates(t *testing.T) {
 		keys  []string
 		value string
 	}{
-		{"date field", []string{"e", "f", "down", "enter"}, "tomorrow"},
-		{"due date word", []string{"e", "d"}, "tomorrow"},
+		{"date field", []string{"e", "f", "down", "enter"}, "nonsense"},
+		{"due date word", []string{"e", "d"}, "nonsense"},
 		{"due date impossible", []string{"e", "d"}, "2026-02-30"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -263,7 +263,7 @@ func TestEditRejectsBadDates(t *testing.T) {
 			press(m, tc.keys...)
 			m.input.area.SetValue(tc.value)
 			send(m, ctrlS)
-			if len(*writes) != 0 || !strings.Contains(m.status, "YYYY-MM-DD") {
+			if len(*writes) != 0 || !strings.Contains(m.status, tc.value) {
 				t.Fatalf("writes = %q, status = %q", *writes, m.status)
 			}
 		})

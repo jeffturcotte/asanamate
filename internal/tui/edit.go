@@ -118,7 +118,7 @@ func (m *Model) pickedEdit(op editOp) tea.Cmd {
 		return m.requestUsers()
 	case editDue:
 		m.edit.due = true
-		m.input = newInputBox("Due date", "YYYY-MM-DD; empty clears the date")
+		m.input = newInputBox("Due date", "YYYY-MM-DD or date -d text, such as +1 day; empty clears the date")
 		if t.DueOn != nil {
 			m.input.area.SetValue(*t.DueOn)
 		}
@@ -451,7 +451,7 @@ func (m *Model) pickedField(f asana.CustomField) tea.Cmd {
 	case asana.FieldPeople:
 		return m.requestUsers()
 	case asana.FieldDate:
-		m.input = newInputBox(ticket.FieldName(f), "YYYY-MM-DD; empty clears the field")
+		m.input = newInputBox(ticket.FieldName(f), "YYYY-MM-DD or date -d text, such as +1 day; empty clears the field")
 		if f.DateValue != nil {
 			m.input.area.SetValue(f.DateValue.Date)
 		}
