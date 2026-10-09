@@ -29,6 +29,9 @@ func TestBuiltinThemesLoad(t *testing.T) {
 	if builtinThemes["light"].Colors.Working.FG != "6" || builtinThemes["dark"].Colors.Working.FG != "14" {
 		t.Error("light theme must use a darker working color")
 	}
+	if builtinThemes["dark"].Colors.More.BG != "6" || builtinThemes["light"].Colors.More.BG != "6" {
+		t.Error("themes must give the +N more badge a background")
+	}
 }
 
 func TestPaletteLayersAndFallbacks(t *testing.T) {

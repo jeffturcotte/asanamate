@@ -292,6 +292,8 @@ light = "light"
 # reacted = { bg = "236" }
 # NEW badge on My Tasks tickets changed since you last viewed them.
 # new = { fg = "15", bg = "1", bold = true }
+# +N more badge on Activity events in a row on one ticket.
+# more = { fg = "0", bg = "6", bold = true }
 # Comment authors cycle through these.
 # authors = ["4", "5", "6", "2", "3", "1"]
 

@@ -395,7 +395,7 @@ then scans when you open it.
   Activity search is separate from the saved ticket filter.
 - `j` / `k` selects an event. `Tab` or `2` focuses its reader to scroll it.
 - Events in a row on the same ticket share one entry, its newest event, with
-  a `+N more` badge (styled by `colors.reacted`). `Space` shows the earlier
+  a `+N more` badge (styled by `colors.more`). `Space` shows the earlier
   events indented under it, where each can be selected, and hides them again.
 - `Enter` opens the existing ticket reader, where the usual edit and action
   keys work; `Esc` returns to Activity. On narrow screens, the first `Enter`
@@ -654,6 +654,7 @@ without a background is drawn reversed.
 | `pinned`, `viewing` | Pinned and Viewing section headers |
 | `reacted` | comment reactions you made, drawn as pills |
 | `new` | `NEW` badge on My Tasks tickets changed since you last viewed them |
+| `more` | `+N more` badge on Activity events in a row on one ticket |
 | `authors` | comment author names, cycled |
 | `mode.normal`, `mode.filter`, `mode.read`, `mode.edit` | statusline mode pills |
 | `markdown.text`, `.heading`, `.h1`, `.link`, `.code`, `.code_block`, `.quote`, `.rule` | reading pane Markdown, on top of glamour's dark or light style |

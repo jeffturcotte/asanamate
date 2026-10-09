@@ -702,7 +702,7 @@ func (m *Model) activityRowLines(i, width int) []string {
 		flags[0] = newPill(selected)
 	}
 	if collapsed {
-		flags[len(rows)-1] = reactedStyle.Render(fmt.Sprintf(" +%d more ", row.more))
+		flags[len(rows)-1] = moreStyle.Render(fmt.Sprintf(" +%d more ", row.more))
 	}
 	for j, line := range rows {
 		flag, room := flags[j], width
