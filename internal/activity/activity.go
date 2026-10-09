@@ -1,4 +1,4 @@
-// Package activity assembles API-backed task activity without persisting it.
+// Package activity assembles API-backed task activity and caches it on disk.
 package activity
 
 import (
@@ -24,17 +24,24 @@ type Entry struct {
 	Mine      bool
 	Automatic bool
 	Reasons   []string
+	// FoundAt is when a scan first loaded the entry; zero for entries from a
+	// scan that seeded an empty cache.
+	FoundAt time.Time
 }
 
 // Report includes scan coverage. Entries can be useful even when Warning
 // reports failed searches, inaccessible tasks, or a request deadline.
+// Complete reports that the search covered the whole window and the scan
+// was not cut short; failed ticket feeds alone do not clear it.
 type Report struct {
-	Entries []Entry
-	Since   time.Time
-	Until   time.Time
-	Scanned int
-	Total   int
-	Warning string
+	Entries  []Entry
+	User     string
+	Since    time.Time
+	Until    time.Time
+	Scanned  int
+	Total    int
+	Warning  string
+	Complete bool
 }
 
 // Fetch scans recently changed tasks across the workspace, including tasks
@@ -48,6 +55,7 @@ func Fetch(ctx context.Context, c *asana.Client, workspace string, since, until 
 	if err != nil {
 		return r, err
 	}
+	r.User = me.GID
 	var mu sync.Mutex
 	var failed int
 	var firstErr error
@@ -112,6 +120,7 @@ func Fetch(ctx context.Context, c *asana.Client, workspace string, since, until 
 		warnings = append(warnings, err.Error())
 	}
 	r.Warning = strings.Join(warnings, "; ")
+	r.Complete = searchErr == nil && ctx.Err() == nil
 	sortEntries(r.Entries)
 	return r, nil
 }

@@ -61,8 +61,10 @@ type Deps struct {
 	State      *state.State
 	Client     *asana.Client
 	StateDir   string
-	Images     bool
-	InTmux     bool
+	// CacheDir holds the Activity cache; empty keeps it in memory.
+	CacheDir string
+	Images   bool
+	InTmux   bool
 	// Symbols is the resolved symbol set: unicode, nerd, or ascii.
 	Symbols string
 	// ReducedMotion shows static symbols instead of the working spinner.
@@ -86,7 +88,7 @@ type Model struct {
 	readerState
 
 	viewProject     *asana.Ref
-	activity        *activityView // API activity, kept only in memory
+	activity        *activityView // API activity, cached on disk
 	activityOpen    bool
 	activityTicket  bool             // Esc returns from a ticket opened through Activity
 	palette         config.Palette   // resolved theme, for Markdown
@@ -194,6 +196,7 @@ func New(d Deps) *Model {
 		m.projects = append(m.projects, asana.Project{GID: p.GID, Name: p.Name})
 	}
 	m.bindings = keyBindings()
+	m.activity = newActivityView(d)
 	m.restoreView()
 	m.refreshInterval, _ = config.ParseRefreshInterval(cmp.Or(d.Config.List.RefreshInterval, config.Default().List.RefreshInterval))
 	if saved, err := config.ParseRefreshInterval(d.State.Display.RefreshInterval); err == nil {
@@ -206,7 +209,7 @@ func New(d Deps) *Model {
 func (m *Model) ExitCommand() *exec.Cmd { return m.exitCmd }
 
 func (m *Model) Init() tea.Cmd {
-	cmd := tea.Batch(loadTasks(m.deps.Client, m.deps.Config.Workspace, m.viewProject, m.pinnedTasks()), m.startSpinner(), m.scheduleRefresh())
+	cmd := tea.Batch(loadTasks(m.deps.Client, m.deps.Config.Workspace, m.viewProject, m.pinnedTasks()), m.startSpinner(), m.scheduleRefresh(), m.startActivity())
 	if m.deps.Config.AgentsEnabled() {
 		cmd = tea.Batch(cmd, loadAgents(m.deps.Config.Agents))
 	}
@@ -219,6 +222,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.autoRefresh(msg)
 	case activityMsg:
 		return m, m.gotActivity(msg)
+	case activityTickMsg:
+		return m, m.activityTick()
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.layout()
@@ -512,9 +517,7 @@ func gidOf(project *asana.Ref) string {
 func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	k := msg.String()
 	if k == "ctrl+c" {
-		if m.activity != nil {
-			m.closeActivity()
-		}
+		m.closeActivity()
 		return tea.Quit
 	}
 	if len(m.notices) > 0 {
@@ -726,7 +729,7 @@ func (m *Model) refreshViewing(tasks ...asana.Task) bool {
 
 // animating reports whether anything shown uses the spinner.
 func (m *Model) animating() bool {
-	return m.loading || m.waiting != "" || m.anyWorking() || m.activityOpen && m.activity != nil && m.activity.loading
+	return m.loading || m.waiting != "" || m.anyWorking() || m.activityOpen && m.activity.loading
 }
 
 // wait shows text in a loading modal until the reply to cmd clears it;

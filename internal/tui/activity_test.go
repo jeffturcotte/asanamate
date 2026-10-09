@@ -149,7 +149,7 @@ func TestActivityNarrowEnterShowsEventThenTicket(t *testing.T) {
 
 func TestActivityIgnoresStaleLoadsAndKeepsOldResultsOnError(t *testing.T) {
 	m := activityModel(t, 160)
-	m.reloadActivity()
+	m.scanActivity(true)
 	seq := m.activity.seq
 	m.Update(activityMsg{seq: seq - 1, report: activity.Report{}})
 	if !m.activity.loading || len(m.activity.visible) != 2 {
@@ -159,33 +159,118 @@ func TestActivityIgnoresStaleLoadsAndKeepsOldResultsOnError(t *testing.T) {
 	if m.activity.loading || len(m.activity.visible) != 2 || !strings.Contains(ansi.Strip(m.body()), "search unavailable") {
 		t.Fatal("refresh error must preserve results and display error")
 	}
-	m.closeActivity()
-	m.Update(activityMsg{seq: seq, report: activity.Report{}})
-	if len(m.activity.visible) != 2 {
-		t.Fatal("closed view accepted late response")
+	if m.activity.stopped {
+		t.Fatal("a transient error must not stop background scans")
 	}
 }
 
 func TestActivityStreamsPartialSnapshots(t *testing.T) {
-	m := activityModel(t, 160)
-	m.reloadActivity()
-	seq, entries := m.activity.seq, m.activity.report.Entries
+	m := wideModel(t, 160)
+	m.openActivity()
+	m.scanActivity(true)
+	seq := m.activity.seq
+	entries := []activity.Entry{
+		{Task: openTask, Story: asana.Story{GID: "s1", Text: "one"}, At: testToday},
+		{Task: doneTask, Story: asana.Story{GID: "s2", Text: "two"}, At: testToday.Add(-time.Hour)},
+	}
 	m.activity.updates = make(chan activityMsg, 1)
 	_, cmd := m.Update(activityMsg{seq: seq, report: activity.Report{Entries: entries[:1], Scanned: 1, Total: 3}, partial: true})
 	if cmd == nil || !m.activity.loading || len(m.activity.visible) != 1 || !strings.Contains(ansi.Strip(m.statusline()), "scanning 1/3") {
 		t.Fatal("partial snapshot must show entries and keep scanning")
 	}
-	_, cmd = m.Update(activityMsg{seq: seq, report: activity.Report{Entries: entries, Scanned: 3, Total: 3}})
-	if cmd != nil || m.activity.loading || len(m.activity.visible) != 2 {
+	_, cmd = m.Update(activityMsg{seq: seq, report: activity.Report{Entries: entries, Scanned: 3, Total: 3, Until: testToday, Complete: true}})
+	if cmd != nil || m.activity.loading || len(m.activity.visible) != 2 || !strings.Contains(ansi.Strip(m.statusline()), "updated") {
 		t.Fatal("final snapshot must stop scanning")
 	}
 }
 
-func TestActivityPeriodChangeDoesNotRelabelOldResults(t *testing.T) {
+func TestActivityPeriodFiltersCacheWithoutScanning(t *testing.T) {
 	m := activityModel(t, 160)
-	sendKeys(m, "D", "j", "j", "enter")
-	if m.activity.days != 30 || !m.activity.loading || len(m.activity.visible) != 0 || !m.activity.report.Until.IsZero() {
-		t.Fatalf("period = %+v", m.activity)
+	old := activity.Entry{Task: openTask, Story: asana.Story{GID: "old", Text: "old"}, At: testToday.Add(-3 * 24 * time.Hour)}
+	m.Update(activityMsg{seq: m.activity.seq, report: activity.Report{Entries: []activity.Entry{old}}})
+	seq := m.activity.seq
+	if len(m.activity.visible) != 3 {
+		t.Fatalf("7 days = %d", len(m.activity.visible))
+	}
+	sendKeys(m, "D", "k", "enter")
+	if m.activity.days != 1 || m.activity.loading || m.activity.seq != seq || len(m.activity.visible) != 2 || m.activityCount("Both") != 2 {
+		t.Fatalf("24 hours = %d visible, loading %v", len(m.activity.visible), m.activity.loading)
+	}
+}
+
+func TestActivityNewCountAndMarks(t *testing.T) {
+	m := activityModel(t, 200)
+	if label := activityNavLabel(m); label != "" {
+		t.Fatalf("open Activity shows %q", label)
+	}
+	sendKeys(m, "esc")
+	if label := activityNavLabel(m); label != "" {
+		t.Fatalf("seeded entries count as new: %q", label)
+	}
+	found := testToday.Add(time.Minute)
+	m.now = func() time.Time { return found.Add(time.Minute) }
+	fresh := []activity.Entry{
+		{Task: openTask, Story: asana.Story{GID: "new", Text: "Sam commented"}, At: found},
+		{Task: openTask, Story: asana.Story{GID: "own", Text: "You commented"}, At: found, Mine: true},
+	}
+	// Background scans update the cache while the view is closed.
+	m.Update(activityMsg{seq: m.activity.seq, report: activity.Report{Entries: fresh}, foundAt: found})
+	if label := activityNavLabel(m); label != "1" {
+		t.Fatalf("new count = %q, want 1", label)
+	}
+	if strings.Contains(ansi.Strip(m.body()), "[I]") || strings.Contains(ansi.Strip(m.navView(navW, 20)), " I\n") {
+		t.Fatal("Activity row must not show its key")
+	}
+	sendKeys(m, "I")
+	if label := activityNavLabel(m); label != "" || m.activity.newActivity() != 0 {
+		t.Fatal("opening Activity must clear the count")
+	}
+	if list := ansi.Strip(m.activityList(60, 30)); strings.Count(list, "NEW") != 1 {
+		t.Fatalf("list must mark the new event once:\n%s", list)
+	}
+	sendKeys(m, "esc")
+	sendKeys(m, "I")
+	if strings.Contains(ansi.Strip(m.activityList(60, 30)), "NEW") {
+		t.Fatal("marks must clear after leaving Activity")
+	}
+}
+
+// activityNavLabel is the right column of the Views panel's Activity row.
+func activityNavLabel(m *Model) string {
+	for _, it := range m.navItems() {
+		if it.activity {
+			return it.right
+		}
+	}
+	return "missing"
+}
+
+func TestActivityBackgroundTicks(t *testing.T) {
+	m := wideModel(t, 160)
+	if m.activity.interval != 2*time.Minute || m.scheduleActivity() == nil {
+		t.Fatal("background scans must default to 2m")
+	}
+	m.activityTick()
+	seq := m.activity.seq
+	if !m.activity.loading {
+		t.Fatal("tick must start a scan")
+	}
+	m.activityTick()
+	if m.activity.seq != seq {
+		t.Fatal("tick during a scan must be skipped")
+	}
+	m.Update(activityMsg{seq: seq, err: fmt.Errorf("Activity requires paid search: %w", &asana.APIError{Status: 402})})
+	if !m.activity.stopped || m.activityTick() != nil || m.scheduleActivity() != nil {
+		t.Fatal("402 must stop background scans")
+	}
+	m.activity.stopped, m.activity.interval = false, 0
+	if m.scheduleActivity() != nil || m.startActivity() != nil {
+		t.Fatal("interval 0 must not scan in the background")
+	}
+	m.activity.loading = false
+	m.openActivity()
+	if !m.activity.loading {
+		t.Fatal("with background scans off, opening Activity must scan")
 	}
 }
 
@@ -229,8 +314,8 @@ func TestActivityFitsTerminalCells(t *testing.T) {
 
 func TestActivityTextCannotInjectTerminalControls(t *testing.T) {
 	m := activityModel(t, 160)
-	m.activity.report.Entries[0].Task.Name = "Bad\x1b]52;c;c2VjcmV0\a ticket"
-	m.activity.report.Entries[0].Story.Text = "Bad\x1b[2J action"
+	m.activity.cache.Entries[0].Task.Name = "Bad\x1b]52;c;c2VjcmV0\a ticket"
+	m.activity.cache.Entries[0].Story.Text = "Bad\x1b[2J action"
 	m.filterActivity()
 	if strings.Contains(m.activity.reader.GetContent(), "\x1b]52;") || strings.Contains(m.activityList(50, 30), "\x1b]52;") || strings.Contains(m.activity.reader.GetContent(), "\x1b[2J") {
 		t.Fatal("untrusted activity emitted terminal controls")

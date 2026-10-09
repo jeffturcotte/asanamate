@@ -1,8 +1,12 @@
 package tui
 
 import (
+	"cmp"
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -15,13 +19,23 @@ import (
 
 	"github.com/sadmachine/asanamate/internal/activity"
 	"github.com/sadmachine/asanamate/internal/asana"
+	"github.com/sadmachine/asanamate/internal/config"
 	"github.com/sadmachine/asanamate/internal/ticket"
 )
 
 var activityModes = []string{"Both", "Mine", "Related"}
 
+// activityOverlap rescans the end of the last scan, which Asana's search
+// index may not have caught up with yet.
+const activityOverlap = 15 * time.Minute
+
+// activityTimeout bounds one scan; a scan of an empty cache covers the whole
+// cache window.
+const activityTimeout = 10 * time.Minute
+
 type activityView struct {
-	report    activity.Report
+	cache     *activity.Cache
+	report    activity.Report // the running or last scan: progress and warning
 	visible   []activity.Entry
 	mode      string
 	days      int
@@ -31,6 +45,9 @@ type activityView struct {
 	automated bool
 	details   bool
 	reader    viewport.Model
+	lastSeen  time.Time     // SeenAt before the view opened; later finds are marked new
+	interval  time.Duration // background scan interval; 0 is off
+	stopped   bool          // Asana refused workspace search; background scans stop
 	loading   bool
 	seq       uint64
 	cancel    context.CancelFunc
@@ -45,6 +62,46 @@ type activityMsg struct {
 	report  activity.Report
 	err     error
 	partial bool
+	replace bool      // manual reload: a complete report replaces its window
+	foundAt time.Time // FoundAt for new entries; zero when seeding the cache
+}
+
+// activityTickMsg starts a background Activity scan.
+type activityTickMsg struct{}
+
+func newActivityView(d Deps) *activityView {
+	query := textinput.New()
+	query.Prompt = "/"
+	interval, _ := config.Activity{RefreshInterval: cmp.Or(d.Config.Activity.RefreshInterval, config.Default().Activity.RefreshInterval)}.Interval()
+	var path string
+	if d.CacheDir != "" {
+		path = filepath.Join(d.CacheDir, activity.CacheFile)
+	}
+	return &activityView{cache: activity.LoadCache(path, d.Config.Workspace), mode: "Both", days: 7, query: query, reader: viewport.New(), interval: interval}
+}
+
+// startActivity runs the launch scan and starts the background timer.
+func (m *Model) startActivity() tea.Cmd {
+	if m.activity.interval == 0 {
+		return nil
+	}
+	return tea.Batch(m.scanActivity(false), m.scheduleActivity())
+}
+
+func (m *Model) scheduleActivity() tea.Cmd {
+	a := m.activity
+	if a.interval == 0 || a.stopped {
+		return nil
+	}
+	return tea.Tick(a.interval, func(time.Time) tea.Msg { return activityTickMsg{} })
+}
+
+// activityTick runs a background scan and schedules the next one.
+func (m *Model) activityTick() tea.Cmd {
+	if m.activity.stopped {
+		return nil
+	}
+	return tea.Batch(m.scanActivity(false), m.scheduleActivity())
 }
 
 func (m *Model) openActivity() tea.Cmd {
@@ -53,32 +110,49 @@ func (m *Model) openActivity() tea.Cmd {
 		m.layout()
 		return nil
 	}
-	if m.activity == nil {
-		query := textinput.New()
-		query.Prompt = "/"
-		m.activity = &activityView{mode: "Both", days: 7, query: query, reader: viewport.New()}
-	}
+	a := m.activity
+	a.lastSeen, a.cache.SeenAt = a.cache.SeenAt, m.now()
+	m.saveActivity()
 	m.activityOpen, m.activityTicket = true, false
 	m.focusList()
+	m.filterActivity()
 	m.layout()
-	return m.reloadActivity()
+	// Without background scans, or before one has finished, opening scans.
+	if a.interval == 0 || a.cache.Stale(m.now()) {
+		return m.scanActivity(false)
+	}
+	return m.startSpinner()
 }
 
+// closeActivity leaves Activity. A running scan continues in the background.
 func (m *Model) closeActivity() {
-	m.activityOpen, m.activityTicket = false, false
-	if a := m.activity; a != nil {
-		if a.cancel != nil {
-			a.cancel()
-		}
-		a.seq++
-		a.loading, a.filtering, a.details = false, false, false
-		a.query.Blur()
+	a := m.activity
+	if m.activityOpen || m.activityTicket {
+		// Events that arrived while the view was open are seen.
+		a.cache.SeenAt = m.now()
+		m.saveActivity()
 	}
+	m.activityOpen, m.activityTicket = false, false
+	a.filtering, a.details = false, false
+	a.query.Blur()
 	m.focusList()
 }
 
-func (m *Model) reloadActivity() tea.Cmd {
+func (m *Model) saveActivity() {
+	if err := m.activity.cache.Save(); err != nil {
+		m.status = "Activity cache: " + ticket.OneLine(err.Error())
+	}
+}
+
+// scanActivity scans from the end of the last complete scan, unless a scan is
+// running. reload cancels a running scan and also covers the selected
+// period. An empty or stale cache scans the whole window, and its entries are
+// not new.
+func (m *Model) scanActivity(reload bool) tea.Cmd {
 	a := m.activity
+	if a.loading && !reload {
+		return nil
+	}
 	if a.cancel != nil {
 		a.cancel()
 	}
@@ -86,8 +160,14 @@ func (m *Model) reloadActivity() tea.Cmd {
 	seq := a.seq
 	a.loading, a.err = true, ""
 	until := m.now()
-	since := until.Add(-time.Duration(a.days) * 24 * time.Hour)
-	ctx, cancel := context.WithTimeout(context.Background(), 3*requestTimeout)
+	since, foundAt := a.cache.Until.Add(-activityOverlap), until
+	if period := until.Add(-time.Duration(a.days) * 24 * time.Hour); reload && period.Before(since) {
+		since = period
+	}
+	if a.cache.Stale(until) {
+		since, foundAt = until.Add(-activity.Window), time.Time{}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), activityTimeout)
 	a.cancel = cancel
 	c, workspace := m.deps.Client, m.deps.Config.Workspace
 	if c == nil {
@@ -108,9 +188,9 @@ func (m *Model) reloadActivity() tea.Cmd {
 	go func() {
 		defer cancel()
 		report, err := activity.Fetch(ctx, c, workspace, since, until, func(r activity.Report) {
-			publish(activityMsg{seq: seq, report: r, partial: true})
+			publish(activityMsg{seq: seq, report: r, partial: true, replace: reload, foundAt: foundAt})
 		})
-		publish(activityMsg{seq: seq, report: report, err: err})
+		publish(activityMsg{seq: seq, report: report, err: err, replace: reload, foundAt: foundAt})
 	}()
 	return tea.Batch(waitActivity(updates), m.startSpinner())
 }
@@ -121,7 +201,7 @@ func waitActivity(updates <-chan activityMsg) tea.Cmd {
 
 func (m *Model) gotActivity(msg activityMsg) tea.Cmd {
 	a := m.activity
-	if a == nil || a.seq != msg.seq {
+	if a.seq != msg.seq {
 		return nil
 	}
 	var next tea.Cmd
@@ -132,9 +212,21 @@ func (m *Model) gotActivity(msg activityMsg) tea.Cmd {
 	}
 	if msg.err != nil {
 		a.err = ticket.OneLine(msg.err.Error())
+		var apiErr *asana.APIError
+		if errors.As(msg.err, &apiErr) && apiErr.Status == http.StatusPaymentRequired {
+			a.stopped = true
+		}
 		return nil
 	}
 	a.report = msg.report
+	if msg.replace {
+		a.cache.Replace(msg.report, msg.foundAt)
+	} else {
+		a.cache.Merge(msg.report, msg.foundAt)
+	}
+	if !msg.partial {
+		m.saveActivity()
+	}
 	m.filterActivity()
 	return next
 }
@@ -151,8 +243,9 @@ func (m *Model) filterActivity() {
 	previous, _ := a.selected()
 	a.visible = nil
 	words := strings.Fields(strings.ToLower(a.query.Value()))
-	for _, e := range a.report.Entries {
-		if e.Automatic && !a.automated || a.mode == "Mine" && !e.Mine || a.mode == "Related" && e.Mine {
+	since := m.activitySince()
+	for _, e := range a.cache.Entries {
+		if !a.shown(e, a.mode, since) {
 			continue
 		}
 		text := strings.ToLower(e.Task.Name + " " + e.Story.Text + " " + ticket.Author(e.Story) + " " + e.Story.ResourceSubtype + " " + strings.Join(e.Reasons, " "))
@@ -164,6 +257,43 @@ func (m *Model) filterActivity() {
 	a.cursor = max(i, 0)
 	// Streamed snapshots must not reset the reader under the user.
 	m.renderActivityDetail(i >= 0)
+}
+
+// activitySince is the start of the selected period.
+func (m *Model) activitySince() time.Time {
+	return m.now().Add(-time.Duration(m.activity.days) * 24 * time.Hour)
+}
+
+// shown reports whether e is in the period from since and passes the
+// automated toggle and mode, before the search.
+func (a *activityView) shown(e activity.Entry, mode string, since time.Time) bool {
+	if e.At.Before(since) || e.Automatic && !a.automated {
+		return false
+	}
+	return mode == "Both" || mode == "Mine" && e.Mine || mode == "Related" && !e.Mine
+}
+
+// count is how many cached events mode shows, before the search.
+func (m *Model) activityCount(mode string) int {
+	a, since := m.activity, m.activitySince()
+	n := 0
+	for _, e := range a.cache.Entries {
+		if a.shown(e, mode, since) {
+			n++
+		}
+	}
+	return n
+}
+
+// newActivity counts related events found since the user last opened Activity.
+func (a *activityView) newActivity() int {
+	n := 0
+	for _, e := range a.cache.Entries {
+		if e.NewSince(a.cache.SeenAt) {
+			n++
+		}
+	}
+	return n
 }
 
 func (m *Model) layoutActivity() {
@@ -294,7 +424,7 @@ func (m *Model) handleActivityKey(msg tea.KeyPressMsg) tea.Cmd {
 		a.automated = !a.automated
 		m.filterActivity()
 	case "reload":
-		return m.reloadActivity()
+		return m.scanActivity(true)
 	case "period":
 		m.openActivityPeriod()
 	case "filter":
@@ -416,11 +546,10 @@ func (m *Model) openActivityPeriod() {
 	items := []pickItem{{Label: "Last 24 hours", Value: 1}, {Label: "Last 7 days", Value: 7}, {Label: "Last 30 days", Value: 30}}
 	m.modal = newPicker(pickValue(func(days int) tea.Cmd {
 		m.modal = nil
-		m.activity.days, m.activity.cursor = days, 0
-		// Old results belong to a different period; do not relabel them.
-		m.activity.report, m.activity.visible = activity.Report{}, nil
-		m.renderActivityDetail(false)
-		return m.reloadActivity()
+		// The cache holds the longest period; shorter ones filter it.
+		m.activity.days = days
+		m.filterActivity()
+		return nil
 	}), "Activity period", items)
 	m.modal.searching = false
 	m.modal.input.Blur()
@@ -476,32 +605,33 @@ func (m *Model) activityList(width, height int) string {
 		if e.Mine && e.Story.CreatedBy != nil {
 			summary = strings.Replace(summary, ticket.OneLine(e.Story.CreatedBy.Name), "You", 1)
 		}
+		selected := i == a.cursor && !a.details && !m.focusNav
+		var flag string
+		if e.NewSince(a.lastSeen) {
+			flag = newPill(selected)
+		}
 		rows := []string{lead + icon + ticket.OneLine(e.Task.Name), "  " + summary, "  " + e.At.Local().Format("01/02 15:04") + "  " + kind}
 		for j, row := range rows {
-			row = ansi.Truncate(row, max(width, 1), "…")
-			if i == a.cursor && !a.details && !m.focusNav {
-				row = selectedStyle.Render(row + strings.Repeat(" ", max(width-ansi.StringWidth(row), 0)))
-			} else if j > 0 {
+			room := width
+			if j == 0 && flag != "" {
+				room = max(width-ansi.StringWidth(flag)-1, 1)
+			}
+			row = ansi.Truncate(row, max(room, 1), "…")
+			fill := strings.Repeat(" ", max(room-ansi.StringWidth(row), 0))
+			switch {
+			case selected && j == 0 && flag != "":
+				row = selectedStyle.Render(row+" ") + flag + selectedStyle.Render(fill)
+			case selected:
+				row = selectedStyle.Render(row + fill)
+			case j > 0:
 				row = dimStyle.Render(row)
+			case flag != "":
+				row += " " + flag
 			}
 			lines = append(lines, row)
 		}
 	}
 	return box.Render(banner + strings.Join(lines, "\n"))
-}
-
-// count is how many loaded events mode shows, before the search.
-func (a *activityView) count(mode string) int {
-	n := 0
-	for _, e := range a.report.Entries {
-		if e.Automatic && !a.automated {
-			continue
-		}
-		if mode == "Both" || mode == "Mine" && e.Mine || mode == "Related" && !e.Mine {
-			n++
-		}
-	}
-	return n
 }
 
 // note is the load error or partial-scan warning, if any.
@@ -588,8 +718,8 @@ func (m *Model) activitySegs() []string {
 			loading = m.sym.spinner[m.frame%len(m.sym.spinner)] + " " + loading
 		}
 		segs = append(segs, loading)
-	case !a.report.Until.IsZero():
-		segs = append(segs, fmt.Sprintf("%d/%d scanned %s", a.report.Scanned, a.report.Total, a.report.Until.Local().Format("15:04")))
+	case !a.cache.Until.IsZero():
+		segs = append(segs, "updated "+a.cache.Until.Local().Format("15:04"))
 	}
 	return segs
 }
@@ -609,7 +739,7 @@ func (m *Model) activityHelp() string {
 		{"main", "focus_list", "event list; from opened ticket, Activity"},
 		{"main", "toggle_reader", "show / hide preview"},
 		{"main", "toggle_sidebar", "show / hide views panel"},
-		{"main", "reload", "refresh from API"},
+		{"main", "reload", "rescan the period from the API"},
 		{"main", "open_browser", "open ticket in browser"},
 		{"main", "copy_link", "copy ticket link"},
 	}
@@ -619,5 +749,5 @@ func (m *Model) activityHelp() string {
 			lines = append(lines, m.accentStyle.Width(12).Render(label)+row[2])
 		}
 	}
-	return strings.Join(lines, "\n") + "\n\n" + dimStyle.Render("Workspace search requires paid Asana access.\nCurrent ownership/mentions are labelled as current context.\nAsana consolidates stories; this is not an exhaustive audit log.\nActivity stays in memory; no local activity history.\n\nAny key closes")
+	return strings.Join(lines, "\n") + "\n\n" + dimStyle.Render("Workspace search requires paid Asana access.\nCurrent ownership/mentions are labelled as current context.\nAsana consolidates stories; this is not an exhaustive audit log.\nActivity scans in the background and caches 30 days on disk.\n\nAny key closes")
 }

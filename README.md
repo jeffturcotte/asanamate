@@ -369,16 +369,28 @@ work in narrow terminals and list-only mode too.
 
 ### Activity
 
-Press `I`, or choose Activity in the wide Views panel. The view loads Asana's
+Press `I`, or choose Activity in the wide Views panel. The view shows Asana's
 stories from recently changed tasks across the workspace, including tasks you
-reassigned to someone else. It stores activity only in memory. Events appear
-as each task loads, newest first, and the statusline counts scanned tasks.
+reassigned to someone else, newest first.
+
+Activity scans in the background at launch and every
+`activity.refresh_interval` (default 2 minutes), so the view opens ready. The
+first scan covers 30 days; later scans fetch only what changed since the last
+one. Results are cached in `~/.cache/asanamate/activity.json`, so a restart
+keeps them. The cache holds comment and task text; delete the file to clear
+it. In the Views panel, the Activity row counts new related events (not your
+own actions or automated reminders) found since you last opened Activity.
+Opening it clears the count and badges those events `NEW` (styled by
+`colors.new`, like changed My Tasks tickets) until you leave.
+Set `activity.refresh_interval = "0"` to turn background scans off; Activity
+then scans when you open it.
 
 - `[` / `]` switches between **Both**, **Mine** (your actions), and **Related**
   (actions by others on tasks currently assigned to you, assignments to you,
   explicit user mentions in comments, or tasks whose current description
   mentions you). Each event explains why it appears.
-- `D` chooses the last 24 hours, 7 days (the default), or 30 days.
+- `D` chooses the last 24 hours, 7 days (the default), or 30 days, from the
+  cache.
 - `/` searches ticket names, actors, and activity text. Words combine;
   Activity search is separate from the saved ticket filter.
 - `j` / `k` selects an event. `Tab` or `2` focuses its reader to scroll it.
@@ -388,9 +400,10 @@ as each task loads, newest first, and the statusline counts scanned tasks.
   a ticket selects it in the ticket list instead.
 - `!` includes or hides automated updates and reminders. These never count
   as your actions, even when Asana attributes a reminder to your user ID.
-- `r` refreshes from the API. Activity scans run on opening the view or manual
-  refresh, rather than the ticket auto-update timer. `I` or `Esc` from the
-  event list returns to tickets; `?` shows all Activity keys.
+- `r` rescans the selected period from the API, replacing its cached events,
+  so deleted comments disappear. Events appear as each task loads, and the
+  statusline counts scanned tasks. `I` or `Esc` from the event list returns
+  to tickets; `?` shows all Activity keys.
 
 Activity requires paid access to Asana's workspace search API. The statusline
 shows scan coverage, and failed or incomplete requests show at the top of the
@@ -524,6 +537,7 @@ once. Run `asanamate doctor` to check a change without starting the TUI.
 | `reader.view` | `"cards"` | reader's starting view: `cards` (details card, titled sections, one box per comment) or `markdown` (the rendered ticket Markdown); `v` switches and the choice persists |
 | `images.mode` | `"auto"` | kitty graphics: `auto`, `kitty` (force on), or `off` |
 | `images.inline` | `false` | cards view: draw images in descriptions and comments in place of their links (needs `images.mode` on and a terminal with kitty Unicode placeholders, such as kitty or Ghostty) |
+| `activity.refresh_interval` | `"2m"` | background Activity scan interval, at least `1s`; `"0"` turns background scans off, and Activity then scans when opened. See [Activity](#activity) |
 | `picker.type_first` | `false` | open pickers in search mode, so typing filters at once; `esc` leaves search for browse mode |
 | `keys.<scope>.<name>` | see the template | key bindings: a list of keys per binding, such as `[keys.main] quit = ["q", "ctrl+q"]`; `[]` unbinds. Scopes: `main`, `activity`, `views`, `filter`, `picker`, `form`, `form_field`, `input`, `builder`, `notice`. Keys are a character (`"j"`, `"?"`) or a key name with modifiers (`"ctrl+d"`, `"shift+tab"`, `"enter"`, `"space"`, `"pgdown"`); a letter with `ctrl` or `alt` is lower case, plus `shift` for the capital (`"ctrl+shift+q"`, not `"ctrl+Q"`); `ctrl+c` always quits and can't be bound. `asanamate setup` and `asanamate config update` write every binding, commented, with its default |
 | `reader.max_text_width` | `0` | cards view: wrap description and comment text at this many columns (words are kept whole); `0` wraps at the pane width |
@@ -1191,5 +1205,6 @@ is no need to copy them.
 - State (repo links, saved branches, saved views, recent projects, the cached project list, ticket history, seen My Tasks tickets): `~/.local/state/asanamate/state.toml`
 - Ticket exports: `~/.local/state/asanamate/tickets/<gid>/`
 - Background action log: `~/.local/state/asanamate/actions.log`
+- Activity cache (the last 30 days of Activity events): `~/.cache/asanamate/activity.json`
 
-`$XDG_CONFIG_HOME` and `$XDG_STATE_HOME` are honored.
+`$XDG_CONFIG_HOME`, `$XDG_STATE_HOME`, and `$XDG_CACHE_HOME` are honored.

@@ -405,6 +405,10 @@ func runTUI(args []string) error {
 	if err != nil {
 		return err
 	}
+	cacheDir, err := config.CacheDir()
+	if err != nil {
+		return err
+	}
 	configPath, err := config.Path()
 	if err != nil {
 		return err
@@ -415,6 +419,7 @@ func runTUI(args []string) error {
 		State:         st,
 		Client:        client,
 		StateDir:      stateDir,
+		CacheDir:      cacheDir,
 		Images:        kitty.Supported(cfg.Images.Mode, os.Getenv, kitty.TmuxPassthrough),
 		InTmux:        os.Getenv("TMUX") != "",
 		NoPreview:     hidePreview,
