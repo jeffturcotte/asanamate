@@ -6,6 +6,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/sadmachine/asanamate/internal/agents"
+	"github.com/sadmachine/asanamate/internal/asana"
 	"github.com/sadmachine/asanamate/internal/config"
 )
 
@@ -26,6 +27,7 @@ var (
 	moreStyle     lipgloss.Style // +N more badge on an Activity run
 	newStyle      lipgloss.Style // NEW badge on changed My Tasks tickets
 	stateStyles   map[agents.State]lipgloss.Style
+	enumStyles    map[string]lipgloss.Style // by Asana enum option color
 	// Mode pills: normal (also VIEWS and loading), filter, read, and edit.
 	normalPill, filterPill, readPill, editPill lipgloss.Style
 )
@@ -53,6 +55,15 @@ func applyPalette(p config.Palette) {
 		agents.Completed: okStyle,
 		agents.Idle:      dimStyle,
 		agents.Unknown:   dimStyle,
+	}
+	// Asana's enum colors take the theme role nearest in hue, so they suit
+	// every theme.
+	accent, orange, purple := hue(c.Accent), hue(c.Pinned), hue(c.Viewing)
+	enumStyles = map[string]lipgloss.Style{
+		"red": errorStyle, "orange": orange, "yellow-orange": warnStyle, "yellow": warnStyle,
+		"yellow-green": okStyle, "green": okStyle, "blue-green": okStyle, "aqua": workingStyle,
+		"blue": accent, "indigo": accent, "purple": purple, "magenta": purple,
+		"hot-pink": purple, "pink": purple, "cool-gray": dimStyle,
 	}
 	authorStyles = authorStyles[:0]
 	for _, s := range c.Authors {
@@ -86,6 +97,18 @@ func lipStyle(s config.Style) lipgloss.Style {
 		}
 	}
 	return st
+}
+
+// hue is a themed role's foreground alone.
+func hue(s config.Style) lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(lipStyle(s).GetForeground())
+}
+
+// enumStyle is the style of f's value from its enum option's Asana color, and
+// whether it has one.
+func enumStyle(f asana.CustomField) (lipgloss.Style, bool) {
+	s, ok := enumStyles[f.Color()]
+	return s, ok
 }
 
 // pillStyle draws a mode pill: bold unless the style says otherwise, and

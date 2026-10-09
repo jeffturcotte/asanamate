@@ -692,6 +692,11 @@ Colors layer in order: the built-in base, the theme file, then `[colors]` in
 `mode.normal` use `accent`; unset `mode.filter` uses `warn`. A mode pill
 without a background is drawn reversed.
 
+Enum custom field values keep the color their option has in Asana, drawn in
+the theme role nearest in hue: red in `error`, orange in `pinned`, yellow in
+`warn`, greens in `ok`, aqua in `working`, blue and indigo in `accent`,
+purples and pinks in `viewing`, and cool gray in `muted`.
+
 | Role | Used for |
 |---|---|
 | `accent` | reader headings, focused panel border, NORMAL and VIEWS pills |

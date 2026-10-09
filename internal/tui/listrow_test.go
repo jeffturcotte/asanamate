@@ -12,6 +12,7 @@ import (
 
 	"github.com/sadmachine/asanamate/internal/asana"
 	"github.com/sadmachine/asanamate/internal/config"
+	"github.com/sadmachine/asanamate/internal/state"
 	"github.com/sadmachine/asanamate/internal/ticket"
 )
 
@@ -402,5 +403,30 @@ func TestChangedMyTasksRowsMarked(t *testing.T) {
 	m.Update(tasksMsg{project: m.viewProject, tasks: []asana.Task{c}})
 	if got := listLines(m, 20, 1); !slices.Equal(got, []string{"□  C"}) {
 		t.Fatalf("project view rows = %q", got)
+	}
+}
+
+func TestFieldCellsMutedUnlessEnumColored(t *testing.T) {
+	testModel(t, config.Config{})
+	task := asana.Task{CustomFields: []asana.CustomField{
+		{GID: "f1", Name: "Priority", DisplayValue: strp("High"), EnumValue: &asana.EnumOption{Name: "High", Color: "red"}},
+		{GID: "f2", Name: "Stage", DisplayValue: strp("QA"), EnumValue: &asana.EnumOption{Name: "QA", Color: "none"}},
+	}}
+	if v, style := cellValue(task, "Priority", rowContext{}, testToday); v != "High" || style.GetForeground() != errorStyle.GetForeground() {
+		t.Fatalf("red enum = %q %v, want the error color", v, style.GetForeground())
+	}
+	if _, style := columnValue(task, state.Column{GID: "f1"}, rowContext{}, testToday); style.GetForeground() != errorStyle.GetForeground() {
+		t.Fatal("a column by ID keeps the enum color")
+	}
+	for _, name := range []string{"Stage", "section"} {
+		if _, style := cellValue(task, name, rowContext{}, testToday); style.Render("x") != dimStyle.Render("x") {
+			t.Fatalf("%s cell is not muted", name)
+		}
+	}
+	if got, ok := fieldEnumStyle(ticket.Ticket{Task: task}, ticket.FieldKey("f1")); !ok || got.GetForeground() != errorStyle.GetForeground() {
+		t.Fatal("details enum value lacks its color")
+	}
+	if _, ok := fieldEnumStyle(ticket.Ticket{Task: task}, ticket.FieldKey("f2")); ok {
+		t.Fatal(`an enum colored "none" has no color`)
 	}
 }

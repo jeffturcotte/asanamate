@@ -294,9 +294,6 @@ func (m *Model) listRow(i int, cols []int) (row []string, tail string) {
 			if v == "" {
 				continue
 			}
-			if n := strings.TrimSpace(column.Field); column.GID != "" || (!isDue(n) && !strings.EqualFold(n, initialsField)) {
-				style = dimStyle
-			}
 			parts = append(parts, style.Render(v))
 		}
 		details := ""
