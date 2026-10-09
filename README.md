@@ -682,10 +682,13 @@ To turn time tracking off, remove the `[time_tracking]` keys.
 
 Press `t` on a ticket. If ticket belongs to several Asana projects, choose one.
 The form shows the Harvest projects where your task is active, the task under
-its real name, and decimal hours; an error naming the task ID means it is not
-active on any of your projects. Press
+its real name, decimal hours, and the date; an error naming the task ID means
+it is not active on any of your projects. Press
 Enter to edit a field, Tab to move, and Ctrl+S to log. Project and task choices
-are remembered per Asana project after a successful log; hours starts empty.
+are remembered per Asana project after a successful log; hours starts empty,
+and the date starts as today. Type the date as `YYYY-MM-DD` or `date -d` text
+such as `yesterday` (relative dates need GNU date; see the CLI notes in
+[Writing back to Asana](#writing-back-to-asana)).
 Harvest notes contain ticket title; external reference links to Asana ticket
 and chosen Asana project.
 
