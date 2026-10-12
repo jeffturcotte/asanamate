@@ -29,6 +29,9 @@ type readerState struct {
 	fieldKey       string            // selected cards view target; "" for none
 	showEmpty      bool              // the cards view lists empty custom fields; resets per ticket
 	showOthers     bool              // Agents lists agents on other branches; resets per ticket
+	showComments   bool              // the cards view lists every comment, not only the newest; resets per ticket
+	openComments   map[string]bool   // comments shown in full instead of a preview, by target key; resets per ticket
+	clipped        map[string]bool   // comments the last render cut to a preview, by target key
 	fieldLines     map[string]int    // reader line of each cards view target, by key
 	fieldEnds      map[string]int    // last reader line of multi-line targets, by key
 	cardTargets    []string          // cards view targets in reading order

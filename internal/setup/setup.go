@@ -395,6 +395,14 @@ view = "cards"
 # 0 wraps at the pane width.
 max_text_width = 0
 
+[reader.comments]
+# How many of the newest comments the cards view lists; Show all comments
+# lists the rest. 0 lists them all.
+latest = 3
+# Lines of text kept of each listed comment but the newest, ending in
+# "see more"; enter shows one in full. 0 shows every comment in full.
+preview_lines = 2
+
 [images]
 # Kitty graphics: "auto" detects kitty-protocol terminals, "kitty" forces on,
 # "off" disables.

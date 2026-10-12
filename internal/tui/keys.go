@@ -218,20 +218,26 @@ func handlers() map[string]handler {
 }
 
 // open focuses the reader from the list. In the reader, it edits the
-// targeted row, opens the targeted comment's menu, or shows the empty fields
-// or agents on other branches.
+// targeted row, shows the targeted comment in full or opens its menu, or shows
+// the empty fields, older comments, or agents on other branches.
 func (m *Model) open(tea.KeyPressMsg) tea.Cmd {
 	if !m.focusReader {
 		m.focusReaderPane()
 		return nil
 	}
 	if t, ok := m.selectedDetail(); ok && m.readerView != config.ViewMarkdown {
+		if m.clipped[m.fieldKey] {
+			m.openComment(m.fieldKey)
+			return nil
+		}
 		if c := m.selectedComment(t); c != nil && c.GID != "" {
 			m.openCommentMenu(t.GID, *c)
 			return nil
 		}
 	}
 	switch {
+	case m.fieldKey == allCommentsKey:
+		m.showAllComments()
 	case m.fieldKey == emptyFieldsKey:
 		m.showEmptyFields()
 	case m.fieldKey == otherAgentsKey:

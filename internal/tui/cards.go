@@ -129,17 +129,38 @@ func (m *Model) renderCards(t ticket.Ticket, width int) string {
 	// The add row stays visible above the comment timeline.
 	m.fieldLines[commentKey] = lipgloss.Height(strings.Join(blocks, "\n\n")) + 2
 	m.cardTargets = append(m.cardTargets, commentKey)
+	m.clipped = map[string]bool{}
 	comments := []string{dimStyle.Render("none")}
 	if len(t.Comments) > 0 {
-		comments = make([]string, len(t.Comments))
+		comments = nil
 		line := m.fieldLines[commentKey] + 2
-		for i, c := range t.Comments {
+		first := 0
+		opts := m.deps.Config.Reader.Comments
+		if latest := opts.Latest; !m.showComments && latest > 0 && len(t.Comments) > latest {
+			first = len(t.Comments) - latest
+			m.fieldLines[allCommentsKey] = line
+			m.cardTargets = append(m.cardTargets, allCommentsKey)
+			style := dimStyle.Italic(true)
+			if m.fieldKey == allCommentsKey {
+				style = m.fieldStyle()
+			}
+			comments = append(comments, style.Render(fmt.Sprintf("+ Show all %d comments", len(t.Comments))))
+			line += 2
+		}
+		for i := first; i < len(t.Comments); i++ {
+			c := t.Comments[i]
 			key := commentTarget(c, i)
 			m.fieldLines[key] = line
 			m.cardTargets = append(m.cardTargets, key)
-			comments[i] = m.comment(c, width, m.fieldKey == key)
-			m.fieldEnds[key] = line + lipgloss.Height(comments[i]) - 1
-			line += lipgloss.Height(comments[i]) + 1
+			preview := 0
+			if i < len(t.Comments)-1 && !m.openComments[key] {
+				preview = opts.PreviewLines
+			}
+			block, clipped := m.comment(c, width, m.fieldKey == key, preview)
+			m.clipped[key] = clipped
+			m.fieldEnds[key] = line + lipgloss.Height(block) - 1
+			line += lipgloss.Height(block) + 1
+			comments = append(comments, block)
 		}
 	}
 	heading := m.rule(fmt.Sprintf("Comments %d", len(t.Comments)), width, false)
@@ -217,8 +238,10 @@ func (m *Model) progress(done, total int) string {
 }
 
 // comment renders one comment of the timeline: a colored dot, the author, and
-// the day, over the body behind a gutter in the author's color.
-func (m *Model) comment(c asana.Story, width int, selected bool) string {
+// the day, over the body behind a gutter in the author's color. A preview
+// above 0 keeps only that many lines of the body's text, ending in see more,
+// and reports whether it cut any.
+func (m *Model) comment(c asana.Story, width int, selected bool, preview int) (string, bool) {
 	author := ticket.Author(c)
 	day, err := time.Parse(time.DateOnly, ticket.Day(c.CreatedAt))
 	when := ticket.Day(c.CreatedAt)
@@ -236,13 +259,44 @@ func (m *Model) comment(c asana.Story, width int, selected bool) string {
 	}
 	gutter := gutterStyle.Render("│") + " "
 	lines := strings.Split(body, "\n")
+	clipped := false
+	if preview > 0 {
+		lines, clipped = previewText(lines, preview, width-2)
+	}
 	if r := m.reactions(c.Reactions); r != "" {
 		lines = append(lines, ansi.Truncate(r, width-2, "…"))
 	}
 	for i, l := range lines {
 		lines[i] = gutter + l
 	}
-	return head + "\n" + strings.Join(lines, "\n")
+	return head + "\n" + strings.Join(lines, "\n"), clipped
+}
+
+// previewText keeps the first n lines of text in lines, skipping blank ones,
+// and ends the last kept line with see more, within width. It returns lines
+// unchanged when they hold no more text than that.
+func previewText(lines []string, n, width int) ([]string, bool) {
+	var kept []string
+	for i, l := range lines {
+		if strings.TrimSpace(ansi.Strip(l)) == "" {
+			continue
+		}
+		if len(kept) == n {
+			more := dimStyle.Italic(true).Render(" see more …")
+			last := kept[len(kept)-1]
+			// Rendered lines are padded to width; cut the padding, not the text.
+			text, room := ansi.StringWidth(strings.TrimRight(ansi.Strip(last), " ")), width-ansi.StringWidth(more)
+			if text > room {
+				last = ansi.Truncate(last, room, "…")
+			} else {
+				last = ansi.Truncate(last, text, "")
+			}
+			kept[len(kept)-1] = last + more
+			return kept, true
+		}
+		kept = append(kept, lines[i])
+	}
+	return lines, false
 }
 
 // reactions renders a comment's reactions as each emoji with its count, the

@@ -373,6 +373,29 @@ func (m *Model) fieldTargets(t ticket.Ticket) []string {
 	return append(keys, commentKey)
 }
 
+// allCommentsKey is the field key of the cards view's Show all comments row.
+const allCommentsKey = "all_comments"
+
+// showAllComments reveals the selected ticket's older comments and selects
+// the oldest.
+func (m *Model) showAllComments() {
+	t, ok := m.selectedDetail()
+	if !ok || len(t.Comments) == 0 {
+		return
+	}
+	m.showComments, m.fieldKey = true, commentTarget(t.Comments[0], 0)
+	m.showTarget()
+}
+
+// openComment shows the comment with key in full instead of its preview.
+func (m *Model) openComment(key string) {
+	if m.openComments == nil {
+		m.openComments = map[string]bool{}
+	}
+	m.openComments[key] = true
+	m.showTarget()
+}
+
 // showEmptyFields reveals the selected ticket's empty custom fields and
 // selects the first editable one.
 func (m *Model) showEmptyFields() {

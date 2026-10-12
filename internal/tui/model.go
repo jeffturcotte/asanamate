@@ -797,7 +797,7 @@ func (m *Model) selectionChanged() tea.Cmd {
 	if t.GID == m.shownGID {
 		return nil
 	}
-	m.fieldKey, m.showEmpty, m.showOthers = "", false, false
+	m.fieldKey, m.showEmpty, m.showOthers, m.showComments, m.openComments = "", false, false, false, nil
 	if _, cached := m.details[t.GID]; cached {
 		m.renderDetail(false)
 		images := m.loadInlineImages(m.details[t.GID])
