@@ -295,8 +295,18 @@ func TestCardsShowNewestCommentsAsPreviews(t *testing.T) {
 		t.Fatalf("newest comment end = %q", end)
 	}
 
+	hint := func(want string) bool {
+		_, _, hints := m.mode()
+		return slices.ContainsFunc(hints, func(h [2]string) bool { return h[1] == want })
+	}
 	m.fieldKey = "comment:c3"
+	if !hint("see more") || hint("comment menu") {
+		t.Fatal("a preview's enter hint must say see more")
+	}
 	press(m, "enter")
+	if !hint("comment menu") {
+		t.Fatal("a full comment's enter hint must say comment menu")
+	}
 	if m.modal != nil || !m.openComments["comment:c3"] || m.clipped["comment:c3"] {
 		t.Fatalf("enter on a preview must show it in full: modal %v, open %v", m.modal != nil, m.openComments)
 	}
@@ -307,6 +317,9 @@ func TestCardsShowNewestCommentsAsPreviews(t *testing.T) {
 	m.modal = nil
 
 	m.fieldKey = allCommentsKey
+	if !hint("show all comments") {
+		t.Fatal("the Show all row's enter hint must say show all comments")
+	}
 	press(m, "enter")
 	if !m.showComments || m.fieldKey != "comment:c1" || !slices.Contains(m.cardTargets, "comment:c2") || slices.Contains(m.cardTargets, allCommentsKey) {
 		t.Fatalf("show all: shown %v, target %q, targets %q", m.showComments, m.fieldKey, m.cardTargets)
