@@ -1,5 +1,5 @@
 // Package feed runs feed commands: providers of time-stamped lines for the
-// Today panel, such as time entries, CI runs, or meetings (docs/extensions.md).
+// Feed panel, such as time entries, CI runs, or meetings (docs/extensions.md).
 package feed
 
 import (

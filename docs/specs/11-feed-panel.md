@@ -1,10 +1,10 @@
-# 11: Today panel and the feed protocol
+# 11: Feed panel and the feed protocol
 
 **Depends on nothing.**
 
 ## Goal
 
-A Today panel under the ticket list shows, at a glance, what happened today
+A Feed panel under the ticket list shows, at a glance, what happened today
 and what is coming up, across Asana, coding agents, local git work, and any
 external tool. External tools add to it
 through one generic feed protocol, so the panel is agnostic to Harvest,
@@ -34,20 +34,20 @@ ccmux, Hub, or any future plugin.
 
 ### Layout
 
-- A bordered `[3] Today` panel sits under the `[1] Tickets` panel, the same
+- A bordered `[3] Feed` panel sits under the `[1] Tickets` panel, the same
   width. It is always present, in one of two heights:
   - **Collapsed:** its two border rows only. The top edge carries the
-    sources' summaries, such as `[3] Today · 3h 10m logged · 4 new`.
-  - **Expanded:** `today.height` rows. Items timed after now (meetings,
+    sources' summaries, such as `[3] Feed · 3h 10m logged · 4 new`.
+  - **Expanded:** `feed.height` rows. Items timed after now (meetings,
     reminders) come first, soonest first, under a `Next (n)` group header;
     the rest follow newest first under `Earlier (n)`. The headers use
     `list.header.style`, like the list's, and show only when there are
     upcoming items. Upcoming times show as `in 25m`.
-- With `today.expand = "auto"`, the panel expands when the list leaves at
-  least `today.height` empty rows, and collapses otherwise. `T` toggles it and
+- With `feed.expand = "auto"`, the panel expands when the list leaves at
+  least `feed.height` empty rows, and collapses otherwise. `F` toggles it and
   overrides auto until the view changes. `3` focuses it, expanding it first.
 - The height is decided when a view loads, when the terminal resizes, and on
-  `T`, never on a background refresh, so the list does not jump.
+  `F`, never on a background refresh, so the list does not jump.
 - In the focused panel, `j`/`k` move, `enter` opens the item's ticket in the
   reader (or its `url` when it has no ticket), and `esc` returns to the list.
 
@@ -75,15 +75,15 @@ ccmux, Hub, or any future plugin.
     reports `not pushed` instead.
 
   Its summary counts affected branches, such as `2 unpushed`. It runs on
-  `today.refresh_interval`, with each git command bounded by the feed
+  `feed.refresh_interval`, with each git command bounded by the feed
   timeout. A worktree git cannot read is skipped, not reported.
 
 ### Feed protocol
 
 Add a "Feeds" section to `docs/extensions.md` and a row to its table.
 
-- **Config:** `today.feeds`, a list of commands. Each runs as a new process
-  when the TUI starts, then every `today.refresh_interval`, while the TUI is
+- **Config:** `feed.commands`, a list of commands. Each runs as a new process
+  when the TUI starts, then every `feed.refresh_interval`, while the TUI is
   open. `asanamate doctor` runs each once.
 - **Input:** one JSON object on stdin:
   `{"version":1,"operation":"feed","date":"2026-10-12"}`. `date` is today's
@@ -140,22 +140,22 @@ the item shape without changes:
 
 ### Config
 
-New `[today]` table. Follow the AGENTS.md key checklist.
+New `[feed]` table. Follow the AGENTS.md key checklist.
 
 | Key | Default | Values |
 |---|---|---|
-| `today.expand` | `"auto"` | `auto` (expand when the list leaves room), `collapsed`, `expanded` |
-| `today.height` | `12` | rows when expanded, borders included, at least `3` |
-| `today.refresh_interval` | `"1m"` | as `activity.refresh_interval`; `"0"` runs feeds only at start and on reload (`r`) |
-| `today.feeds` | `[]` | feed commands |
+| `feed.expand` | `"auto"` | `auto` (expand when the list leaves room), `collapsed`, `expanded` |
+| `feed.height` | `12` | rows when expanded, borders included, at least `3` |
+| `feed.refresh_interval` | `"1m"` | as `activity.refresh_interval`; `"0"` runs feeds only at start and on reload (`r`) |
+| `feed.commands` | `[]` | feed commands |
 
 ### Keys
 
-`T` toggles the panel and `3` focuses it, through `internal/keymap/catalog.go`.
+`F` toggles the panel and `3` focuses it, through `internal/keymap/catalog.go`.
 
 ### Docs
 
-README: a Today panel section, the config rows, the keys, and the "What it
+README: a Feed panel section, the config rows, the keys, and the "What it
 does" list. `docs/extensions.md`: the Feeds section.
 
 ## Out of scope
@@ -167,7 +167,7 @@ does" list. `docs/extensions.md`: the Feeds section.
 ## Acceptance
 
 - Collapsed, the panel is two border rows under the list, with
-  `[3] Today` at the left of its top edge and the summaries and `T expand`
+  `[3] Feed` at the left of its top edge and the summaries and `F expand`
   at the right. Expanded, each row is the item's time (muted), its text in
   its tone with the ticket title in the plain text color, and its source
   (muted) at the right edge.

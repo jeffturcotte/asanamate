@@ -91,7 +91,7 @@ type Model struct {
 	activity        *activityView // API activity, cached on disk
 	activityOpen    bool
 	activityTicket  bool // Esc returns from a ticket opened through Activity
-	today           todayPanel
+	feed            feedPanel
 	palette         config.Palette   // resolved theme, for Markdown
 	bindings        []binding        // [keys.main] with their handlers
 	accentStyle     lipgloss.Style   // reader headings
@@ -108,7 +108,7 @@ type Model struct {
 
 	focusReader  bool
 	focusNav     bool   // the views panel has focus; wide layout only
-	focusToday   bool   // the Today panel has focus
+	focusFeed    bool   // the Feed panel has focus
 	navCursor    int    // selected row among the views panel's selectable rows
 	help         bool   // the key help is open
 	savedView    string // named view associated with the current project's settings
@@ -203,7 +203,7 @@ func New(d Deps) *Model {
 	}
 	m.bindings = keyBindings()
 	m.activity = newActivityView(d)
-	m.today = newTodayPanel(d.Config.Today)
+	m.feed = newFeedPanel(d.Config.Feed)
 	m.restoreView()
 	m.refreshInterval, _ = config.ParseRefreshInterval(cmp.Or(d.Config.List.RefreshInterval, config.Default().List.RefreshInterval))
 	if saved, err := config.ParseRefreshInterval(d.State.Display.RefreshInterval); err == nil {
@@ -216,7 +216,7 @@ func New(d Deps) *Model {
 func (m *Model) ExitCommand() *exec.Cmd { return m.exitCmd }
 
 func (m *Model) Init() tea.Cmd {
-	cmd := tea.Batch(loadTasks(m.deps.Client, m.deps.Config.Workspace, m.viewProject, m.pinnedTasks()), m.startSpinner(), m.scheduleRefresh(), m.startActivity(), m.startToday())
+	cmd := tea.Batch(loadTasks(m.deps.Client, m.deps.Config.Workspace, m.viewProject, m.pinnedTasks()), m.startSpinner(), m.scheduleRefresh(), m.startActivity(), m.startFeed())
 	if m.deps.Config.AgentsEnabled() {
 		cmd = tea.Batch(cmd, loadAgents(m.deps.Config.Agents))
 	}
@@ -231,8 +231,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.gotActivity(msg)
 	case activityTickMsg:
 		return m, m.activityTick()
-	case todayTickMsg:
-		return m, tea.Batch(m.refreshToday(), m.scheduleToday())
+	case feedTickMsg:
+		return m, tea.Batch(m.refreshFeed(), m.scheduleFeed())
 	case feedMsg:
 		m.gotFeed(msg)
 	case gitMsg:
@@ -240,7 +240,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.layout()
-		m.decideToday()
+		m.decideFeed()
 		// The views panel lists recent projects by name.
 		if m.showNav() {
 			return m, tea.Batch(m.refreshProjects(), m.requestImageCellSize())
@@ -376,7 +376,7 @@ func (m *Model) gotTasks(msg tasksMsg) tea.Cmd {
 	}
 	cmd := m.selectionChanged()
 	if !m.background {
-		m.decideToday()
+		m.decideFeed()
 		cmd = tea.Batch(cmd, m.checkGit())
 	}
 	if t, ok := m.selected(); refreshing && ok && t.GID == m.shownGID {
@@ -599,9 +599,9 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			return m.updateNav(name)
 		}
 	}
-	if m.focusToday {
+	if m.focusFeed {
 		if name := keys.Name("views", k); name != "" {
-			return m.updateToday(name)
+			return m.updateFeed(name)
 		}
 	}
 	if b, ok := m.bindingFor(k); ok {
@@ -671,7 +671,7 @@ func (m *Model) finishFilter() {
 	m.reader.SetHeight(m.paneHeight())
 	m.saveView()
 	m.fitList()
-	m.decideToday()
+	m.decideFeed()
 }
 
 // reload refetches the tasks, keeping the current view until they land.
@@ -1083,15 +1083,15 @@ func (m *Model) panes(h int) string {
 }
 
 // listPanel is the list panel, contentW columns of rows in width columns,
-// above the Today panel, h rows in all.
+// above the Feed panel, h rows in all.
 func (m *Model) listPanel(contentW, width, h int) string {
 	title, count := m.listTitle()
-	today := m.todayRows()
-	list := m.panel(title, count, m.listView(contentW, m.listHeight()), width, h-today, m.listHighlight())
-	if today == 0 {
+	panel := m.feedHeight()
+	list := m.panel(title, count, m.listView(contentW, m.listHeight()), width, h-panel, m.listHighlight())
+	if panel == 0 {
 		return list
 	}
-	return list + "\n" + m.todayView(width, today)
+	return list + "\n" + m.feedView(width, panel)
 }
 
 // focusColor is the accent color for a focused panel, or nil.
@@ -1108,7 +1108,7 @@ func (m *Model) listHighlight() color.Color {
 	if m.loading && m.background {
 		return warnStyle.GetForeground()
 	}
-	return m.focusColor(!m.focusReader && !m.focusNav && !m.focusToday)
+	return m.focusColor(!m.focusReader && !m.focusNav && !m.focusFeed)
 }
 
 // readerHighlight marks the selected ticket while its details load, including

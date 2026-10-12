@@ -73,7 +73,7 @@ func TestCheckFeedsRunsEachFeed(t *testing.T) {
 	}
 	out.Reset()
 	checkFeeds(context.Background(), &out, nil)
-	if !strings.Contains(out.String(), "none: set today.feeds") {
+	if !strings.Contains(out.String(), "none: set feed.commands") {
 		t.Fatalf("no feeds = %q", out.String())
 	}
 }

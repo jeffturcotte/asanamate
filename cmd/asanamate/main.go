@@ -565,7 +565,7 @@ func runDoctor(args []string) error {
 		row(w, "branch_field", strconv.Quote(cfg.BranchField))
 	}
 	checkLegacyCodexHook(w)
-	checkFeeds(ctx, w, cfg.Today.Feeds)
+	checkFeeds(ctx, w, cfg.Feed.Commands)
 	var list []agents.Agent
 	if !cfg.AgentsEnabled() {
 		row(w, "agents", "off: set agents.command")
@@ -693,7 +693,7 @@ func checkFeatures(w io.Writer, cfg config.Config) {
 // checkFeeds runs each feed command once and reports what it answered.
 func checkFeeds(ctx context.Context, w io.Writer, feeds []string) {
 	if len(feeds) == 0 {
-		row(w, "feeds", "none: set today.feeds")
+		row(w, "feeds", "none: set feed.commands")
 	}
 	for _, command := range feeds {
 		source := "command " + strconv.Quote(command)

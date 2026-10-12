@@ -143,8 +143,8 @@ func handlers() map[string]handler {
 		"focus_views":    {run: do((*Model).focusViews)},
 		"focus_list":     {run: do((*Model).focusList)},
 		"focus_reader":   {splitOnly: true, run: do((*Model).focusReaderPane)},
-		"focus_today":    {run: do((*Model).focusTodayPanel)},
-		"toggle_today":   {run: do((*Model).toggleToday)},
+		"focus_feed":     {run: do((*Model).focusFeedPanel)},
+		"toggle_feed":    {run: do((*Model).toggleFeed)},
 		"next_pane":      {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.cyclePane(false) }},
 		"prev_pane":      {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.cyclePane(true) }},
 		"open":           {splitOnly: true, run: (*Model).open},
@@ -202,7 +202,7 @@ func handlers() map[string]handler {
 		}},
 		"create":           {run: do((*Model).openCreate)},
 		"create_subtask":   {run: do((*Model).openCreateSubtask)},
-		"reload":           {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return tea.Batch(m.refreshWithImages(), m.refreshToday()) }},
+		"reload":           {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return tea.Batch(m.refreshWithImages(), m.refreshFeed()) }},
 		"reader_view":      {splitOnly: true, run: do(func(m *Model) { m.toggleReaderView(); m.saveDisplay() })},
 		"toggle_reader":    {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.toggleReader() }},
 		"toggle_sidebar":   {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.toggleSidebar() }},
@@ -298,7 +298,7 @@ func (m *Model) scrollReader(msg tea.KeyPressMsg) tea.Cmd {
 
 // focusList gives the list focus.
 func (m *Model) focusList() {
-	m.focusNav, m.focusToday = false, false
+	m.focusNav, m.focusFeed = false, false
 	if m.focusReader {
 		m.focusReader = false
 		m.clearField()
@@ -316,7 +316,7 @@ func (m *Model) focusViews() {
 // focusReaderPane gives the reader focus, on its first editable row, and
 // counts the selected ticket as viewed.
 func (m *Model) focusReaderPane() {
-	m.focusNav, m.focusToday = false, false
+	m.focusNav, m.focusFeed = false, false
 	if !m.focusReader {
 		m.focusReader = true
 		m.stepField(1)
