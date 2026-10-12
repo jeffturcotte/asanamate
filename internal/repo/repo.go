@@ -9,7 +9,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/sadmachine/asanamate/internal/config"
 )
@@ -133,6 +135,61 @@ func Worktree(repoPath, branch string) string {
 		}
 	}
 	return ""
+}
+
+// Pending is the work in a working tree that is not on its remote yet.
+type Pending struct {
+	Uncommitted int       // changed or untracked files
+	ChangedAt   time.Time // newest modification time among them
+	Unpushed    int       // commits ahead of the upstream
+	NoUpstream  bool      // the branch tracks no upstream, so nothing is pushed
+	CommitAt    time.Time // time of the newest commit, when unpushed or untracked
+}
+
+// Empty reports whether nothing is waiting to be committed or pushed.
+func (p Pending) Empty() bool { return p.Uncommitted == 0 && p.Unpushed == 0 && !p.NoUpstream }
+
+// PendingWork reports the uncommitted files and unpushed commits of the
+// working tree at path.
+func PendingWork(ctx context.Context, path string) (Pending, error) {
+	git := func(args ...string) (string, error) {
+		out, err := exec.CommandContext(ctx, "git", append([]string{"-C", path}, args...)...).Output()
+		return string(out), err
+	}
+	var p Pending
+	status, err := git("status", "--porcelain", "-z")
+	if err != nil {
+		return p, fmt.Errorf("git status in %s: %w", path, err)
+	}
+	fields := strings.Split(status, "\x00")
+	for i := 0; i < len(fields); i++ {
+		f := fields[i]
+		if len(f) < 4 {
+			continue
+		}
+		p.Uncommitted++
+		if f[0] == 'R' || f[0] == 'C' {
+			i++ // -z puts a rename's source in the next field
+		}
+		if info, err := os.Lstat(filepath.Join(path, f[3:])); err == nil && info.ModTime().After(p.ChangedAt) {
+			p.ChangedAt = info.ModTime()
+		}
+	}
+	if ahead, err := git("rev-list", "--count", "@{upstream}..HEAD"); err != nil {
+		p.NoUpstream = true
+	} else if p.Unpushed, err = strconv.Atoi(strings.TrimSpace(ahead)); err != nil {
+		return p, fmt.Errorf("git rev-list in %s: %w", path, err)
+	}
+	if p.Unpushed > 0 || p.NoUpstream {
+		when, err := git("log", "-1", "--format=%cI")
+		if err != nil {
+			// A branch with no commits has nothing to push.
+			p.NoUpstream = false
+		} else if p.CommitAt, err = time.Parse(time.RFC3339, strings.TrimSpace(when)); err != nil {
+			return p, fmt.Errorf("git log in %s: %w", path, err)
+		}
+	}
+	return p, nil
 }
 
 // Matching returns the paths with a git remote equal to one of urls, ignoring

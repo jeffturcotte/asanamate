@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sadmachine/asanamate/internal/feed"
 	"github.com/sadmachine/asanamate/internal/projectlinks"
 	"github.com/sadmachine/asanamate/internal/timetracking"
 )
@@ -54,7 +55,11 @@ func TestProviderProtocol(t *testing.T) {
 			fmt.Fprint(w, `{"id":987,"external_reference":{"id":"42","permalink":"https://app.asana.com/0/7/42"}}`)
 			return
 		}
-		fmt.Fprintf(w, `{"time_entries":[{"hours":3.75,"spent_date":%q,"is_running":false,"external_reference":{"id":"42"}}],"next_page":null}`, time.Now().Format(time.DateOnly))
+		if r.URL.Path == "/users/me" {
+			fmt.Fprint(w, `{"id":555}`)
+			return
+		}
+		fmt.Fprintf(w, `{"time_entries":[{"hours":3.75,"spent_date":%q,"is_running":false,"created_at":"2026-10-12T18:05:00Z","project":{"name":"Web"},"external_reference":{"id":"42"}}],"next_page":null}`, time.Now().Format(time.DateOnly))
 	}))
 	defer server.Close()
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
@@ -78,6 +83,11 @@ func TestProviderProtocol(t *testing.T) {
 	summary, err := provider.Summary(ctx, asana)
 	if err != nil || summary.TotalSeconds != 13500 || summary.TodaySeconds == nil || *summary.TodaySeconds != 13500 {
 		t.Fatalf("summary = %+v, err = %v", summary, err)
+	}
+	// The same command answers the feed protocol.
+	reply, err := feed.Fetch(ctx, provider.Command, time.Now())
+	if err != nil || reply.Source != "hrvst" || reply.Summary != "3h 45m logged" || len(reply.Items) != 1 || reply.Items[0].TicketGID != "42" {
+		t.Fatalf("feed = %+v, err = %v", reply, err)
 	}
 }
 

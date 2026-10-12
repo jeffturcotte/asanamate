@@ -1,6 +1,7 @@
-// Command asanamate-hrvst is asanamate's Harvest time tracking provider. It
-// serves one request of the time tracking protocol (docs/extensions.md) on
-// stdin, using the login of hrvst (https://github.com/kgajera/hrvst-cli).
+// Command asanamate-hrvst is asanamate's Harvest time tracking provider and
+// feed. It serves one request of the time tracking or feed protocol
+// (docs/extensions.md) on stdin, using the login of hrvst
+// (https://github.com/kgajera/hrvst-cli).
 package main
 
 import (
@@ -13,8 +14,9 @@ import (
 )
 
 const usage = `usage:
-  asanamate-hrvst --task-id <id>   serve one time tracking request on stdin
-                                   (set as time_tracking.command)
+  asanamate-hrvst --task-id <id>   serve one time tracking or feed request on
+                                   stdin (set as time_tracking.command, and
+                                   add to today.feeds; feeds need no task ID)
   asanamate-hrvst check            check that hrvst is installed and logged in
 `
 

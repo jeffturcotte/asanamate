@@ -421,6 +421,20 @@ type_first = false
 # background scans off; Activity then scans when you open it.
 refresh_interval = "2m"
 
+[today]
+# The Today panel under the ticket list: Asana activity, agents, unpushed
+# git work, and feed commands. "auto" expands it when the list leaves room,
+# "collapsed" keeps it to its border, "expanded" keeps it open. T toggles it.
+expand = "auto"
+# Rows when expanded, borders included; at least 3.
+height = 12
+# Run feeds and the git check at this interval (at least 1s); "0" runs them
+# only at start and on reload (r).
+refresh_interval = "1m"
+# Feed commands (see docs/extensions.md#feeds); for today's Harvest time
+# entries, add "asanamate-hrvst".
+feeds = []
+
 # Optional: show running coding agents next to their tickets. Off unless
 # command is set. A ticket matches agents on its branch (see branch_field) in
 # one of its linked repos. See the README for agent actions.

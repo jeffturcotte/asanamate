@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sadmachine/asanamate/internal/feed"
 	"github.com/sadmachine/asanamate/internal/form"
 	"github.com/sadmachine/asanamate/internal/projectlinks"
 	"github.com/sadmachine/asanamate/internal/timetracking"
@@ -64,14 +65,25 @@ func harvestConfigPath() (string, error) {
 }
 
 // runHarvest serves one provider request using hrvst's project assignments
-// and credentials. Harvest's API needs a nested external_reference object;
-// hrvst's create command flattens its bracketed flags and drops the link.
+// and credentials: a time tracking request, or a feed request (its "feed"
+// operation and date). Harvest's API needs a nested external_reference
+// object; hrvst's create command flattens its bracketed flags and drops the
+// link.
 func runHarvest(ctx context.Context, in io.Reader, out io.Writer, taskID, configPath, endpoint string) error {
-	var req timetracking.Request
+	var req struct {
+		timetracking.Request
+		Date string `json:"date"`
+	}
 	if err := json.NewDecoder(in).Decode(&req); err != nil {
 		return fmt.Errorf("time provider request: %w", err)
 	}
 	switch req.Operation {
+	case "feed":
+		reply, err := harvestFeed(ctx, configPath, endpoint, req.Date)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(out).Encode(reply)
 	case "form":
 		if !digits(taskID) {
 			return errors.New("hrvst needs a numeric default task ID (--task-id)")
@@ -302,17 +314,8 @@ func harvestSummary(ctx context.Context, configPath, endpoint, gid string) (time
 		return timetracking.Summary{}, err
 	}
 	var hours, todayHours float64
-	for page := 1; ; {
-		query := base.Query()
-		query.Set("external_reference_id", gid)
-		query.Set("is_running", "false")
-		query.Set("per_page", "100")
-		query.Set("page", strconv.Itoa(page))
-		base.RawQuery = query.Encode()
-		data, err := credentials.call(ctx, http.MethodGet, base.String(), nil)
-		if err != nil {
-			return timetracking.Summary{}, err
-		}
+	query := url.Values{"external_reference_id": {gid}, "is_running": {"false"}}
+	err = eachPage(ctx, credentials, base, query, "Harvest time summary", func(data []byte) error {
 		var result struct {
 			Entries *[]struct {
 				Hours     *float64                  `json:"hours"`
@@ -320,24 +323,23 @@ func harvestSummary(ctx context.Context, configPath, endpoint, gid string) (time
 				SpentDate string                    `json:"spent_date"`
 				Reference *harvestExternalReference `json:"external_reference"`
 			} `json:"time_entries"`
-			NextPage json.RawMessage `json:"next_page"`
 		}
 		if err := json.Unmarshal(data, &result); err != nil {
-			return timetracking.Summary{}, fmt.Errorf("Harvest time summary: %w", err)
+			return err
 		}
 		if result.Entries == nil {
-			return timetracking.Summary{}, errors.New("Harvest time summary: missing time_entries")
+			return errors.New("missing time_entries")
 		}
 		for _, entry := range *result.Entries {
 			if entry.Reference == nil || entry.Reference.ID != gid {
 				continue
 			}
 			if entry.Running == nil || entry.Hours == nil || *entry.Hours < 0 || math.IsNaN(*entry.Hours) || math.IsInf(*entry.Hours, 0) {
-				return timetracking.Summary{}, errors.New("Harvest time summary: invalid entry duration or timer state")
+				return errors.New("invalid entry duration or timer state")
 			}
 			if !*entry.Running {
 				if _, err := time.Parse(time.DateOnly, entry.SpentDate); err != nil {
-					return timetracking.Summary{}, errors.New("Harvest time summary: missing or invalid spent_date")
+					return errors.New("missing or invalid spent_date")
 				}
 				hours += *entry.Hours
 				if entry.SpentDate == today {
@@ -345,17 +347,10 @@ func harvestSummary(ctx context.Context, configPath, endpoint, gid string) (time
 				}
 			}
 		}
-		var nextPage *int
-		if len(result.NextPage) == 0 || json.Unmarshal(result.NextPage, &nextPage) != nil {
-			return timetracking.Summary{}, errors.New("Harvest time summary: missing or invalid next_page")
-		}
-		if nextPage == nil {
-			break
-		}
-		if *nextPage <= page {
-			return timetracking.Summary{}, errors.New("Harvest time summary: invalid next_page")
-		}
-		page = *nextPage
+		return nil
+	})
+	if err != nil {
+		return timetracking.Summary{}, err
 	}
 	seconds := math.Round(hours * 3600)
 	if math.IsInf(seconds, 0) || seconds >= float64(math.MaxInt64) {
@@ -363,4 +358,124 @@ func harvestSummary(ctx context.Context, configPath, endpoint, gid string) (time
 	}
 	todaySeconds := int64(math.Round(todayHours * 3600))
 	return timetracking.Summary{TotalSeconds: int64(seconds), TodaySeconds: &todaySeconds}, nil
+}
+
+// eachPage gets every page of the time entries at base with query, 100 per
+// page, and passes each page's body to fn. It fails rather than return part
+// of the pages. label prefixes errors.
+func eachPage(ctx context.Context, credentials harvestCredentials, base *url.URL, query url.Values, label string, fn func([]byte) error) error {
+	for page := 1; ; {
+		query.Set("per_page", "100")
+		query.Set("page", strconv.Itoa(page))
+		u := *base
+		u.RawQuery = query.Encode()
+		data, err := credentials.call(ctx, http.MethodGet, u.String(), nil)
+		if err != nil {
+			return err
+		}
+		if err := fn(data); err != nil {
+			return fmt.Errorf("%s: %w", label, err)
+		}
+		var result struct {
+			NextPage json.RawMessage `json:"next_page"`
+		}
+		var nextPage *int
+		if json.Unmarshal(data, &result) != nil || len(result.NextPage) == 0 || json.Unmarshal(result.NextPage, &nextPage) != nil {
+			return fmt.Errorf("%s: missing or invalid next_page", label)
+		}
+		if nextPage == nil {
+			return nil
+		}
+		if *nextPage <= page {
+			return fmt.Errorf("%s: invalid next_page", label)
+		}
+		page = *nextPage
+	}
+}
+
+// harvestFeed answers a feed request: the user's time entries spent on date,
+// each linked to its Asana ticket, and the day's total as the summary.
+func harvestFeed(ctx context.Context, configPath, endpoint, date string) (feed.Reply, error) {
+	if _, err := time.Parse(time.DateOnly, date); err != nil {
+		return feed.Reply{}, errors.New("hrvst feed needs date as YYYY-MM-DD")
+	}
+	credentials, err := loadHarvestCredentials(configPath)
+	if err != nil {
+		return feed.Reply{}, err
+	}
+	base, err := url.Parse(endpoint)
+	if err != nil {
+		return feed.Reply{}, err
+	}
+	data, err := credentials.call(ctx, http.MethodGet, base.ResolveReference(&url.URL{Path: "users/me"}).String(), nil)
+	if err != nil {
+		return feed.Reply{}, err
+	}
+	var me struct {
+		ID json.Number `json:"id"`
+	}
+	if err := json.Unmarshal(data, &me); err != nil || me.ID == "" {
+		return feed.Reply{}, errors.New("Harvest feed: missing user id")
+	}
+	reply := feed.Reply{Source: "hrvst", Items: []feed.Item{}}
+	var total float64
+	query := url.Values{"user_id": {me.ID.String()}, "from": {date}, "to": {date}}
+	err = eachPage(ctx, credentials, base, query, "Harvest feed", func(data []byte) error {
+		var result struct {
+			Entries *[]struct {
+				Hours     *float64                  `json:"hours"`
+				Running   bool                      `json:"is_running"`
+				Notes     string                    `json:"notes"`
+				CreatedAt time.Time                 `json:"created_at"`
+				Project   struct{ Name string }     `json:"project"`
+				Reference *harvestExternalReference `json:"external_reference"`
+			} `json:"time_entries"`
+		}
+		if err := json.Unmarshal(data, &result); err != nil {
+			return err
+		}
+		if result.Entries == nil {
+			return errors.New("missing time_entries")
+		}
+		for _, entry := range *result.Entries {
+			if entry.Hours == nil || *entry.Hours < 0 || math.IsNaN(*entry.Hours) || math.IsInf(*entry.Hours, 0) || entry.CreatedAt.IsZero() {
+				return errors.New("invalid entry duration or time")
+			}
+			total += *entry.Hours
+			item := feed.Item{Time: entry.CreatedAt, Text: hoursLabel(*entry.Hours) + " · " + entry.Project.Name, Tone: feed.ToneOK}
+			if entry.Running {
+				item.Text, item.Tone = "running · "+item.Text, feed.ToneWarn
+			}
+			// A linked entry's notes are its ticket's title, which the panel shows.
+			if ref := entry.Reference; ref != nil && digits(ref.ID) {
+				item.TicketGID, item.URL = ref.ID, ref.Permalink
+			} else if notes := feed.OneLine(entry.Notes); notes != "" {
+				item.Text += " · " + notes
+			}
+			reply.Items = append(reply.Items, item)
+		}
+		return nil
+	})
+	if err != nil {
+		return feed.Reply{}, err
+	}
+	reply.Summary = durationLabel(total) + " logged"
+	return reply, nil
+}
+
+// hoursLabel shows decimal hours briefly: "1.5h", "0.25h", "2h".
+func hoursLabel(hours float64) string {
+	return strconv.FormatFloat(math.Round(hours*100)/100, 'f', -1, 64) + "h"
+}
+
+// durationLabel shows decimal hours as "3h 10m", "45m", or "0m".
+func durationLabel(hours float64) string {
+	minutes := int(math.Round(hours * 60))
+	switch {
+	case minutes >= 60 && minutes%60 != 0:
+		return fmt.Sprintf("%dh %dm", minutes/60, minutes%60)
+	case minutes >= 60:
+		return fmt.Sprintf("%dh", minutes/60)
+	}
+	return fmt.Sprintf("%dm", minutes)
 }

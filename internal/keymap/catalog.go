@@ -18,6 +18,7 @@ var catalog = []Scope{
 		{Name: "focus_views", Keys: []string{"0"}, Desc: "views panel", Group: "Move"},
 		{Name: "focus_list", Keys: []string{"esc", "1"}, Desc: "list", Group: "Move"},
 		{Name: "focus_reader", Keys: []string{"2"}, Desc: "reader", Group: "Move"},
+		{Name: "focus_today", Keys: []string{"3"}, Desc: "Today panel", Group: "Move"},
 		{Name: "next_pane", Keys: []string{"tab", "l"}, Desc: "next / previous pane", Hint: "pane", Group: "Move"},
 		{Name: "prev_pane", Keys: []string{"shift+tab", "h"}, Desc: "previous pane", Pair: "next_pane"},
 		{Name: "open", Keys: []string{"enter"}, Desc: "open ticket / edit target", Group: "Move"},
@@ -45,6 +46,7 @@ var catalog = []Scope{
 		{Name: "reader_view", Keys: []string{"v"}, Desc: "cards / markdown", Group: "View"},
 		{Name: "toggle_reader", Keys: []string{"z"}, Desc: "show / hide reader", Group: "View"},
 		{Name: "toggle_sidebar", Keys: []string{"Z"}, Desc: "show / hide views panel", Group: "View"},
+		{Name: "toggle_today", Keys: []string{"T"}, Desc: "expand / collapse Today panel", Group: "View"},
 		{Name: "saved_views", Keys: []string{"V"}, Desc: "saved views", Group: "View"},
 		{Name: "save_view", Keys: []string{"ctrl+s"}, Desc: "save current view", Group: "View"},
 		{Name: "next_saved_view", Keys: []string{"]"}, Desc: "next / previous saved view", Group: "View"},
@@ -66,7 +68,7 @@ var catalog = []Scope{
 		{Name: "automated", Keys: []string{"!"}, Desc: "include / hide automated reminders"},
 		{Name: "expand", Keys: []string{"space"}, Desc: "show / hide a ticket's earlier events in a row"},
 	}},
-	{Name: "views", Doc: "Views panel (0). Other keys fall through to [keys.main].", Bindings: []Binding{
+	{Name: "views", Doc: "Views panel (0) and Today panel (3). Other keys fall through to [keys.main].", Bindings: []Binding{
 		{Name: "down", Keys: []string{"j", "down"}, Desc: "next row"},
 		{Name: "up", Keys: []string{"k", "up"}, Desc: "previous row"},
 		{Name: "top", Keys: []string{"g", "home"}, Desc: "first row"},

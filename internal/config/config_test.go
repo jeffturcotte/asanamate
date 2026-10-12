@@ -193,6 +193,9 @@ func TestListConfig(t *testing.T) {
 	if !reflect.DeepEqual(cfg.Colors, Colors{}) || cfg.List.Header != (Header{Style: StyleRule}) || cfg.List.Selection != (Selection{Style: StyleMarker}) {
 		t.Fatalf("style defaults: %+v", cfg.List)
 	}
+	if !reflect.DeepEqual(cfg.Today, Today{Expand: ExpandAuto, Height: 12, RefreshInterval: "1m", Feeds: []string{}}) {
+		t.Fatalf("today defaults: %+v", cfg.Today)
+	}
 	if cfg.Reader.Comments != (Comments{Latest: 3, PreviewLines: 2}) {
 		t.Fatalf("comment defaults: %+v", cfg.Reader.Comments)
 	}
@@ -607,5 +610,25 @@ func TestLayoutConfig(t *testing.T) {
 	_, err = Load(writeFile(t, "workspace = \"1\"\n[layout]\nlist_width = -1\n"))
 	if err == nil || !strings.Contains(err.Error(), "layout.list_width") {
 		t.Fatalf("negative list_width: err = %v", err)
+	}
+}
+
+func TestTodayConfig(t *testing.T) {
+	cfg, err := Load(writeFile(t, "workspace = \"1\"\n[today]\nexpand = \"collapsed\"\nheight = 5\nrefresh_interval = \"0\"\nfeeds = [\"asanamate-hrvst --feed\"]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d, _ := cfg.Today.Interval(); cfg.Today.Expand != ExpandCollapsed || cfg.Today.Height != 5 || d != 0 || !slices.Equal(cfg.Today.Feeds, []string{"asanamate-hrvst --feed"}) {
+		t.Fatalf("today = %+v", cfg.Today)
+	}
+	for body, key := range map[string]string{
+		"[today]\nexpand = \"open\"\n":           "today.expand",
+		"[today]\nheight = 2\n":                  "today.height",
+		"[today]\nrefresh_interval = \"10ms\"\n": "today.refresh_interval",
+		"[today]\nfeeds = [\" \"]\n":             "today.feeds",
+	} {
+		if _, err := Load(writeFile(t, "workspace = \"1\"\n"+body)); err == nil || !strings.Contains(err.Error(), key) {
+			t.Errorf("%q: error %v, want one naming %s", body, err, key)
+		}
 	}
 }

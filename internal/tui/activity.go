@@ -663,13 +663,7 @@ func (m *Model) activityRowLines(i, width int) []string {
 	if e.Automatic {
 		kind = "AUTO"
 	}
-	summary := ticket.OneLine(e.Story.Text)
-	if e.Story.ResourceSubtype == "comment_added" {
-		summary = ticket.Author(e.Story) + " commented"
-	}
-	if e.Mine && e.Story.CreatedBy != nil {
-		summary = strings.Replace(summary, ticket.OneLine(e.Story.CreatedBy.Name), "You", 1)
-	}
+	summary := activitySummary(e)
 	at := e.At.Local().Format("01/02 15:04")
 	selected := i == a.cursor && !a.details && !m.focusNav
 	// A collapsed run is new when any of its events is.
@@ -844,4 +838,17 @@ func (m *Model) activityHelp() string {
 		}
 	}
 	return strings.Join(lines, "\n") + "\n\n" + dimStyle.Render("Workspace search requires paid Asana access.\nCurrent ownership/mentions are labelled as current context.\nAsana consolidates stories; this is not an exhaustive audit log.\nActivity scans in the background and caches 30 days on disk.\n\nAny key closes")
+}
+
+// activitySummary describes an event in one line: "Amy commented", or the
+// story's own text, with "You" for the user's own actions.
+func activitySummary(e activity.Entry) string {
+	summary := ticket.OneLine(e.Story.Text)
+	if e.Story.ResourceSubtype == "comment_added" {
+		summary = ticket.Author(e.Story) + " commented"
+	}
+	if e.Mine && e.Story.CreatedBy != nil {
+		summary = strings.Replace(summary, ticket.OneLine(e.Story.CreatedBy.Name), "You", 1)
+	}
+	return summary
 }

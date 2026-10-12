@@ -77,6 +77,7 @@ type Config struct {
 	Images       Images       `toml:"images"`
 	Picker       Picker       `toml:"picker"`
 	Activity     Activity     `toml:"activity"`
+	Today        Today        `toml:"today"`
 	// Keys overrides key bindings: scope, then binding name, then keys. See
 	// internal/keymap for the scopes and names, including Activity controls.
 	Keys map[string]map[string][]string `toml:"keys"`
@@ -239,11 +240,38 @@ type Activity struct {
 }
 
 // Interval is the background scan interval; 0 turns background scans off.
-func (a Activity) Interval() (time.Duration, error) {
-	if d, err := time.ParseDuration(a.RefreshInterval); err == nil && d == 0 {
+func (a Activity) Interval() (time.Duration, error) { return optionalInterval(a.RefreshInterval) }
+
+// Today configures the Today panel under the ticket list. Expand is "auto"
+// (expanded when the list leaves Height empty rows), "collapsed", or
+// "expanded". Height is its rows when expanded, borders included.
+// RefreshInterval is how often Feeds run: a duration of at least one second,
+// or "0" to run them only at start and on reload. Feeds are commands that
+// answer the feed protocol (docs/extensions.md).
+type Today struct {
+	Expand          string   `toml:"expand"`
+	Height          int      `toml:"height"`
+	RefreshInterval string   `toml:"refresh_interval"`
+	Feeds           []string `toml:"feeds"`
+}
+
+// Today.Expand values.
+const (
+	ExpandAuto      = "auto"
+	ExpandCollapsed = "collapsed"
+	ExpandExpanded  = "expanded"
+)
+
+// Interval is the feed refresh interval; 0 runs feeds only at start and on
+// reload.
+func (t Today) Interval() (time.Duration, error) { return optionalInterval(t.RefreshInterval) }
+
+// optionalInterval parses an interval of at least one second, or "0" for off.
+func optionalInterval(value string) (time.Duration, error) {
+	if d, err := time.ParseDuration(value); err == nil && d == 0 {
 		return 0, nil
 	}
-	d, err := ParseRefreshInterval(a.RefreshInterval)
+	d, err := ParseRefreshInterval(value)
 	if err != nil {
 		return 0, errors.New("must be 0 (off) or a duration of at least 1s, such as 2m")
 	}
@@ -297,6 +325,7 @@ func Default() Config {
 		Reader:   Reader{View: ViewCards, Comments: Comments{Latest: 3, PreviewLines: 2}},
 		Images:   Images{Mode: "auto"},
 		Activity: Activity{RefreshInterval: "2m"},
+		Today:    Today{Expand: ExpandAuto, Height: 12, RefreshInterval: "1m", Feeds: []string{}},
 		Keymap:   keymap.Default(),
 	}
 }
@@ -442,6 +471,20 @@ func (c Config) validate() error {
 	}
 	if _, err := c.Activity.Interval(); err != nil {
 		return fmt.Errorf("activity.refresh_interval: %w", err)
+	}
+	if err := oneOf("today.expand", c.Today.Expand, ExpandAuto, ExpandCollapsed, ExpandExpanded); err != nil {
+		return err
+	}
+	if c.Today.Height < 3 {
+		return fmt.Errorf("today.height must be at least 3, got %d", c.Today.Height)
+	}
+	if _, err := c.Today.Interval(); err != nil {
+		return fmt.Errorf("today.refresh_interval: %w", err)
+	}
+	for _, f := range c.Today.Feeds {
+		if strings.TrimSpace(f) == "" {
+			return errors.New("today.feeds must not hold a blank command")
+		}
 	}
 	for _, f := range c.List.Fields {
 		switch name := strings.TrimSpace(f); {
