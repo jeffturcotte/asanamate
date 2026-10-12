@@ -21,16 +21,16 @@ import (
 // beside the details card instead of below it.
 const sideBySideW = 90
 
-// renderCards renders t as the reading pane's cards view: the name, a
-// summary line, local repo and time lines, a details card with the agents and
+// renderCards renders t as the reading pane's cards view: the name, the
+// local branch, repo, and time lines, a details card with the agents and
 // subtasks beside it (or below, when narrow), titled sections, and the comments
 // as a timeline, all
 // width columns wide. It records the line of each editable row in
 // m.fieldLines, and the last line of each multi-line one in m.fieldEnds.
 func (m *Model) renderCards(t ticket.Ticket, width int) string {
 	head := lipgloss.NewStyle().Width(width).Render(tagTitle(ticket.Clean(t.Name), titleStyle))
-	if chips := m.summaryLine(t.Task, width); chips != "" {
-		head += "\n" + chips
+	if line := m.branchLine(t.Task, width); line != "" {
+		head += "\n" + line
 	}
 	if line := m.repoLine(t.Task, width); line != "" {
 		head += "\n" + line
@@ -129,17 +129,38 @@ func (m *Model) renderCards(t ticket.Ticket, width int) string {
 	// The add row stays visible above the comment timeline.
 	m.fieldLines[commentKey] = lipgloss.Height(strings.Join(blocks, "\n\n")) + 2
 	m.cardTargets = append(m.cardTargets, commentKey)
+	m.clipped = map[string]bool{}
 	comments := []string{dimStyle.Render("none")}
 	if len(t.Comments) > 0 {
-		comments = make([]string, len(t.Comments))
+		comments = nil
 		line := m.fieldLines[commentKey] + 2
-		for i, c := range t.Comments {
+		first := 0
+		opts := m.deps.Config.Reader.Comments
+		if latest := opts.Latest; !m.showComments && latest > 0 && len(t.Comments) > latest {
+			first = len(t.Comments) - latest
+			m.fieldLines[allCommentsKey] = line
+			m.cardTargets = append(m.cardTargets, allCommentsKey)
+			style := dimStyle.Italic(true)
+			if m.fieldKey == allCommentsKey {
+				style = m.fieldStyle()
+			}
+			comments = append(comments, style.Render(fmt.Sprintf("+ Show all %d comments", len(t.Comments))))
+			line += 2
+		}
+		for i := first; i < len(t.Comments); i++ {
+			c := t.Comments[i]
 			key := commentTarget(c, i)
 			m.fieldLines[key] = line
 			m.cardTargets = append(m.cardTargets, key)
-			comments[i] = m.comment(c, width, m.fieldKey == key)
-			m.fieldEnds[key] = line + lipgloss.Height(comments[i]) - 1
-			line += lipgloss.Height(comments[i]) + 1
+			preview := 0
+			if i < len(t.Comments)-1 && !m.openComments[key] {
+				preview = opts.PreviewLines
+			}
+			block, clipped := m.comment(c, width, m.fieldKey == key, preview)
+			m.clipped[key] = clipped
+			m.fieldEnds[key] = line + lipgloss.Height(block) - 1
+			line += lipgloss.Height(block) + 1
+			comments = append(comments, block)
 		}
 	}
 	heading := m.rule(fmt.Sprintf("Comments %d", len(t.Comments)), width, false)
@@ -148,29 +169,14 @@ func (m *Model) renderCards(t ticket.Ticket, width int) string {
 	return strings.Join(blocks, "\n\n")
 }
 
-// summaryLine is the faint line under the ticket's name: its project and
-// section, due date, and branch, cut to width.
-func (m *Model) summaryLine(t asana.Task, width int) string {
-	var chips []string
-	rc := m.rowContext()
-	for _, ms := range t.Memberships {
-		if rc.projectGID == "" || ms.Project.GID == rc.projectGID {
-			chip := m.projectLabel(ms.Project, dimStyle)
-			if ms.Section != nil {
-				chip += dimStyle.Render(" › " + ticket.OneLine(ms.Section.Name))
-			}
-			chips = append(chips, chip)
-			break
-		}
+// branchLine is the faint line under the ticket's name naming the branch its
+// actions use, cut to width; "" when that is only the name's slug.
+func (m *Model) branchLine(t asana.Task, width int) string {
+	branch := action.Branch(t, m.deps.State.TaskBranches[t.GID], m.deps.Config.BranchField, m.rowContext().preferred)
+	if branch == action.Slug(t.Name) {
+		return ""
 	}
-	if rel, style := dueLabel(t.DueOn, m.now()); rel != "" {
-		due, _, _ := asana.DueDays(t.DueOn, m.now())
-		chips = append(chips, style.Render(m.sym.icon(iconDue)+shortDate(due, m.now())+" · "+rel))
-	}
-	if branch := action.Branch(t, m.deps.State.TaskBranches[t.GID], m.deps.Config.BranchField, rc.preferred); branch != action.Slug(t.Name) {
-		chips = append(chips, branchStyle.Render(m.sym.icon(iconBranch)+ticket.OneLine(branch)))
-	}
-	return ansi.Truncate(strings.Join(chips, "   "), width, "…")
+	return ansi.Truncate(branchStyle.Render(m.sym.icon(iconBranch)+ticket.OneLine(branch)), width, "…")
 }
 
 // repoLine is the faint line under the summary naming the local repo a
@@ -232,8 +238,10 @@ func (m *Model) progress(done, total int) string {
 }
 
 // comment renders one comment of the timeline: a colored dot, the author, and
-// the day, over the body behind a gutter in the author's color.
-func (m *Model) comment(c asana.Story, width int, selected bool) string {
+// the day, over the body behind a gutter in the author's color. A preview
+// above 0 keeps only that many lines of the body's text, ending in see more,
+// and reports whether it cut any.
+func (m *Model) comment(c asana.Story, width int, selected bool, preview int) (string, bool) {
 	author := ticket.Author(c)
 	day, err := time.Parse(time.DateOnly, ticket.Day(c.CreatedAt))
 	when := ticket.Day(c.CreatedAt)
@@ -251,13 +259,44 @@ func (m *Model) comment(c asana.Story, width int, selected bool) string {
 	}
 	gutter := gutterStyle.Render("│") + " "
 	lines := strings.Split(body, "\n")
+	clipped := false
+	if preview > 0 {
+		lines, clipped = previewText(lines, preview, width-2)
+	}
 	if r := m.reactions(c.Reactions); r != "" {
 		lines = append(lines, ansi.Truncate(r, width-2, "…"))
 	}
 	for i, l := range lines {
 		lines[i] = gutter + l
 	}
-	return head + "\n" + strings.Join(lines, "\n")
+	return head + "\n" + strings.Join(lines, "\n"), clipped
+}
+
+// previewText keeps the first n lines of text in lines, skipping blank ones,
+// and ends the last kept line with see more, within width. It returns lines
+// unchanged when they hold no more text than that.
+func previewText(lines []string, n, width int) ([]string, bool) {
+	var kept []string
+	for i, l := range lines {
+		if strings.TrimSpace(ansi.Strip(l)) == "" {
+			continue
+		}
+		if len(kept) == n {
+			more := dimStyle.Italic(true).Render(" see more …")
+			last := kept[len(kept)-1]
+			// Rendered lines are padded to width; cut the padding, not the text.
+			text, room := ansi.StringWidth(strings.TrimRight(ansi.Strip(last), " ")), width-ansi.StringWidth(more)
+			if text > room {
+				last = ansi.Truncate(last, room, "…")
+			} else {
+				last = ansi.Truncate(last, text, "")
+			}
+			kept[len(kept)-1] = last + more
+			return kept, true
+		}
+		kept = append(kept, lines[i])
+	}
+	return lines, false
 }
 
 // reactions renders a comment's reactions as each emoji with its count, the

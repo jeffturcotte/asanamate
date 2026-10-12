@@ -100,7 +100,7 @@ func TestAdditionalColorsReachTicketSurfaces(t *testing.T) {
 	m.selectionStyle = config.StyleMarker
 	row, _ := m.listRow(0, make([]int, len(m.listColumns())))
 	tag := tagStyles[0].Render("[CLIENT]")
-	if !strings.Contains(row[0], tag) || !strings.Contains(m.summaryLine(task, 200), branchStyle.Render(m.sym.icon(iconBranch)+"feature/color")) {
+	if !strings.Contains(row[0], tag) || !strings.Contains(m.branchLine(task, 200), branchStyle.Render(m.sym.icon(iconBranch)+"feature/color")) {
 		t.Fatal("list tag or header branch missing")
 	}
 	if got := tagTitle("[client] Work", lipgloss.NewStyle()); !strings.Contains(got, tagStyles[0].Render("[client]")) {

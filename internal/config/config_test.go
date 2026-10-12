@@ -193,6 +193,13 @@ func TestListConfig(t *testing.T) {
 	if !reflect.DeepEqual(cfg.Colors, Colors{}) || cfg.List.Header != (Header{Style: StyleRule}) || cfg.List.Selection != (Selection{Style: StyleMarker}) {
 		t.Fatalf("style defaults: %+v", cfg.List)
 	}
+	if cfg.Reader.Comments != (Comments{Latest: 3, PreviewLines: 2}) {
+		t.Fatalf("comment defaults: %+v", cfg.Reader.Comments)
+	}
+	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[reader.comments]\nlatest = 0\npreview_lines = 5\n"))
+	if err != nil || cfg.Reader.Comments != (Comments{Latest: 0, PreviewLines: 5}) {
+		t.Fatalf("comments: %+v, err = %v", cfg.Reader.Comments, err)
+	}
 	for _, color := range []string{"0", "255", "#abc", "#A1b2C3"} {
 		cfg, err := Load(writeFile(t, "workspace = \"1\"\n[colors]\nviewing = \""+color+"\"\n"))
 		if err != nil || cfg.Colors.Viewing.FG != color {
@@ -213,6 +220,8 @@ func TestListConfig(t *testing.T) {
 		"bad layout":    "[list]\nlayout = \"grid\"\n",
 		"bad view":      "[reader]\nview = \"grid\"\n",
 		"neg width":     "[reader]\nmax_text_width = -1\n",
+		"neg latest":    "[reader.comments]\nlatest = -1\n",
+		"neg preview":   "[reader.comments]\npreview_lines = -1\n",
 		"title field":   "[list]\nfields = [\"Title\"]\n",
 		"empty field":   "[list]\nfields = [\" \"]\n",
 		"title group":   "[list]\ngroup_by = \"title\"\n",

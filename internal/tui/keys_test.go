@@ -261,6 +261,124 @@ func TestCardsNavigateFieldsSectionsAndComments(t *testing.T) {
 	}
 }
 
+func TestCardsShowNewestCommentsAsPreviews(t *testing.T) {
+	m, _ := editModel(t)
+	m.deps.Config.Reader.Comments = config.Default().Reader.Comments
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	tk := m.details["1"]
+	long := "<p>" + strings.Repeat("word ", 40) + "</p>"
+	for _, gid := range []string{"c1", "c2", "c3", "c4", "c5"} {
+		tk.Comments = append(tk.Comments, asana.Story{GID: gid, CreatedBy: &asana.Ref{Name: "Amy"}, HTMLText: long})
+	}
+	tk.Comments[3].HTMLText = "<p>Short</p>"
+	m.details["1"] = tk
+	press(m, "2")
+
+	lines := strings.Split(ansi.Strip(m.renderCards(tk, 60)), "\n")
+	if line := lines[m.fieldLines[allCommentsKey]]; !strings.Contains(line, "Show all 5 comments") {
+		t.Fatalf("show all line = %q", line)
+	}
+	want := []string{commentKey, allCommentsKey, "comment:c3", "comment:c4", "comment:c5"}
+	if got := m.cardTargets[len(m.cardTargets)-len(want):]; !slices.Equal(got, want) {
+		t.Fatalf("comment targets = %q, want %q", got, want)
+	}
+	if !m.clipped["comment:c3"] || m.fieldEnds["comment:c3"]-m.fieldLines["comment:c3"] != 2 {
+		t.Fatalf("c3 preview spans lines %d-%d, clipped %v", m.fieldLines["comment:c3"], m.fieldEnds["comment:c3"], m.clipped["comment:c3"])
+	}
+	if line := lines[m.fieldEnds["comment:c3"]]; !strings.HasSuffix(strings.TrimSpace(line), "see more …") {
+		t.Fatalf("preview end = %q", line)
+	}
+	if m.clipped["comment:c4"] || m.clipped["comment:c5"] {
+		t.Fatal("a short comment and the newest one must show in full")
+	}
+	if end := lines[m.fieldEnds["comment:c5"]]; strings.Contains(end, "see more") {
+		t.Fatalf("newest comment end = %q", end)
+	}
+
+	m.fieldKey = "comment:c3"
+	press(m, "enter")
+	if m.modal != nil || !m.openComments["comment:c3"] || m.clipped["comment:c3"] {
+		t.Fatalf("enter on a preview must show it in full: modal %v, open %v", m.modal != nil, m.openComments)
+	}
+	press(m, "enter")
+	if m.modal == nil || m.modal.items[0].Label != "React" {
+		t.Fatal("enter on a full comment must open its menu")
+	}
+	m.modal = nil
+
+	m.fieldKey = allCommentsKey
+	press(m, "enter")
+	if !m.showComments || m.fieldKey != "comment:c1" || !slices.Contains(m.cardTargets, "comment:c2") || slices.Contains(m.cardTargets, allCommentsKey) {
+		t.Fatalf("show all: shown %v, target %q, targets %q", m.showComments, m.fieldKey, m.cardTargets)
+	}
+
+	other := asana.Task{GID: "2", Name: "Other"}
+	m.details["2"] = ticket.Ticket{Task: other}
+	m.Update(tasksMsg{tasks: []asana.Task{m.tasks[0], other}})
+	press(m, "esc", "j")
+	if m.shownGID != "2" {
+		t.Fatalf("shown = %q, want the next ticket", m.shownGID)
+	}
+	if m.showComments || m.openComments != nil {
+		t.Fatalf("another ticket kept comment state: all %v, open %v", m.showComments, m.openComments)
+	}
+}
+
+func TestCardsCommentLimitsFollowConfig(t *testing.T) {
+	m, _ := editModel(t)
+	tk := m.details["1"]
+	long := "<p>" + strings.Repeat("word ", 40) + "</p>"
+	for _, gid := range []string{"c1", "c2", "c3"} {
+		tk.Comments = append(tk.Comments, asana.Story{GID: gid, CreatedBy: &asana.Ref{Name: "Amy"}, HTMLText: long})
+	}
+
+	m.deps.Config.Reader.Comments = config.Comments{Latest: 2, PreviewLines: 1}
+	m.renderCards(tk, 60)
+	if slices.Contains(m.cardTargets, "comment:c1") || !slices.Contains(m.cardTargets, allCommentsKey) {
+		t.Fatalf("latest 2 targets = %q", m.cardTargets)
+	}
+	if !m.clipped["comment:c2"] || m.fieldEnds["comment:c2"] != m.fieldLines["comment:c2"]+1 {
+		t.Fatalf("preview_lines 1: c2 spans lines %d-%d", m.fieldLines["comment:c2"], m.fieldEnds["comment:c2"])
+	}
+
+	m.deps.Config.Reader.Comments = config.Comments{}
+	m.renderCards(tk, 60)
+	if !slices.Contains(m.cardTargets, "comment:c1") || slices.Contains(m.cardTargets, allCommentsKey) || len(m.clipped) != 3 || m.clipped["comment:c1"] {
+		t.Fatalf("0s must list every comment in full: targets %q, clipped %v", m.cardTargets, m.clipped)
+	}
+}
+
+func TestPreviewText(t *testing.T) {
+	short := []string{"one   ", "", "two   "}
+	if got, cut := previewText(short, 2, 20); cut || !slices.Equal(got, short) {
+		t.Fatalf("short = %q, cut %v; want it unchanged", got, cut)
+	}
+	got, cut := previewText([]string{"one   ", "", "two   ", "three"}, 2, 20)
+	if !cut || len(got) != 2 || ansi.Strip(got[1]) != "two see more …" {
+		t.Fatalf("cut = %q, %v", got, cut)
+	}
+	got, _ = previewText([]string{"a", strings.Repeat("x", 30), "b"}, 2, 20)
+	if line := ansi.Strip(got[1]); ansi.StringWidth(line) != 20 || !strings.HasSuffix(line, "x… see more …") {
+		t.Fatalf("long line = %q", line)
+	}
+}
+
+func TestCardsHeadLeavesAsanaFieldsToDetails(t *testing.T) {
+	m, _ := editModel(t)
+	due := "2026-10-13"
+	tk := m.details["1"]
+	tk.DueOn = &due
+	m.deps.State.TaskBranches["1"] = "feature/x"
+	out := ansi.Strip(m.renderCards(tk, 100))
+	head := out[:strings.Index(out, "Details")]
+	if strings.Contains(head, "Web") || strings.Contains(head, "Oct 13") || !strings.Contains(head, "feature/x") {
+		t.Fatalf("head = %q, want the branch without project or due", head)
+	}
+	if body := out[strings.Index(out, "Details"):]; !strings.Contains(body, "Web") || !strings.Contains(body, "Oct 13") {
+		t.Fatal("details must still show the project and due date")
+	}
+}
+
 func TestMarkdownKeepsJScroll(t *testing.T) {
 	m, _ := editModel(t)
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 20})

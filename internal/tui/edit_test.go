@@ -499,8 +499,8 @@ func TestEditBranchSavesAndClearsOverride(t *testing.T) {
 	if got := m.deps.State.TaskBranches["1"]; got != "feature/x" || m.input != nil || m.edit != nil {
 		t.Fatalf("saved = %q, input = %v, edit = %v", got, m.input, m.edit)
 	}
-	if line := ansi.Strip(m.summaryLine(m.tasks[0], 200)); !strings.Contains(line, "feature/x") {
-		t.Fatalf("summary = %q", line)
+	if line := ansi.Strip(m.branchLine(m.tasks[0], 200)); !strings.Contains(line, "feature/x") {
+		t.Fatalf("branch line = %q", line)
 	}
 
 	press(m, "e", "b")

@@ -201,10 +201,20 @@ type Selection struct {
 // Reader configures the reading pane. View is its starting view: cards
 // (sections and boxed comments) or markdown (the rendered ticket Markdown).
 // MaxTextWidth caps the wrap width of the cards view's description and
-// comment text; 0 wraps at the pane width.
+// comment text; 0 wraps at the pane width. Comments shapes its comments.
 type Reader struct {
-	View         string `toml:"view"`
-	MaxTextWidth int    `toml:"max_text_width"`
+	View         string   `toml:"view"`
+	MaxTextWidth int      `toml:"max_text_width"`
+	Comments     Comments `toml:"comments"`
+}
+
+// Comments configures the cards view's comments. Latest is how many of the
+// newest it lists until Show all comments is opened; 0 lists them all.
+// PreviewLines is how many lines of text each listed comment but the newest
+// keeps until opened; 0 shows them in full.
+type Comments struct {
+	Latest       int `toml:"latest"`
+	PreviewLines int `toml:"preview_lines"`
 }
 
 // Images configures kitty graphics. Mode is "auto" (detect kitty-protocol
@@ -284,7 +294,7 @@ func Default() Config {
 			Layout:          LayoutSingle, Fields: []string{"section", "due"},
 			Header: Header{Style: StyleRule}, Selection: Selection{Style: StyleMarker},
 		},
-		Reader:   Reader{View: ViewCards},
+		Reader:   Reader{View: ViewCards, Comments: Comments{Latest: 3, PreviewLines: 2}},
 		Images:   Images{Mode: "auto"},
 		Activity: Activity{RefreshInterval: "2m"},
 		Keymap:   keymap.Default(),
@@ -420,6 +430,12 @@ func (c Config) validate() error {
 	}
 	if c.Reader.MaxTextWidth < 0 {
 		return fmt.Errorf("reader.max_text_width must be 0 (no limit) or more, got %d", c.Reader.MaxTextWidth)
+	}
+	if c.Reader.Comments.Latest < 0 {
+		return fmt.Errorf("reader.comments.latest must be 0 (all) or more, got %d", c.Reader.Comments.Latest)
+	}
+	if c.Reader.Comments.PreviewLines < 0 {
+		return fmt.Errorf("reader.comments.preview_lines must be 0 (full comments) or more, got %d", c.Reader.Comments.PreviewLines)
 	}
 	if _, err := ParseRefreshInterval(c.List.RefreshInterval); err != nil {
 		return fmt.Errorf("list.refresh_interval: %w", err)
