@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sadmachine/asanamate/internal/feed"
 	"github.com/sadmachine/asanamate/internal/form"
 	"github.com/sadmachine/asanamate/internal/timetracking"
 )
@@ -255,5 +256,59 @@ func TestHarvestIgnoresVersionAndUnknownFields(t *testing.T) {
 	err := runHarvest(context.Background(), strings.NewReader(request), &out, "", "", "")
 	if err == nil || !strings.Contains(err.Error(), `unknown time provider operation "nope"`) {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestHarvestFeedListsTheDaysEntries(t *testing.T) {
+	credentials := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(credentials, []byte(`{"accessToken":"test-token","accountId":"789"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/users/me" {
+			fmt.Fprint(w, `{"id":555}`)
+			return
+		}
+		query := r.URL.Query()
+		if query.Get("user_id") != "555" || query.Get("from") != "2026-10-12" || query.Get("to") != "2026-10-12" {
+			t.Errorf("feed filter = %v", query)
+		}
+		switch query.Get("page") {
+		case "1":
+			fmt.Fprint(w, `{"time_entries":[
+				{"hours":1.5,"is_running":false,"notes":"Fix login","created_at":"2026-10-12T18:05:00Z","project":{"name":"MOCPA"},"external_reference":{"id":"42","permalink":"https://app.asana.com/0/7/42"}},
+				{"hours":0.75,"is_running":false,"notes":"standup\nnotes","created_at":"2026-10-12T13:00:00Z","project":{"name":"Internal"},"external_reference":null}],"next_page":2}`)
+		default:
+			fmt.Fprint(w, `{"time_entries":[{"hours":0.9166,"is_running":true,"notes":"","created_at":"2026-10-12T19:00:00Z","project":{"name":"Fuse"}}],"next_page":null}`)
+		}
+	}))
+	defer server.Close()
+	reply, err := harvestFeed(context.Background(), credentials, server.URL, "2026-10-12")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reply.Source != "hrvst" || reply.Summary != "3h 10m logged" || len(reply.Items) != 3 {
+		t.Fatalf("reply = %+v", reply)
+	}
+	linked, unlinked, running := reply.Items[0], reply.Items[1], reply.Items[2]
+	if linked.Text != "1.5h · MOCPA" || linked.TicketGID != "42" || linked.URL != "https://app.asana.com/0/7/42" || linked.Tone != feed.ToneOK {
+		t.Errorf("linked = %+v", linked)
+	}
+	if unlinked.Text != "0.75h · Internal · standup notes" || unlinked.TicketGID != "" {
+		t.Errorf("unlinked = %+v", unlinked)
+	}
+	if running.Text != "running · 0.92h · Fuse" || running.Tone != feed.ToneWarn {
+		t.Errorf("running = %+v", running)
+	}
+	if _, err := harvestFeed(context.Background(), credentials, server.URL, "today"); err == nil {
+		t.Error("bad date accepted")
+	}
+}
+
+func TestDurationLabel(t *testing.T) {
+	for hours, want := range map[float64]string{0: "0m", 0.75: "45m", 1: "1h", 3.1666: "3h 10m"} {
+		if got := durationLabel(hours); got != want {
+			t.Errorf("durationLabel(%v) = %q, want %q", hours, got, want)
+		}
 	}
 }
