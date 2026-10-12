@@ -22,13 +22,13 @@ import (
 	"github.com/sadmachine/asanamate/internal/ticket"
 )
 
-// todayPanel is the Today panel under the ticket list: what feed commands,
-// Asana activity, agents, and the git check report for today.
-type todayPanel struct {
-	expand   string        // today.expand
+// feedPanel is the Feed panel under the ticket list: what feed commands,
+// Asana activity, agents, and the git check report.
+type feedPanel struct {
+	expand   string        // feed.expand
 	height   int           // rows when expanded, borders included
 	interval time.Duration // feed and git refresh interval; 0 is off
-	feeds    []feedResult  // by index into today.feeds
+	feeds    []feedResult  // by index into feed.commands
 	git      []feed.Item   // the last git check's items
 	gitSeq   uint64        // drops git checks older than the newest
 	since    map[string]agentMark
@@ -51,8 +51,8 @@ type agentMark struct {
 	at    time.Time
 }
 
-// todayItem is one row of the panel. task is the ticket it links to, if any.
-type todayItem struct {
+// feedRow is one row of the panel. task is the ticket it links to, if any.
+type feedRow struct {
 	feed.Item
 	source string
 	task   *asana.Task
@@ -62,8 +62,8 @@ type todayItem struct {
 const toneAccent = "accent"
 
 type (
-	todayTickMsg struct{}
-	feedMsg      struct {
+	feedTickMsg struct{}
+	feedMsg     struct {
 		index int
 		reply feed.Reply
 		err   error
@@ -74,38 +74,38 @@ type (
 	}
 )
 
-func newTodayPanel(cfg config.Today) todayPanel {
-	def := config.Default().Today
-	interval, _ := config.Today{RefreshInterval: cmp.Or(cfg.RefreshInterval, def.RefreshInterval)}.Interval()
-	return todayPanel{
+func newFeedPanel(cfg config.Feed) feedPanel {
+	def := config.Default().Feed
+	interval, _ := config.Feed{RefreshInterval: cmp.Or(cfg.RefreshInterval, def.RefreshInterval)}.Interval()
+	return feedPanel{
 		expand:   cmp.Or(cfg.Expand, def.Expand),
 		height:   cmp.Or(cfg.Height, def.Height),
 		interval: interval,
-		feeds:    make([]feedResult, len(cfg.Feeds)),
+		feeds:    make([]feedResult, len(cfg.Commands)),
 		since:    map[string]agentMark{},
 	}
 }
 
-// startToday runs the feeds and starts their timer. The git check waits for
+// startFeed runs the feeds and starts their timer. The git check waits for
 // the tickets to load.
-func (m *Model) startToday() tea.Cmd {
-	return tea.Batch(m.runFeeds(), m.scheduleToday())
+func (m *Model) startFeed() tea.Cmd {
+	return tea.Batch(m.runFeeds(), m.scheduleFeed())
 }
 
-func (m *Model) scheduleToday() tea.Cmd {
-	if m.today.interval == 0 {
+func (m *Model) scheduleFeed() tea.Cmd {
+	if m.feed.interval == 0 {
 		return nil
 	}
-	return tea.Tick(m.today.interval, func(time.Time) tea.Msg { return todayTickMsg{} })
+	return tea.Tick(m.feed.interval, func(time.Time) tea.Msg { return feedTickMsg{} })
 }
 
-// refreshToday reruns the feeds and the git check.
-func (m *Model) refreshToday() tea.Cmd { return tea.Batch(m.runFeeds(), m.checkGit()) }
+// refreshFeed reruns the feeds and the git check.
+func (m *Model) refreshFeed() tea.Cmd { return tea.Batch(m.runFeeds(), m.checkGit()) }
 
 func (m *Model) runFeeds() tea.Cmd {
 	var cmds []tea.Cmd
 	day := m.now()
-	for i, command := range m.deps.Config.Today.Feeds {
+	for i, command := range m.deps.Config.Feed.Commands {
 		cmds = append(cmds, func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), feed.Timeout)
 			defer cancel()
@@ -117,10 +117,10 @@ func (m *Model) runFeeds() tea.Cmd {
 }
 
 func (m *Model) gotFeed(msg feedMsg) {
-	if msg.index >= len(m.today.feeds) {
+	if msg.index >= len(m.feed.feeds) {
 		return
 	}
-	r := &m.today.feeds[msg.index]
+	r := &m.feed.feeds[msg.index]
 	if msg.err != nil {
 		r.err = msg.err.Error()
 		return
@@ -148,8 +148,8 @@ func (m *Model) checkGit() tea.Cmd {
 		branch := action.Branch(t, m.deps.State.TaskBranches[t.GID], m.deps.Config.BranchField, preferred)
 		targets = append(targets, gitTarget{gid: t.GID, branch: branch, repos: repos})
 	}
-	m.today.gitSeq++
-	seq := m.today.gitSeq
+	m.feed.gitSeq++
+	seq := m.feed.gitSeq
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), feed.Timeout)
 		defer cancel()
@@ -198,8 +198,8 @@ func plural(n int, noun string) string {
 }
 
 func (m *Model) gotGit(msg gitMsg) {
-	if msg.seq == m.today.gitSeq {
-		m.today.git = msg.items
+	if msg.seq == m.feed.gitSeq {
+		m.feed.git = msg.items
 	}
 }
 
@@ -207,39 +207,39 @@ func (m *Model) gotGit(msg gitMsg) {
 // running at the first poll have no known time.
 func (m *Model) markAgents(list []agents.Agent) {
 	now, live := m.now(), map[string]bool{}
-	if !m.today.polled {
-		now, m.today.polled = time.Time{}, true
+	if !m.feed.polled {
+		now, m.feed.polled = time.Time{}, true
 	}
 	for _, a := range list {
 		live[a.Path] = true
-		if mark, ok := m.today.since[a.Path]; !ok || mark.state != a.State {
-			m.today.since[a.Path] = agentMark{state: a.State, at: now}
+		if mark, ok := m.feed.since[a.Path]; !ok || mark.state != a.State {
+			m.feed.since[a.Path] = agentMark{state: a.State, at: now}
 		}
 	}
-	for path := range m.today.since {
+	for path := range m.feed.since {
 		if !live[path] {
-			delete(m.today.since, path)
+			delete(m.feed.since, path)
 		}
 	}
 }
 
-// todayItems collects the panel's items: upcoming ones first, soonest first,
+// feedRows collects the panel's items: upcoming ones first, soonest first,
 // then the rest newest first.
-func (m *Model) todayItems() []todayItem {
+func (m *Model) feedRows() []feedRow {
 	byGID := map[string]*asana.Task{}
 	for i := range m.tasks {
 		byGID[m.tasks[i].GID] = &m.tasks[i]
 	}
-	var items []todayItem
+	var items []feedRow
 	add := func(source string, it feed.Item) {
-		items = append(items, todayItem{Item: it, source: source, task: m.itemTicket(it, byGID)})
+		items = append(items, feedRow{Item: it, source: source, task: m.itemTicket(it, byGID)})
 	}
-	for _, r := range m.today.feeds {
+	for _, r := range m.feed.feeds {
 		for _, it := range r.reply.Items {
 			add(r.reply.Source, it)
 		}
 	}
-	for _, it := range m.today.git {
+	for _, it := range m.feed.git {
 		add("git", it)
 	}
 	now := m.now()
@@ -251,10 +251,10 @@ func (m *Model) todayItems() []todayItem {
 		if loaded, ok := byGID[task.GID]; ok {
 			task = *loaded
 		}
-		items = append(items, todayItem{Item: feed.Item{Time: e.At, Text: activitySummary(e), Tone: toneAccent}, source: "asana", task: &task})
+		items = append(items, feedRow{Item: feed.Item{Time: e.At, Text: activitySummary(e), Tone: toneAccent}, source: "asana", task: &task})
 	}
 	items = append(items, m.agentItems(byGID)...)
-	slices.SortStableFunc(items, func(a, b todayItem) int {
+	slices.SortStableFunc(items, func(a, b feedRow) int {
 		au, bu := a.Time.After(now), b.Time.After(now)
 		switch {
 		case au && bu:
@@ -295,7 +295,7 @@ func (m *Model) itemTicket(it feed.Item, byGID map[string]*asana.Task) *asana.Ta
 
 // agentItems lists each agent once, from when it entered its state: linked
 // to its ticket, or marked "no ticket" when it links to no loaded ticket.
-func (m *Model) agentItems(byGID map[string]*asana.Task) []todayItem {
+func (m *Model) agentItems(byGID map[string]*asana.Task) []feedRow {
 	linked := map[string]*asana.Task{}
 	for _, t := range m.tasks {
 		for _, a := range m.viewAgents(t) {
@@ -304,9 +304,9 @@ func (m *Model) agentItems(byGID map[string]*asana.Task) []todayItem {
 			}
 		}
 	}
-	var items []todayItem
+	var items []feedRow
 	for _, a := range m.agents {
-		it := feed.Item{Time: m.today.since[a.Path].at, Text: m.sym.robot + " " + filepath.Base(a.Path) + " · " + string(a.State)}
+		it := feed.Item{Time: m.feed.since[a.Path].at, Text: m.sym.robot + " " + filepath.Base(a.Path) + " · " + string(a.State)}
 		switch a.State {
 		case agents.Waiting:
 			it.Tone = feed.ToneWarn
@@ -323,7 +323,7 @@ func (m *Model) agentItems(byGID map[string]*asana.Task) []todayItem {
 			}
 			it.Text, it.Tone = strings.Join(append(parts, string(a.State), "no ticket"), " · "), feed.ToneMuted
 		}
-		items = append(items, todayItem{Item: it, source: "agents", task: task})
+		items = append(items, feedRow{Item: it, source: "agents", task: task})
 	}
 	return items
 }
@@ -334,14 +334,14 @@ func sameDay(a, b time.Time) bool {
 	return ay == by && am == bm && ad == bd
 }
 
-// todaySummary is the collapsed panel's line: each source's summary, or
+// feedSummary is the collapsed panel's line: each source's summary, or
 // "<source> failed".
-func (m *Model) todaySummary() string {
+func (m *Model) feedSummary() string {
 	var parts []string
-	for i, r := range m.today.feeds {
+	for i, r := range m.feed.feeds {
 		switch {
 		case r.err != "":
-			parts = append(parts, feedName(r.reply.Source, m.deps.Config.Today.Feeds[i])+" failed")
+			parts = append(parts, feedName(r.reply.Source, m.deps.Config.Feed.Commands[i])+" failed")
 		case r.reply.Summary != "":
 			parts = append(parts, r.reply.Summary)
 		}
@@ -350,7 +350,7 @@ func (m *Model) todaySummary() string {
 		parts = append(parts, fmt.Sprintf("%d new", n))
 	}
 	branches := map[string]bool{}
-	for _, it := range m.today.git {
+	for _, it := range m.feed.git {
 		if strings.Contains(it.Text, "unpushed") || it.Text == "not pushed" {
 			branches[it.TicketGID] = true
 		}
@@ -372,45 +372,45 @@ func feedName(source, command string) string {
 	return "feed"
 }
 
-// todayShown reports whether the panel has a place: under the list panel.
-func (m *Model) todayShown() bool {
+// feedShown reports whether the panel has a place: under the list panel.
+func (m *Model) feedShown() bool {
 	_, _, split := m.paneWidths()
 	return !m.activityOpen && (split || m.showNav())
 }
 
-// todayRows is the panel's height, borders included: 0 when it has no place,
-// 2 collapsed, today.height expanded, leaving the list at least 3 rows.
-func (m *Model) todayRows() int {
-	if !m.todayShown() {
+// feedHeight is the panel's height, borders included: 0 when it has no place,
+// 2 collapsed, feed.height expanded, leaving the list at least 3 rows.
+func (m *Model) feedHeight() int {
+	if !m.feedShown() {
 		return 0
 	}
-	if !m.today.open {
+	if !m.feed.open {
 		return 2
 	}
-	return max(min(m.today.height, m.paneHeight()-3), 2)
+	return max(min(m.feed.height, m.paneHeight()-3), 2)
 }
 
 // listHeight is the list's content height above the panel.
-func (m *Model) listHeight() int { return max(m.paneHeight()-m.todayRows(), 1) }
+func (m *Model) listHeight() int { return max(m.paneHeight()-m.feedHeight(), 1) }
 
-// decideToday sets whether the panel is open: today.expand decides, and auto
+// decideFeed sets whether the panel is open: feed.expand decides, and auto
 // opens it when the list leaves room. A toggle holds until the view changes.
 // It runs when the view loads or the terminal resizes, never on a background
 // refresh, so the list does not jump.
-func (m *Model) decideToday() {
+func (m *Model) decideFeed() {
 	key := gidOf(m.viewProject) + "\x00" + m.savedView
-	if m.today.manual && key == m.today.viewKey {
+	if m.feed.manual && key == m.feed.viewKey {
 		return
 	}
-	m.today.manual = false
-	switch m.today.expand {
+	m.feed.manual = false
+	switch m.feed.expand {
 	case config.ExpandCollapsed:
-		m.today.open = false
+		m.feed.open = false
 	case config.ExpandExpanded:
-		m.today.open = true
+		m.feed.open = true
 	default:
 		listW, _, _ := m.paneWidths()
-		m.today.open = m.listLines(listW)+m.today.height <= m.paneHeight()
+		m.feed.open = m.listLines(listW)+m.feed.height <= m.paneHeight()
 	}
 }
 
@@ -423,34 +423,34 @@ func (m *Model) listLines(width int) int {
 	return len(lines)
 }
 
-// toggleToday opens or collapses the panel until the view changes.
-func (m *Model) toggleToday() {
-	m.today.open, m.today.manual = !m.today.open, true
-	m.today.viewKey = gidOf(m.viewProject) + "\x00" + m.savedView
-	if !m.today.open && m.focusToday {
+// toggleFeed opens or collapses the panel until the view changes.
+func (m *Model) toggleFeed() {
+	m.feed.open, m.feed.manual = !m.feed.open, true
+	m.feed.viewKey = gidOf(m.viewProject) + "\x00" + m.savedView
+	if !m.feed.open && m.focusFeed {
 		m.focusList()
 	}
 }
 
-// focusTodayPanel opens the panel and gives it focus.
-func (m *Model) focusTodayPanel() {
-	if !m.todayShown() {
+// focusFeedPanel opens the panel and gives it focus.
+func (m *Model) focusFeedPanel() {
+	if !m.feedShown() {
 		return
 	}
-	if !m.today.open {
-		m.toggleToday()
+	if !m.feed.open {
+		m.toggleFeed()
 	}
 	m.focusList()
-	m.focusToday = true
+	m.focusFeed = true
 }
 
-// updateToday runs a [keys.views] binding while the panel has focus.
-func (m *Model) updateToday(name string) tea.Cmd {
-	items := m.todayItems()
+// updateFeed runs a [keys.views] binding while the panel has focus.
+func (m *Model) updateFeed(name string) tea.Cmd {
+	items := m.feedRows()
 	if len(items) == 0 {
 		return nil
 	}
-	c := &m.today.cursor
+	c := &m.feed.cursor
 	*c = min(*c, len(items)-1)
 	switch name {
 	case "down":
@@ -465,7 +465,7 @@ func (m *Model) updateToday(name string) tea.Cmd {
 		it := items[*c]
 		switch {
 		case it.task != nil:
-			m.focusToday = false
+			m.focusFeed = false
 			return m.showTicket(*it.task)
 		case it.URL != "":
 			return openURL(it.URL)
@@ -474,28 +474,28 @@ func (m *Model) updateToday(name string) tea.Cmd {
 	return nil
 }
 
-// todayView draws the panel width columns wide and rows tall.
-func (m *Model) todayView(width, rows int) string {
-	right := m.todaySummary()
+// feedView draws the panel width columns wide and rows tall.
+func (m *Model) feedView(width, rows int) string {
+	right := m.feedSummary()
 	toggle := "expand"
-	if m.today.open {
+	if m.feed.open {
 		toggle = "collapse"
 	}
-	if k := keyLabel("main", "toggle_today"); k != "" {
+	if k := keyLabel("main", "toggle_feed"); k != "" {
 		right = strings.TrimPrefix(right+" · "+k+" "+toggle, " · ")
 	}
-	var highlight = m.focusColor(m.focusToday)
+	var highlight = m.focusColor(m.focusFeed)
 	if rows <= 2 {
-		return m.panel("[3] Today", right, "", width, rows, highlight)
+		return m.panel("[3] Feed", right, "", width, rows, highlight)
 	}
-	return m.panel("[3] Today", right, m.todayLines(width-panelFrame, rows-panelFrame), width, rows, highlight)
+	return m.panel("[3] Feed", right, m.feedLines(width-panelFrame, rows-panelFrame), width, rows, highlight)
 }
 
-// todayLines lists the items in height rows, keeping the cursor in view.
-func (m *Model) todayLines(width, height int) string {
-	items := m.todayItems()
+// feedLines lists the items in height rows, keeping the cursor in view.
+func (m *Model) feedLines(width, height int) string {
+	items := m.feedRows()
 	if len(items) == 0 {
-		return dimStyle.Render(" nothing yet today")
+		return dimStyle.Render(" nothing in the feed yet")
 	}
 	now := m.now()
 	upcoming := 0
@@ -517,11 +517,11 @@ func (m *Model) todayLines(width, height int) string {
 			}
 			rows = append(rows, row{m.groupHeader(m.headerStyle, label, n, width), -1})
 		}
-		rows = append(rows, row{m.todayLine(it, i == m.today.cursor && m.focusToday, width), i})
+		rows = append(rows, row{m.feedLine(it, i == m.feed.cursor && m.focusFeed, width), i})
 	}
-	cursorRow := slices.IndexFunc(rows, func(r row) bool { return r.item == min(m.today.cursor, len(items)-1) })
+	cursorRow := slices.IndexFunc(rows, func(r row) bool { return r.item == min(m.feed.cursor, len(items)-1) })
 	start := max(cursorRow-height+1, 0)
-	if !m.focusToday {
+	if !m.focusFeed {
 		start = 0
 	}
 	var lines []string
@@ -531,11 +531,11 @@ func (m *Model) todayLines(width, height int) string {
 	return strings.Join(lines, "\n")
 }
 
-// todayLine is one item: its time, its text in its tone, the linked
+// feedLine is one item: its time, its text in its tone, the linked
 // ticket's title, and its source at the right edge.
-func (m *Model) todayLine(it todayItem, selected bool, width int) string {
+func (m *Model) feedLine(it feedRow, selected bool, width int) string {
 	style := map[string]lipgloss.Style{feed.ToneOK: okStyle, feed.ToneWarn: warnStyle, feed.ToneError: errorStyle, feed.ToneMuted: dimStyle, toneAccent: m.accentStyle.UnsetBold()}[it.Tone]
-	when := todayTime(it.Time, m.now())
+	when := feedTime(it.Time, m.now())
 	source := " " + it.source
 	text := style.Render(it.Text)
 	if it.task != nil {
@@ -551,9 +551,9 @@ func (m *Model) todayLine(it todayItem, selected bool, width int) string {
 	return line
 }
 
-// todayTime shows when an item happens: "in 25m" or "in 2h" ahead, the clock
+// feedTime shows when an item happens: "in 25m" or "in 2h" ahead, the clock
 // time earlier today, the date before that, or nothing when unknown.
-func todayTime(t, now time.Time) string {
+func feedTime(t, now time.Time) string {
 	if t.IsZero() {
 		return ""
 	}

@@ -11,7 +11,7 @@ commands, one section per extension point:
 | [Repo sources](#repo-sources) | `repo_source.command` | nothing | one repo path per line |
 | [Time tracking](#time-tracking) | `time_tracking.command` | one JSON request on stdin | one JSON reply |
 | [Project links](#project-links) | `project_links.command` | one JSON request on stdin | one JSON reply |
-| [Feeds](#feeds) | `today.feeds` | one JSON request on stdin | one JSON reply |
+| [Feeds](#feeds) | `feed.commands` | one JSON request on stdin | one JSON reply |
 
 Each format is covered by a test that runs a small fixture script through the
 real code path (`internal/*/testdata/`), so a format change cannot slip in
@@ -412,14 +412,14 @@ command = '~/bin/project-links.sh'
 
 ## Feeds
 
-Add commands to `today.feeds` to show their lines in the Today panel under
+Add commands to `feed.commands` to show their lines in the Feed panel under
 the ticket list, such as time entries, CI runs, deploys, or meetings. A feed
 only reports; asanamate never sends it anything to write. asanamate's Harvest
 provider answers this protocol too: add `asanamate-hrvst` to list the day's
 Harvest time entries.
 
 **When it runs.** As a new process for each feed when the TUI starts, every
-`today.refresh_interval` while it is open, and on reload (`r`).
+`feed.refresh_interval` while it is open, and on reload (`r`).
 `asanamate doctor` runs each once.
 
 **Input.** One JSON object on stdin, then end of input:
@@ -496,6 +496,6 @@ esac
 ```
 
 ```toml
-[today]
-feeds = ["asanamate-hrvst", "~/bin/ci-feed.sh"]
+[feed]
+commands = ["asanamate-hrvst", "~/bin/ci-feed.sh"]
 ```

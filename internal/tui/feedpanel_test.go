@@ -22,12 +22,12 @@ import (
 	"github.com/sadmachine/asanamate/internal/ticket"
 )
 
-// todayModel is agentModel with one feed, sized so the panel has a place.
-func todayModel(t *testing.T) *Model {
+// feedModel is agentModel with one feed, sized so the panel has a place.
+func feedModel(t *testing.T) *Model {
 	t.Helper()
 	m := agentModel(t, config.SymbolsUnicode, true)
-	m.deps.Config.Today.Feeds = []string{"ci-feed --json"}
-	m.today = newTodayPanel(m.deps.Config.Today)
+	m.deps.Config.Feed.Commands = []string{"ci-feed --json"}
+	m.feed = newFeedPanel(m.deps.Config.Feed)
 	for _, t := range m.tasks {
 		m.details[t.GID] = ticket.Ticket{Task: t}
 	}
@@ -35,7 +35,7 @@ func todayModel(t *testing.T) *Model {
 	return m
 }
 
-func itemTexts(items []todayItem) []string {
+func itemTexts(items []feedRow) []string {
 	var texts []string
 	for _, it := range items {
 		texts = append(texts, it.Text)
@@ -43,8 +43,8 @@ func itemTexts(items []todayItem) []string {
 	return texts
 }
 
-func TestTodayOrdersUpcomingThenNewest(t *testing.T) {
-	m := todayModel(t)
+func TestFeedOrdersUpcomingThenNewest(t *testing.T) {
+	m := feedModel(t)
 	at := func(d time.Duration) time.Time { return testToday.Add(d) }
 	m.Update(feedMsg{reply: feed.Reply{Source: "ci", Items: []feed.Item{
 		{Time: at(-2 * time.Hour), Text: "older"},
@@ -52,24 +52,24 @@ func TestTodayOrdersUpcomingThenNewest(t *testing.T) {
 		{Time: at(-time.Hour), Text: "newer"},
 		{Time: at(25 * time.Minute), Text: "soon meeting"},
 	}}})
-	items := m.todayItems()
+	items := m.feedRows()
 	if got := itemTexts(items); !slices.Equal(got, []string{"soon meeting", "later meeting", "newer", "older"}) {
 		t.Fatalf("order = %q", got)
 	}
-	lines := strings.Split(ansi.Strip(m.todayLines(100, 10)), "\n")
+	lines := strings.Split(ansi.Strip(m.feedLines(100, 10)), "\n")
 	if !strings.Contains(lines[0], "Next (2)") || !strings.Contains(lines[1], "in 25m") || !strings.Contains(lines[2], "in 2h") ||
 		!strings.Contains(lines[3], "Earlier (2)") || !strings.Contains(lines[4], "11:00") || !strings.HasSuffix(strings.TrimSpace(lines[4]), "ci") {
 		t.Fatalf("lines = %q", lines)
 	}
 
 	m.Update(feedMsg{reply: feed.Reply{Source: "ci", Items: []feed.Item{{Time: at(-time.Hour), Text: "only past"}}}})
-	if out := ansi.Strip(m.todayLines(100, 10)); strings.Contains(out, "Next") || strings.Contains(out, "Earlier") {
+	if out := ansi.Strip(m.feedLines(100, 10)); strings.Contains(out, "Next") || strings.Contains(out, "Earlier") {
 		t.Fatalf("headers without upcoming items: %q", out)
 	}
 }
 
-func TestTodayLinksItemsToTickets(t *testing.T) {
-	m := todayModel(t)
+func TestFeedLinksItemsToTickets(t *testing.T) {
+	m := feedModel(t)
 	now := testToday.Add(-time.Minute)
 	m.Update(feedMsg{reply: feed.Reply{Source: "ci", Items: []feed.Item{
 		{Time: now, Text: "by gid", TicketGID: "2"},
@@ -80,7 +80,7 @@ func TestTodayLinksItemsToTickets(t *testing.T) {
 		{Time: now, Text: "plain link", URL: "https://example.com/build/7"},
 	}}})
 	want := map[string]string{"by gid": "2", "by url": "2", "by branch": "1", "by branch and repo": "1", "other repo": "", "plain link": ""}
-	for _, it := range m.todayItems() {
+	for _, it := range m.feedRows() {
 		got := ""
 		if it.task != nil {
 			got = it.task.GID
@@ -89,49 +89,49 @@ func TestTodayLinksItemsToTickets(t *testing.T) {
 			t.Errorf("%q links to %q, want %q", it.Text, got, want[it.Text])
 		}
 	}
-	if line := ansi.Strip(m.todayLine(m.todayItems()[0], false, 100)); !strings.Contains(line, "by gid · Other") {
+	if line := ansi.Strip(m.feedLine(m.feedRows()[0], false, 100)); !strings.Contains(line, "by gid · Other") {
 		t.Fatalf("linked line = %q", line)
 	}
 
 	press(m, "3")
-	if !m.focusToday || !m.today.open {
-		t.Fatalf("3 must open and focus the panel: focus %v, open %v", m.focusToday, m.today.open)
+	if !m.focusFeed || !m.feed.open {
+		t.Fatalf("3 must open and focus the panel: focus %v, open %v", m.focusFeed, m.feed.open)
 	}
-	if name, _, _ := m.mode(); name != "TODAY" {
+	if name, _, _ := m.mode(); name != "FEED" {
 		t.Fatalf("mode = %q", name)
 	}
 	press(m, "G")
-	if cmd := m.updateToday("open"); cmd == nil || !m.focusToday {
+	if cmd := m.updateFeed("open"); cmd == nil || !m.focusFeed {
 		t.Fatal("enter on a plain link must open it and keep the focus")
 	}
 	press(m, "g", "enter")
-	if t1, _ := m.selected(); m.focusToday || t1.GID != "2" {
-		t.Fatalf("enter on a linked item: focus %v, selected %q", m.focusToday, t1.GID)
+	if t1, _ := m.selected(); m.focusFeed || t1.GID != "2" {
+		t.Fatalf("enter on a linked item: focus %v, selected %q", m.focusFeed, t1.GID)
 	}
 }
 
-func TestTodayFailedFeedKeepsItems(t *testing.T) {
-	m := todayModel(t)
+func TestFeedFailedFeedKeepsItems(t *testing.T) {
+	m := feedModel(t)
 	m.Update(feedMsg{reply: feed.Reply{Source: "ci", Summary: "2 runs", Items: []feed.Item{{Time: testToday, Text: "run"}}}})
-	if s := m.todaySummary(); s != "2 runs" {
+	if s := m.feedSummary(); s != "2 runs" {
 		t.Fatalf("summary = %q", s)
 	}
 	m.Update(feedMsg{err: errors.New("exit status 1")})
-	if s := m.todaySummary(); s != "ci failed" || !slices.Contains(itemTexts(m.todayItems()), "run") {
-		t.Fatalf("after failure: summary %q, items %q", s, itemTexts(m.todayItems()))
+	if s := m.feedSummary(); s != "ci failed" || !slices.Contains(itemTexts(m.feedRows()), "run") {
+		t.Fatalf("after failure: summary %q, items %q", s, itemTexts(m.feedRows()))
 	}
-	fresh := todayModel(t)
+	fresh := feedModel(t)
 	fresh.Update(feedMsg{err: errors.New("exit status 1")})
-	if s := fresh.todaySummary(); s != "ci-feed failed" {
+	if s := fresh.feedSummary(); s != "ci-feed failed" {
 		t.Fatalf("never-answered feed summary = %q", s)
 	}
 }
 
-func TestTodayAgentsShowStateChangesAndUnlinked(t *testing.T) {
-	m := todayModel(t)
+func TestFeedAgentsShowStateChangesAndUnlinked(t *testing.T) {
+	m := feedModel(t)
 	stray := agents.Agent{Path: "/code/api", State: agents.Idle, Branch: "dev", Repo: "/code/api"}
 	m.Update(agentsMsg{list: []agents.Agent{onBranch(agents.Working, ""), stray}})
-	items := m.todayItems()
+	items := m.feedRows()
 	if len(items) != 2 {
 		t.Fatalf("items = %q", itemTexts(items))
 	}
@@ -140,27 +140,27 @@ func TestTodayAgentsShowStateChangesAndUnlinked(t *testing.T) {
 			t.Errorf("first-poll %q has time %v, want none", it.Text, it.Time)
 		}
 	}
-	if line := ansi.Strip(m.todayLine(items[1], false, 120)); !strings.Contains(line, "api · dev · idle · no ticket") {
+	if line := ansi.Strip(m.feedLine(items[1], false, 120)); !strings.Contains(line, "api · dev · idle · no ticket") {
 		t.Fatalf("unlinked line = %q", line)
 	}
 
 	m.now = func() time.Time { return testToday.Add(time.Minute) }
 	m.Update(agentsMsg{list: []agents.Agent{onBranch(agents.Completed, ""), stray}})
-	first := m.todayItems()[0]
+	first := m.feedRows()[0]
 	if first.Text != "🤖 wt · completed" || first.task == nil || first.task.GID != "1" || !first.Time.Equal(testToday.Add(time.Minute)) {
 		t.Fatalf("state change = %+v", first)
 	}
-	if line := ansi.Strip(m.todayLine(first, false, 120)); !strings.Contains(line, "12:01") {
+	if line := ansi.Strip(m.feedLine(first, false, 120)); !strings.Contains(line, "12:01") {
 		t.Fatalf("state change line = %q", line)
 	}
 	m.Update(agentsMsg{list: []agents.Agent{stray}})
-	if _, ok := m.today.since["/code/web/wt"]; ok || len(m.todayItems()) != 1 {
+	if _, ok := m.feed.since["/code/web/wt"]; ok || len(m.feedRows()) != 1 {
 		t.Fatal("a stopped agent must leave the panel")
 	}
 }
 
-func TestTodayShowsTodaysRelatedActivity(t *testing.T) {
-	m := todayModel(t)
+func TestFeedShowsTodaysRelatedActivity(t *testing.T) {
+	m := feedModel(t)
 	task := asana.Task{GID: "9", Name: "Elsewhere"}
 	comment := asana.Story{GID: "s1", ResourceSubtype: "comment_added", CreatedBy: &asana.Ref{Name: "Amy"}}
 	m.activity.cache.Entries = []activity.Entry{
@@ -168,19 +168,19 @@ func TestTodayShowsTodaysRelatedActivity(t *testing.T) {
 		{Task: task, Story: asana.Story{GID: "s2"}, At: testToday.Add(-time.Hour), Mine: true},
 		{Task: task, Story: asana.Story{GID: "s3"}, At: testToday.Add(-48 * time.Hour)},
 	}
-	items := m.todayItems()
+	items := m.feedRows()
 	if len(items) != 1 || items[0].Text != "Amy commented" || items[0].task.GID != "9" || items[0].source != "asana" {
 		t.Fatalf("items = %+v", items)
 	}
-	if s := m.todaySummary(); s != "1 new" {
+	if s := m.feedSummary(); s != "1 new" {
 		t.Fatalf("summary = %q", s)
 	}
 }
 
-func TestTodayHeightFollowsTheListNotRefreshes(t *testing.T) {
-	m := todayModel(t)
-	if !m.today.open || m.todayRows() != 12 {
-		t.Fatalf("short list: open %v, rows %d", m.today.open, m.todayRows())
+func TestFeedHeightFollowsTheListNotRefreshes(t *testing.T) {
+	m := feedModel(t)
+	if !m.feed.open || m.feedHeight() != 12 {
+		t.Fatalf("short list: open %v, rows %d", m.feed.open, m.feedHeight())
 	}
 	long := make([]asana.Task, 40)
 	for i := range long {
@@ -189,38 +189,38 @@ func TestTodayHeightFollowsTheListNotRefreshes(t *testing.T) {
 	// A background refresh keeps the height, so the list does not jump.
 	m.background = true
 	m.Update(tasksMsg{tasks: long})
-	if !m.today.open {
+	if !m.feed.open {
 		t.Fatal("a background refresh changed the panel")
 	}
 	m.background = false
 	m.Update(tasksMsg{tasks: long})
-	if m.today.open || m.todayRows() != 2 {
-		t.Fatalf("long list: open %v, rows %d", m.today.open, m.todayRows())
+	if m.feed.open || m.feedHeight() != 2 {
+		t.Fatalf("long list: open %v, rows %d", m.feed.open, m.feedHeight())
 	}
 	lines := strings.Split(ansi.Strip(m.View().Content), "\n")
-	i := slices.IndexFunc(lines, func(l string) bool { return strings.Contains(l, "╭─ [3] Today") })
-	if len(lines) != 40 || i < 0 || i+1 >= len(lines) || !strings.Contains(lines[i], "T expand") {
+	i := slices.IndexFunc(lines, func(l string) bool { return strings.Contains(l, "╭─ [3] Feed") })
+	if len(lines) != 40 || i < 0 || i+1 >= len(lines) || !strings.Contains(lines[i], "F expand") {
 		t.Fatalf("collapsed panel missing:\n%s", strings.Join(lines, "\n"))
 	}
 	// The bottom edge sits under the panel's own top-left corner.
-	corner := len([]rune(lines[i][:strings.Index(lines[i], "╭─ [3] Today")]))
+	corner := len([]rune(lines[i][:strings.Index(lines[i], "╭─ [3] Feed")]))
 	if []rune(lines[i+1])[corner] != '╰' {
 		t.Fatalf("collapsed panel has no bottom edge:\n%s\n%s", lines[i], lines[i+1])
 	}
 
-	press(m, "T")
-	if !m.today.open {
-		t.Fatal("T must expand the panel")
+	press(m, "F")
+	if !m.feed.open {
+		t.Fatal("F must expand the panel")
 	}
 	m.Update(tasksMsg{tasks: long})
-	if !m.today.open {
+	if !m.feed.open {
 		t.Fatal("the toggle must hold until the view changes")
 	}
 
-	m.deps.Config.Today.Expand = config.ExpandCollapsed
-	m.today = newTodayPanel(m.deps.Config.Today)
+	m.deps.Config.Feed.Expand = config.ExpandCollapsed
+	m.feed = newFeedPanel(m.deps.Config.Feed)
 	m.Update(tasksMsg{tasks: []asana.Task{openTask}})
-	if m.today.open {
+	if m.feed.open {
 		t.Fatal("expand = collapsed opened the panel")
 	}
 }
@@ -243,24 +243,24 @@ func TestGitItemsReportPendingWork(t *testing.T) {
 	}
 	os.WriteFile(filepath.Join(wt, "a.txt"), []byte("x"), 0o600)
 	items := gitItems(context.Background(), targets)
-	if got := itemTexts(todayWrap(items)); !slices.Equal(got, []string{"1 uncommitted file", "not pushed"}) {
+	if got := itemTexts(wrapRows(items)); !slices.Equal(got, []string{"1 uncommitted file", "not pushed"}) {
 		t.Fatalf("dirty = %q", got)
 	}
-	m := todayModel(t)
-	m.Update(gitMsg{seq: m.today.gitSeq, items: append(items, feed.Item{TicketGID: "2", Text: "2 unpushed commits"})})
-	if s := m.todaySummary(); s != "2 unpushed" {
+	m := feedModel(t)
+	m.Update(gitMsg{seq: m.feed.gitSeq, items: append(items, feed.Item{TicketGID: "2", Text: "2 unpushed commits"})})
+	if s := m.feedSummary(); s != "2 unpushed" {
 		t.Fatalf("summary = %q", s)
 	}
-	m.Update(gitMsg{seq: m.today.gitSeq - 1})
-	if len(m.today.git) == 0 {
+	m.Update(gitMsg{seq: m.feed.gitSeq - 1})
+	if len(m.feed.git) == 0 {
 		t.Fatal("a stale git check replaced a newer one")
 	}
 }
 
-func todayWrap(items []feed.Item) []todayItem {
-	var out []todayItem
+func wrapRows(items []feed.Item) []feedRow {
+	var out []feedRow
 	for _, it := range items {
-		out = append(out, todayItem{Item: it})
+		out = append(out, feedRow{Item: it})
 	}
 	return out
 }

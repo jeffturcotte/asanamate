@@ -16,7 +16,7 @@ import (
 const usage = `usage:
   asanamate-hrvst --task-id <id>   serve one time tracking or feed request on
                                    stdin (set as time_tracking.command, and
-                                   add to today.feeds; feeds need no task ID)
+                                   add to feed.commands; feeds need no task ID)
   asanamate-hrvst check            check that hrvst is installed and logged in
 `
 

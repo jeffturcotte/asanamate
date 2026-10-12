@@ -284,7 +284,7 @@ light = "light"
 # Bar selection and the views panel cursor.
 # highlight = { reverse = true }
 # Status messages and due-date urgency (today: warn, overdue: error), also
-# on the Today and Overdue group headers.
+# on the Feed and Overdue group headers.
 # Positive time logged today uses ok; applied filter text uses warn.
 # ok = "2"
 # warn = "3"
@@ -421,10 +421,10 @@ type_first = false
 # background scans off; Activity then scans when you open it.
 refresh_interval = "2m"
 
-[today]
-# The Today panel under the ticket list: Asana activity, agents, unpushed
+[feed]
+# The Feed panel under the ticket list: Asana activity, agents, unpushed
 # git work, and feed commands. "auto" expands it when the list leaves room,
-# "collapsed" keeps it to its border, "expanded" keeps it open. T toggles it.
+# "collapsed" keeps it to its border, "expanded" keeps it open. F toggles it.
 expand = "auto"
 # Rows when expanded, borders included; at least 3.
 height = 12
@@ -433,7 +433,7 @@ height = 12
 refresh_interval = "1m"
 # Feed commands (see docs/extensions.md#feeds); for today's Harvest time
 # entries, add "asanamate-hrvst".
-feeds = []
+commands = []
 
 # Optional: show running coding agents next to their tickets. Off unless
 # command is set. A ticket matches agents on its branch (see branch_field) in

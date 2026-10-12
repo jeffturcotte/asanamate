@@ -49,8 +49,8 @@ func (m *Model) mode() (name string, pill lipgloss.Style, hints [][2]string) {
 			return "READ", readPill, append(hints, scroll, pane, list)
 		}
 		return "READ", readPill, [][2]string{{keyLabel("main", "down", "up"), "scroll"}, pane, list}
-	case m.focusToday:
-		return "TODAY", normalPill, [][2]string{{keyLabel("views", "down", "up"), "move"}, {keyLabel("views", "open"), "open"}, list, {keyLabel("main", "toggle_today"), "collapse"}}
+	case m.focusFeed:
+		return "FEED", normalPill, [][2]string{{keyLabel("views", "down", "up"), "move"}, {keyLabel("views", "open"), "open"}, list, {keyLabel("main", "toggle_feed"), "collapse"}}
 	case m.focusNav:
 		return "VIEWS", normalPill, [][2]string{{keyLabel("views", "down", "up"), "move"}, {keyLabel("views", "open"), "open"}, list, {keyLabel("main", "help"), "keys"}}
 	}
