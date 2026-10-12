@@ -35,8 +35,15 @@ func (m *Model) mode() (name string, pill lipgloss.Style, hints [][2]string) {
 	case m.focusReader:
 		if m.readerView != config.ViewMarkdown {
 			hints := [][2]string{targets}
-			if t, ok := m.selectedDetail(); ok && m.selectedComment(t) != nil {
-				hints = append(hints, [2]string{keyLabel("main", "open"), "comment menu"})
+			open := keyLabel("main", "open")
+			if m.fieldKey == allCommentsKey {
+				hints = append(hints, [2]string{open, "show all comments"})
+			} else if t, ok := m.selectedDetail(); ok && m.selectedComment(t) != nil {
+				hint := "comment menu"
+				if m.clipped[m.fieldKey] {
+					hint = "see more"
+				}
+				hints = append(hints, [2]string{open, hint})
 				hints = append(hints, m.keyHints("copy_comment")...)
 			}
 			return "READ", readPill, append(hints, scroll, pane, list)
