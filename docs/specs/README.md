@@ -22,6 +22,7 @@ can run in parallel, each on its own branch.
 | [07-extract-agent-adapter](07-extract-agent-adapter.md) (done) | Move the ccmux, Claude, and Codex agent code into an adapter | 05 | yes |
 | [08-readme-mission](08-readme-mission.md) (done) | Rewrite the README intro around the project's goal and scope | 02, 03, 05 | no |
 | [09-activity-background-cache](09-activity-background-cache.md) (done) | Scan Activity in the background, cache it on disk, and show a new-event count | none | no |
+| [10-portability-release](10-portability-release.md) (pending) | Finish pager defaults, diagnostic docs, package scope, and candidate release proof; see the [implementation plan](10-portability-release-plan.md) | current main baseline | package scope decision required |
 
 ## Rules for every task
 
