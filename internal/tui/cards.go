@@ -21,16 +21,16 @@ import (
 // beside the details card instead of below it.
 const sideBySideW = 90
 
-// renderCards renders t as the reading pane's cards view: the name, a
-// summary line, local repo and time lines, a details card with the agents and
+// renderCards renders t as the reading pane's cards view: the name, the
+// local branch, repo, and time lines, a details card with the agents and
 // subtasks beside it (or below, when narrow), titled sections, and the comments
 // as a timeline, all
 // width columns wide. It records the line of each editable row in
 // m.fieldLines, and the last line of each multi-line one in m.fieldEnds.
 func (m *Model) renderCards(t ticket.Ticket, width int) string {
 	head := lipgloss.NewStyle().Width(width).Render(tagTitle(ticket.Clean(t.Name), titleStyle))
-	if chips := m.summaryLine(t.Task, width); chips != "" {
-		head += "\n" + chips
+	if line := m.branchLine(t.Task, width); line != "" {
+		head += "\n" + line
 	}
 	if line := m.repoLine(t.Task, width); line != "" {
 		head += "\n" + line
@@ -148,29 +148,14 @@ func (m *Model) renderCards(t ticket.Ticket, width int) string {
 	return strings.Join(blocks, "\n\n")
 }
 
-// summaryLine is the faint line under the ticket's name: its project and
-// section, due date, and branch, cut to width.
-func (m *Model) summaryLine(t asana.Task, width int) string {
-	var chips []string
-	rc := m.rowContext()
-	for _, ms := range t.Memberships {
-		if rc.projectGID == "" || ms.Project.GID == rc.projectGID {
-			chip := m.projectLabel(ms.Project, dimStyle)
-			if ms.Section != nil {
-				chip += dimStyle.Render(" › " + ticket.OneLine(ms.Section.Name))
-			}
-			chips = append(chips, chip)
-			break
-		}
+// branchLine is the faint line under the ticket's name naming the branch its
+// actions use, cut to width; "" when that is only the name's slug.
+func (m *Model) branchLine(t asana.Task, width int) string {
+	branch := action.Branch(t, m.deps.State.TaskBranches[t.GID], m.deps.Config.BranchField, m.rowContext().preferred)
+	if branch == action.Slug(t.Name) {
+		return ""
 	}
-	if rel, style := dueLabel(t.DueOn, m.now()); rel != "" {
-		due, _, _ := asana.DueDays(t.DueOn, m.now())
-		chips = append(chips, style.Render(m.sym.icon(iconDue)+shortDate(due, m.now())+" · "+rel))
-	}
-	if branch := action.Branch(t, m.deps.State.TaskBranches[t.GID], m.deps.Config.BranchField, rc.preferred); branch != action.Slug(t.Name) {
-		chips = append(chips, branchStyle.Render(m.sym.icon(iconBranch)+ticket.OneLine(branch)))
-	}
-	return ansi.Truncate(strings.Join(chips, "   "), width, "…")
+	return ansi.Truncate(branchStyle.Render(m.sym.icon(iconBranch)+ticket.OneLine(branch)), width, "…")
 }
 
 // repoLine is the faint line under the summary naming the local repo a

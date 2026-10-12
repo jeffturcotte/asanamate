@@ -261,6 +261,22 @@ func TestCardsNavigateFieldsSectionsAndComments(t *testing.T) {
 	}
 }
 
+func TestCardsHeadLeavesAsanaFieldsToDetails(t *testing.T) {
+	m, _ := editModel(t)
+	due := "2026-10-13"
+	tk := m.details["1"]
+	tk.DueOn = &due
+	m.deps.State.TaskBranches["1"] = "feature/x"
+	out := ansi.Strip(m.renderCards(tk, 100))
+	head := out[:strings.Index(out, "Details")]
+	if strings.Contains(head, "Web") || strings.Contains(head, "Oct 13") || !strings.Contains(head, "feature/x") {
+		t.Fatalf("head = %q, want the branch without project or due", head)
+	}
+	if body := out[strings.Index(out, "Details"):]; !strings.Contains(body, "Web") || !strings.Contains(body, "Oct 13") {
+		t.Fatal("details must still show the project and due date")
+	}
+}
+
 func TestMarkdownKeepsJScroll(t *testing.T) {
 	m, _ := editModel(t)
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 20})
