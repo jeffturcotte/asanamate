@@ -11,6 +11,7 @@ commands, one section per extension point:
 | [Repo sources](#repo-sources) | `repo_source.command` | nothing | one repo path per line |
 | [Time tracking](#time-tracking) | `time_tracking.command` | one JSON request on stdin | one JSON reply |
 | [Project links](#project-links) | `project_links.command` | one JSON request on stdin | one JSON reply |
+| [Feeds](#feeds) | `today.feeds` | one JSON request on stdin | one JSON reply |
 
 Each format is covered by a test that runs a small fixture script through the
 real code path (`internal/*/testdata/`), so a format change cannot slip in
@@ -407,4 +408,94 @@ esac
 ```toml
 [project_links]
 command = '~/bin/project-links.sh'
+```
+
+## Feeds
+
+Add commands to `today.feeds` to show their lines in the Today panel under
+the ticket list, such as time entries, CI runs, deploys, or meetings. A feed
+only reports; asanamate never sends it anything to write. asanamate's Harvest
+provider answers this protocol too: add `asanamate-hrvst` to list the day's
+Harvest time entries.
+
+**When it runs.** As a new process for each feed when the TUI starts, every
+`today.refresh_interval` while it is open, and on reload (`r`).
+`asanamate doctor` runs each once.
+
+**Input.** One JSON object on stdin, then end of input:
+
+| Field | Value |
+|---|---|
+| `version` | protocol version, `1` |
+| `operation` | `feed` |
+| `date` | today's local date, `YYYY-MM-DD` |
+
+```json
+{"version":1,"operation":"feed","date":"2026-10-12"}
+```
+
+**Compatibility.** As for [time tracking](#time-tracking): ignore `version`
+and unknown fields if you like; the version changes only for a change
+existing providers could not ignore.
+
+**Output.** One JSON object on stdout:
+
+| Field | Value |
+|---|---|
+| `source` | required, 1 to 8 characters, shown at each item's right edge, such as `ci` |
+| `summary` | optional; joined into the panel's top edge, cut to 24 characters, such as `1 failed` |
+| `items` | required, may be empty: the feed's lines |
+
+Each item has:
+
+| Field | Value |
+|---|---|
+| `time` | required, RFC 3339. A time after now is an upcoming item, listed first under `Next` and shown as `in 25m` |
+| `text` | required, one line; control characters become spaces, and it is cut to fit |
+| `tone` | optional: `ok`, `warn`, `error`, or `muted`, colored by the theme; empty is the plain text color |
+| `ticket_gid` | optional: the Asana task the item belongs to |
+| `url` | optional: an Asana task URL links the item to that task; any other URL is what `enter` opens |
+| `branch`, `repo` | optional: link the item like an agent, to the loaded ticket on `branch`, limited to tickets linked to `repo` when it is set |
+
+asanamate links an item by `ticket_gid`, then `url`, then `branch`: the first
+that names a loaded ticket wins, and with several tickets on one branch, the
+first in the list. A linked item shows its ticket's title after its text,
+and `enter` opens the ticket. An item that links to nothing still shows.
+
+```json
+{"source":"ci","summary":"1 failed","items":[
+  {"time":"2026-10-12T14:05:00-04:00","text":"build failed","branch":"feature/x","tone":"error"},
+  {"time":"2026-10-12T15:30:00-04:00","text":"deploy window","url":"https://example.com/deploys"}
+]}
+```
+
+**Exit status.** Non-zero or invalid output fails that run: the panel shows
+`<source> failed` in its summary and keeps the feed's previous items. stderr
+is not shown in the panel; `asanamate doctor` shows it. Other feeds are
+unaffected.
+
+**Timeouts.** 1 minute per run; the command is killed after that, and the run
+counts as failed.
+
+**Example.** `internal/feed/testdata/feed.sh`, without its request log:
+
+```sh
+#!/bin/sh
+request=$(cat)
+case $request in
+*'"operation":"feed"'*)
+	printf '%s\n' '{"source":"ci","summary":"1 failed","items":[
+	  {"time":"2026-10-12T14:05:00-04:00","text":"build failed","branch":"feature/x","repo":"/code/web","tone":"error"},
+	  {"time":"2026-10-12T15:30:00-04:00","text":"deploy window","url":"https://example.com/deploys"}]}'
+	;;
+*)
+	echo "unknown operation" >&2
+	exit 1
+	;;
+esac
+```
+
+```toml
+[today]
+feeds = ["asanamate-hrvst", "~/bin/ci-feed.sh"]
 ```
