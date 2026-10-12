@@ -105,7 +105,10 @@ func handlers() map[string]handler {
 	// reader by it when the reader has focus: div 1 is a page, 2 half one.
 	page := func(div int, up bool) func(*Model, tea.KeyPressMsg) tea.Cmd {
 		return func(m *Model, _ tea.KeyPressMsg) tea.Cmd {
-			n := max(m.paneHeight()/div, 1)
+			n := max(m.listHeight()/div, 1)
+			if m.focusReader {
+				n = max(m.paneHeight()/div, 1)
+			}
 			if m.focusReader {
 				if up {
 					m.reader.ScrollUp(n)
@@ -140,6 +143,8 @@ func handlers() map[string]handler {
 		"focus_views":    {run: do((*Model).focusViews)},
 		"focus_list":     {run: do((*Model).focusList)},
 		"focus_reader":   {splitOnly: true, run: do((*Model).focusReaderPane)},
+		"focus_today":    {run: do((*Model).focusTodayPanel)},
+		"toggle_today":   {run: do((*Model).toggleToday)},
 		"next_pane":      {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.cyclePane(false) }},
 		"prev_pane":      {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.cyclePane(true) }},
 		"open":           {splitOnly: true, run: (*Model).open},
@@ -197,7 +202,7 @@ func handlers() map[string]handler {
 		}},
 		"create":           {run: do((*Model).openCreate)},
 		"create_subtask":   {run: do((*Model).openCreateSubtask)},
-		"reload":           {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.refreshWithImages() }},
+		"reload":           {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return tea.Batch(m.refreshWithImages(), m.refreshToday()) }},
 		"reader_view":      {splitOnly: true, run: do(func(m *Model) { m.toggleReaderView(); m.saveDisplay() })},
 		"toggle_reader":    {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.toggleReader() }},
 		"toggle_sidebar":   {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.toggleSidebar() }},
@@ -293,7 +298,7 @@ func (m *Model) scrollReader(msg tea.KeyPressMsg) tea.Cmd {
 
 // focusList gives the list focus.
 func (m *Model) focusList() {
-	m.focusNav = false
+	m.focusNav, m.focusToday = false, false
 	if m.focusReader {
 		m.focusReader = false
 		m.clearField()
@@ -311,7 +316,7 @@ func (m *Model) focusViews() {
 // focusReaderPane gives the reader focus, on its first editable row, and
 // counts the selected ticket as viewed.
 func (m *Model) focusReaderPane() {
-	m.focusNav = false
+	m.focusNav, m.focusToday = false, false
 	if !m.focusReader {
 		m.focusReader = true
 		m.stepField(1)

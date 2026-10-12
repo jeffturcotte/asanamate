@@ -214,3 +214,37 @@ func TestMatchingPrefersClones(t *testing.T) {
 		t.Fatalf("Matching without usable URLs = %v", got)
 	}
 }
+
+func TestPendingWork(t *testing.T) {
+	dir := t.TempDir()
+	origin, clone := filepath.Join(dir, "origin.git"), filepath.Join(dir, "clone")
+	git := func(args ...string) {
+		t.Helper()
+		if out, err := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@t"}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	git("init", "-q", "--bare", "-b", "main", origin)
+	git("clone", "-q", origin, clone)
+	git("-C", clone, "commit", "-q", "--allow-empty", "-m", "init")
+	git("-C", clone, "push", "-q", "-u", "origin", "main")
+	if p, err := PendingWork(context.Background(), clone); err != nil || !p.Empty() {
+		t.Fatalf("clean = %+v, %v", p, err)
+	}
+
+	git("-C", clone, "commit", "-q", "--allow-empty", "-m", "two")
+	git("-C", clone, "commit", "-q", "--allow-empty", "-m", "three")
+	os.WriteFile(filepath.Join(clone, "new.txt"), []byte("x"), 0o600)
+	p, err := PendingWork(context.Background(), clone)
+	if err != nil || p.Uncommitted != 1 || p.ChangedAt.IsZero() || p.Unpushed != 2 || p.NoUpstream || p.CommitAt.IsZero() {
+		t.Fatalf("dirty = %+v, %v", p, err)
+	}
+
+	git("-C", clone, "switch", "-q", "-c", "feat/x")
+	if p, err := PendingWork(context.Background(), clone); err != nil || !p.NoUpstream || p.CommitAt.IsZero() {
+		t.Fatalf("no upstream = %+v, %v", p, err)
+	}
+	if _, err := PendingWork(context.Background(), filepath.Join(dir, "missing")); err == nil {
+		t.Fatal("missing tree: want an error")
+	}
+}

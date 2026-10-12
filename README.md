@@ -32,13 +32,18 @@ and coding agents can do what you can. macOS and Linux only.
 - **Suggest links** (optional): preselect each project's repo and Harvest
   project from imarc's Hub or another source. See
   [Project links](#project-links-optional).
+- **See today** at a glance: a panel under the list shows today's related
+  Asana activity, agent state changes, unpushed git work on ticket branches,
+  and lines from any feed command, such as Harvest time entries. See
+  [Today panel](#today-panel).
 
-**Extending asanamate.** External commands plug in at five points:
+**Extending asanamate.** External commands plug in at six points:
 [actions](docs/extensions.md#actions),
 [agent sources](docs/extensions.md#agent-sources),
 [time tracking providers](docs/extensions.md#time-tracking),
-[repo sources](docs/extensions.md#repo-sources), and
-[project links](docs/extensions.md#project-links).
+[repo sources](docs/extensions.md#repo-sources),
+[project links](docs/extensions.md#project-links), and
+[feeds](docs/extensions.md#feeds).
 [docs/extensions.md](docs/extensions.md) documents each protocol.
 
 **Left to Asana.** asanamate does not rename or delete tickets, change a
@@ -232,8 +237,8 @@ list_width = 60
 Select `+ Add project` below the ticket's project rows and press `enter` to
 add it to another project. The picker excludes projects already on the ticket.
 
-The bottom bar shows the mode (`NORMAL`, `READ`, `EDIT`, `FILTER`, or
-`VIEWS`), the view, filter, grouping, sorting, ticket count, and agents, with the keys
+The bottom bar shows the mode (`NORMAL`, `READ`, `EDIT`, `FILTER`, `VIEWS`,
+or `TODAY`), the view, filter, grouping, sorting, ticket count, and agents, with the keys
 for what has focus on the right. Messages take the keys' place until the next
 key press.
 
@@ -249,7 +254,8 @@ key press.
 | `tab`/`shift+tab`, `l`/`h` | focus the next/previous pane: the views panel (wide screens), the list, and the reader; in the cards view, entering the reader selects its first editable row |
 | `enter` | in the list, open the ticket in the reader; in the reader, edit the selected row (Add comment opens the comment editor; Show all comments lists the older ones, since the cards view shows the newest `reader.comments.latest`), show a comment cut to its preview in full, or open the selected comment's menu: `r` reacts with an emoji (`1`-`9` pick one; picking one you reacted with removes it) |
 | `esc` | return focus to the list |
-| `0` / `1` / `2` | focus the views panel (wide screens) / the list / the reader |
+| `0` / `1` / `2` / `3` | focus the views panel (wide screens) / the list / the reader / the Today panel (expanding it) |
+| `T` | expand or collapse the Today panel until the view changes |
 | `/` | edit the filter (available fields appear while editing; `ctrl+/` opens the filter guide; `enter` keeps the filter, `esc` restores the previous one) |
 | `p` | switch project (recent first) |
 | `I` | open Activity: your actions and changes directly related to you |
@@ -280,7 +286,7 @@ key press.
 | `o` | open the ticket in the browser |
 | `y` | copy the selected ticket's link to the clipboard (requires terminal OSC 52 support) |
 | `Y` | copy the targeted comment as Markdown in the cards reader (requires terminal OSC 52 support); does nothing on other targets |
-| `r` | reload tickets and clear the inline image cache (including failed loads) |
+| `r` | reload tickets, rerun the Today panel's feeds and git check, and clear the inline image cache (including failed loads) |
 | `R` | set the automatic reload interval (persists between sessions) |
 | `?` | show every key |
 | `q` | quit |
@@ -421,6 +427,43 @@ can lag behind changes, and Asana consolidates stories, so this is not a
 complete audit log. Current ownership and description mentions are labelled
 as current context, not proof of who owned a task when an older event occurred.
 
+### Today panel
+
+A `[3] Today` panel sits under the ticket list whenever the list has a
+bordered panel. Collapsed, it is one border line with each source's summary,
+such as `3h 10m logged · 4 new · 2 unpushed`. Expanded, it lists:
+
+- **Upcoming** items from feeds, such as meetings, soonest first under a
+  `Next` header, shown as `in 25m`.
+- **Asana:** today's related Activity events (not your own actions or
+  reminders); the summary counts new ones, as the Views panel does.
+- **Agents:** each running agent once, from when it entered its state, such
+  as `mocpa · completed`. Agents linked to no loaded ticket show as
+  `no ticket`, so agents on other branches are visible somewhere. Agents
+  already running when asanamate starts show no time.
+- **Git:** uncommitted files and unpushed commits in the worktree checked out
+  on each loaded ticket's branch, in the ticket's linked repos. A branch with
+  no upstream shows `not pushed`.
+- **Feeds:** lines from each `today.feeds` command; see
+  [Feeds](docs/extensions.md#feeds). For Harvest time entries, add
+  `asanamate-hrvst`.
+
+Items linked to a ticket show its title. With `today.expand = "auto"`, the
+panel opens when the list leaves `today.height` empty rows; it decides when a
+view loads or the terminal resizes, never on a background refresh, so the
+list does not jump. `T` expands or collapses it until the view changes. `3`
+focuses it: `j`/`k` select an item, `enter` opens its ticket (or its link),
+and `esc` returns to the list. Feeds and the git check run at start, every
+`today.refresh_interval`, and on reload (`r`).
+
+```toml
+[today]
+expand = "auto"
+height = 12
+refresh_interval = "1m"
+feeds = ["asanamate-hrvst"]
+```
+
 ## List-only mode and scripting
 
 `--no-preview` remains a deprecated alias for `--hide-preview`. See the
@@ -547,6 +590,10 @@ once. Run `asanamate doctor` to check a change without starting the TUI.
 | `images.mode` | `"auto"` | kitty graphics: `auto`, `kitty` (force on), or `off` |
 | `images.inline` | `false` | cards view: draw images in descriptions and comments in place of their links (needs `images.mode` on and a terminal with kitty Unicode placeholders, such as kitty or Ghostty) |
 | `activity.refresh_interval` | `"2m"` | background Activity scan interval, at least `1s`; `"0"` turns background scans off, and Activity then scans when opened. See [Activity](#activity) |
+| `today.expand` | `"auto"` | Today panel under the list: `auto` (expanded when the list leaves `today.height` empty rows), `collapsed`, or `expanded`; `T` toggles it. See [Today panel](#today-panel) |
+| `today.height` | `12` | Today panel rows when expanded, borders included; at least `3` |
+| `today.refresh_interval` | `"1m"` | how often feeds and the git check run, at least `1s`; `"0"` runs them only at start and on reload (`r`) |
+| `today.feeds` | `[]` | commands that answer the [feed protocol](docs/extensions.md#feeds), such as `["asanamate-hrvst"]` for today's Harvest time entries |
 | `picker.type_first` | `false` | open pickers in search mode, so typing filters at once; `esc` leaves search for browse mode |
 | `keys.<scope>.<name>` | see the template | key bindings: a list of keys per binding, such as `[keys.main] quit = ["q", "ctrl+q"]`; `[]` unbinds. Scopes: `main`, `activity`, `views`, `filter`, `picker`, `form`, `form_field`, `input`, `builder`, `notice`. Keys are a character (`"j"`, `"?"`) or a key name with modifiers (`"ctrl+d"`, `"shift+tab"`, `"enter"`, `"space"`, `"pgdown"`); a letter with `ctrl` or `alt` is lower case, plus `shift` for the capital (`"ctrl+shift+q"`, not `"ctrl+Q"`); `ctrl+c` always quits and can't be bound. `asanamate setup` and `asanamate config update` write every binding, commented, with its default |
 | `reader.max_text_width` | `0` | cards view: wrap description and comment text at this many columns (words are kept whole); `0` wraps at the pane width |

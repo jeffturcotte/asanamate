@@ -1,7 +1,9 @@
 package asana
 
 import (
+	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -263,4 +265,28 @@ type Project struct {
 	Name    string `json:"name"`
 	Color   string `json:"color,omitempty"` // Asana's name for it, such as "dark-green"; "none" for none
 	Members []Ref  `json:"members"`
+}
+
+// TaskGIDFromURL returns the task GID in an Asana task URL, in either the
+// /0/<project>/<task> or the /1/<workspace>/.../task/<task> form, or "" when
+// rawURL is not one.
+func TaskGIDFromURL(rawURL string) string {
+	u, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || u.Host != "app.asana.com" {
+		return ""
+	}
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	gid := ""
+	switch {
+	case len(parts) >= 3 && parts[0] == "0":
+		gid = parts[2]
+	default:
+		if i := slices.Index(parts, "task"); i > 0 && i+1 < len(parts) {
+			gid = parts[i+1]
+		}
+	}
+	if gid == "" || strings.Trim(gid, "0123456789") != "" {
+		return ""
+	}
+	return gid
 }

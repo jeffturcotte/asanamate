@@ -523,7 +523,13 @@ func (m *Model) panel(title, right, body string, width, height int, highlight co
 	if right != "" {
 		right = dimStyle.Render(right)
 	}
-	return m.topEdge(head.Render(title), right, width, edge) + "\n" + box
+	top := m.topEdge(head.Render(title), right, width, edge)
+	if height <= 2 {
+		// No room for a body: the top edge over the bottom edge.
+		b := m.sym.border
+		return top + "\n" + edge.Render(b.BottomLeft+strings.Repeat(b.Bottom, max(width-2, 0))+b.BottomRight)
+	}
+	return top + "\n" + box
 }
 
 // topEdge is a box's top border, width columns wide, with the styled title
