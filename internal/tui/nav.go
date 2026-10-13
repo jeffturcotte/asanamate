@@ -197,11 +197,11 @@ func (m *Model) navView(width, height int) string {
 		mark := "  "
 		switch {
 		case (it.group != nil || it.sort != nil || it.activityMode != "") && it.active:
-			mark = m.accentStyle.Render("●") + " "
+			mark = m.headingStyle(m.accentStyle, m.focusNav).Render("●") + " "
 		case it.group != nil || it.sort != nil || it.activityMode != "":
 			mark = dimStyle.Render("○") + " "
 		case (it.isView || it.activity || it.savedView != "") && it.active:
-			mark = m.accentStyle.Render("▌") + " "
+			mark = m.headingStyle(m.accentStyle, m.focusNav).Render("▌") + " "
 		}
 		label := it.label
 		if it.project != nil {
@@ -234,11 +234,11 @@ func (m *Model) navView(width, height int) string {
 // rule's right end: ── Projects ──── [p] ─
 func (m *Model) navRule(title, key string, width int) string {
 	if key == "" {
-		return m.rule(title, width, false)
+		return m.rule(title, width, false, m.focusNav)
 	}
 	line := m.sym.border.Top
 	tail := " [" + key + "] " + line
-	return m.rule(title, width-ansi.StringWidth(tail), false) +
+	return m.rule(title, width-ansi.StringWidth(tail), false, m.focusNav) +
 		dimStyle.Render(" [") + m.accentStyle.Render(key) + dimStyle.Render("] ") +
 		lipgloss.NewStyle().Foreground(borderColor).Render(line)
 }

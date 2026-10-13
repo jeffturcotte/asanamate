@@ -302,7 +302,8 @@ func (m *Model) focusList() {
 	m.focusNav, m.focusFeed = false, false
 	if m.focusReader {
 		m.focusReader = false
-		m.clearField()
+		m.fieldKey = ""
+		m.renderDetail(true)
 	}
 }
 
@@ -320,7 +321,9 @@ func (m *Model) focusReaderPane() {
 	m.focusNav, m.focusFeed = false, false
 	if !m.focusReader {
 		m.focusReader = true
-		m.stepField(1)
+		if !m.stepField(1) {
+			m.renderDetail(true)
+		}
 		m.recordViewed()
 	}
 }

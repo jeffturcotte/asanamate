@@ -76,7 +76,7 @@ func (m *Model) renderCards(t ticket.Ticket, width int) string {
 	var blocks []string
 	add := func(key, title, body string) {
 		if body != "" {
-			block := m.rule(title, width, m.fieldKey == key) + "\n" + body
+			block := m.rule(title, width, m.fieldKey == key, m.focusReader) + "\n" + body
 			m.fieldLines[key] = lipgloss.Height(strings.Join(blocks, "\n\n")) + 1
 			m.fieldEnds[key] = m.fieldLines[key] + lipgloss.Height(block) - 1
 			m.cardTargets = append(m.cardTargets, key)
@@ -163,7 +163,7 @@ func (m *Model) renderCards(t ticket.Ticket, width int) string {
 			comments = append(comments, block)
 		}
 	}
-	heading := m.rule(fmt.Sprintf("Comments %d", len(t.Comments)), width, false)
+	heading := m.rule(fmt.Sprintf("Comments %d", len(t.Comments)), width, false, m.focusReader)
 	addComment := m.addRow(commentKey, "+ Add comment")
 	blocks = append(blocks, heading+"\n"+addComment+"\n\n"+strings.Join(comments, "\n\n"))
 	return strings.Join(blocks, "\n\n")
@@ -478,18 +478,27 @@ func (m *Model) addRow(key, label string) string {
 	if m.fieldKey == key {
 		return m.fieldStyle().Render(label)
 	}
-	return m.accentStyle.Render(label)
+	return m.headingStyle(m.accentStyle, m.focusReader).Render(label)
+}
+
+// headingStyle is style for a heading in a focused pane, or the muted style in
+// an unfocused one, so only the focused pane shows color.
+func (m *Model) headingStyle(style lipgloss.Style, focused bool) lipgloss.Style {
+	if focused {
+		return style
+	}
+	return dimStyle
 }
 
 // rule is a section heading drawn as a full-width line with the title in it,
-// marked when it is the tabbed-to row.
-func (m *Model) rule(title string, width int, selected bool) string {
+// marked when it is the tabbed-to row, and muted when its pane lacks focus.
+func (m *Model) rule(title string, width int, selected, focused bool) string {
 	line := m.sym.border.Top
 	lead := line + line + " "
 	title = ansi.Truncate(title, max(width-ansi.StringWidth(lead)-2, 1), "…")
 	fill := max(width-ansi.StringWidth(lead)-ansi.StringWidth(title)-1, 0)
 	ruleStyle := lipgloss.NewStyle().Foreground(borderColor)
-	headStyle := m.accentStyle
+	headStyle := m.headingStyle(m.accentStyle, focused)
 	if selected {
 		headStyle = m.fieldStyle()
 	}
@@ -510,13 +519,26 @@ func (m *Model) card(title, body string, width int, selected bool) string {
 }
 
 // panel boxes a pane's body, width by height cells in all, with title and
-// right set into the top edge. A highlighted panel's edge and title are in the
-// highlight color; nil draws the plain border. body must already fit width-2
-// by height-2 cells.
-func (m *Model) panel(title, right, body string, width, height int, highlight color.Color) string {
+// right set into the top edge. A focused panel's edge is in the accent color
+// and its title is a filled tab; alert, if not nil, colors the edge and title
+// instead, such as while the pane loads. With layout.focus.dim, an
+// unfocused panel's body is faint. body must already fit width-2 by height-2
+// cells.
+func (m *Model) panel(title, right, body string, width, height int, focused bool, alert color.Color) string {
 	edge, head := lipgloss.NewStyle().Foreground(borderColor), dimStyle
-	if highlight != nil {
-		edge, head = lipgloss.NewStyle().Foreground(highlight), lipgloss.NewStyle().Bold(true).Foreground(highlight)
+	if focused {
+		edge = lipgloss.NewStyle().Foreground(m.accentStyle.GetForeground())
+	}
+	if alert != nil {
+		edge = lipgloss.NewStyle().Foreground(alert)
+	}
+	switch {
+	case focused:
+		head = lipgloss.NewStyle().Bold(true).Reverse(true).Foreground(edge.GetForeground())
+	case alert != nil:
+		head = lipgloss.NewStyle().Bold(true).Foreground(alert)
+	case m.deps.Config.Layout.Focus.Dim:
+		body = faint(body)
 	}
 	box := lipgloss.NewStyle().Border(m.sym.border).BorderTop(false).BorderForeground(edge.GetForeground()).
 		Width(width).Height(height - 1).MaxHeight(height - 1).Render(body)
@@ -530,6 +552,18 @@ func (m *Model) panel(title, right, body string, width, height int, highlight co
 		return top + "\n" + edge.Render(b.BottomLeft+strings.Repeat(b.Bottom, max(width-2, 0))+b.BottomRight)
 	}
 	return top + "\n" + box
+}
+
+// faint draws s in the terminal's faint intensity over its own colors,
+// renewing it after every reset.
+func faint(s string) string {
+	const on, reset = "\x1b[2m", "\x1b[m"
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		line = strings.ReplaceAll(line, "\x1b[0m", reset)
+		lines[i] = on + strings.ReplaceAll(line, reset, reset+on) + reset
+	}
+	return strings.Join(lines, "\n")
 }
 
 // topEdge is a box's top border, width columns wide, with the styled title

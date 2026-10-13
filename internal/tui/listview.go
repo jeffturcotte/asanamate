@@ -82,7 +82,7 @@ func (m *Model) skeleton(width, height int) string {
 // selectionBar reports whether the selected ticket is drawn as a reversed bar
 // (the list has focus and selection.style is bar).
 func (m *Model) selectionBar() bool {
-	return m.selectionStyle == config.StyleBar && !m.focusReader
+	return m.selectionStyle == config.StyleBar && m.listFocused()
 }
 
 // renderRowLine fits line into width with flag after it and tail
@@ -178,7 +178,7 @@ func (m *Model) listView(width, height int) string {
 	if cursor != "" {
 		gutter = strings.Repeat(" ", ansi.StringWidth(cursor))
 		cursorStyle := m.markerStyle
-		if m.focusReader {
+		if !m.listFocused() {
 			cursorStyle = dimStyle
 		}
 		cursor = cursorStyle.Render(cursor)
@@ -197,9 +197,9 @@ func (m *Model) listView(width, height int) string {
 				if i < m.pinnedCount {
 					style = m.pinnedStyle
 				}
-				lines = append(lines, m.groupHeader(style, label, n, width))
+				lines = append(lines, m.groupHeader(m.headingStyle(style, m.listFocused()), label, n, width))
 			} else {
-				lines = append(lines, m.groupHeader(m.groupStyle(m.groups[i]), m.groups[i], counts[m.groups[i]], width))
+				lines = append(lines, m.groupHeader(m.headingStyle(m.groupStyle(m.groups[i]), m.listFocused()), m.groups[i], counts[m.groups[i]], width))
 			}
 			for range spacing {
 				lines = append(lines, "")

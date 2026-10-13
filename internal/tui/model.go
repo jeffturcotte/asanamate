@@ -1063,12 +1063,12 @@ func (m *Model) panes(h int) string {
 	switch {
 	case split:
 		list := m.listPanel(listW, listW+panelFrame, h)
-		reader := m.panel("[2] Ticket", m.readerView, m.reader.View(), readerW+panelFrame, h, m.readerHighlight())
+		reader := m.panel("[2] Ticket", m.readerView, m.reader.View(), readerW+panelFrame, h, m.focusReader, m.readerHighlight())
 		panes = lipgloss.JoinHorizontal(lipgloss.Top, list, reader)
 	case m.focusReader:
 		panes = m.reader.View()
 		if m.showNav() {
-			panes = m.panel("[2] Ticket", m.readerView, panes, readerW+panelFrame, h, m.readerHighlight())
+			panes = m.panel("[2] Ticket", m.readerView, panes, readerW+panelFrame, h, m.focusReader, m.readerHighlight())
 		}
 	case m.showNav():
 		panes = m.listPanel(listW-panelFrame, listW, h)
@@ -1076,7 +1076,7 @@ func (m *Model) panes(h int) string {
 		panes = lipgloss.NewStyle().Width(listW).Height(h).Render(m.listView(listW, h))
 	}
 	if m.showNav() {
-		nav := m.panel("[0] Views", "", m.navView(navW-panelFrame, inner), navW, h, m.focusColor(m.focusNav))
+		nav := m.panel("[0] Views", "", m.navView(navW-panelFrame, inner), navW, h, m.focusNav, nil)
 		panes = lipgloss.JoinHorizontal(lipgloss.Top, nav, panes)
 	}
 	return panes
@@ -1087,36 +1087,34 @@ func (m *Model) panes(h int) string {
 func (m *Model) listPanel(contentW, width, h int) string {
 	title, count := m.listTitle()
 	panel := m.feedHeight()
-	list := m.panel(title, count, m.listView(contentW, m.listHeight()), width, h-panel, m.listHighlight())
+	list := m.panel(title, count, m.listView(contentW, m.listHeight()), width, h-panel, m.listFocused(), m.listHighlight())
 	if panel == 0 {
 		return list
 	}
 	return list + "\n" + m.feedView(width, panel)
 }
 
-// focusColor is the accent color for a focused panel, or nil.
-func (m *Model) focusColor(focused bool) color.Color {
-	if focused {
-		return m.accentStyle.GetForeground()
-	}
-	return nil
+// listFocused reports whether the list panel has focus.
+func (m *Model) listFocused() bool {
+	return !m.focusReader && !m.focusNav && !m.focusFeed
 }
 
 // listHighlight marks the list panel in the warning color while the timer
-// refreshes it, since that refresh shows no modal.
+// refreshes it, since that refresh shows no modal; nil otherwise.
 func (m *Model) listHighlight() color.Color {
 	if m.loading && m.background {
 		return warnStyle.GetForeground()
 	}
-	return m.focusColor(!m.focusReader && !m.focusNav && !m.focusFeed)
+	return nil
 }
 
 // readerHighlight marks the selected ticket while its details load, including
-// the list request that precedes a refresh of the displayed ticket.
+// the list request that precedes a refresh of the displayed ticket; nil
+// otherwise.
 func (m *Model) readerHighlight() color.Color {
 	if t, ok := m.selected(); ok && (m.detailRequests[t.GID] != 0 ||
 		m.loading && m.background && t.GID == m.shownGID) {
 		return warnStyle.GetForeground()
 	}
-	return m.focusColor(m.focusReader)
+	return nil
 }

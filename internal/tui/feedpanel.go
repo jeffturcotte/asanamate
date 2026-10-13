@@ -583,11 +583,10 @@ func (m *Model) feedView(width, rows int) string {
 	if k := keyLabel("main", "toggle_feed"); k != "" {
 		right = strings.TrimPrefix(right+" · "+k+" "+toggle, " · ")
 	}
-	var highlight = m.focusColor(m.focusFeed)
 	if rows <= 2 {
-		return m.panel("[3] Feed", right, "", width, rows, highlight)
+		return m.panel("[3] Feed", right, "", width, rows, m.focusFeed, nil)
 	}
-	return m.panel("[3] Feed", right, m.feedLines(width-panelFrame, rows-panelFrame), width, rows, highlight)
+	return m.panel("[3] Feed", right, m.feedLines(width-panelFrame, rows-panelFrame), width, rows, m.focusFeed, nil)
 }
 
 // feedLines lists the shown items in height rows, keeping the cursor in
@@ -634,7 +633,7 @@ func (m *Model) feedLines(width, height int) string {
 			if i > 0 {
 				label, n = "Earlier", len(items)-upcoming
 			}
-			rows = append(rows, row{m.groupHeader(m.headerStyle, label, n, width), -1})
+			rows = append(rows, row{m.groupHeader(m.headingStyle(m.headerStyle, m.focusFeed), label, n, width), -1})
 		}
 		rows = append(rows, row{m.feedLine(it, i == cursor && m.focusFeed, width, timeWidth), i})
 	}
