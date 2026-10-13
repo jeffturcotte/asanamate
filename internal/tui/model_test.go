@@ -427,7 +427,7 @@ func TestPanelFocus(t *testing.T) {
 	if got := m.panel("[1] T", "", "body", 20, 4, false, nil); !strings.Contains(got, "\x1b[2mbody") || strings.Contains(got, tab) {
 		t.Fatalf("unfocused panel = %q, want a faint body and no tab", got)
 	}
-	m.deps.Config.Layout.Focus.Dim = false
+	m.focusDim = false
 	if got := m.panel("[1] T", "", "body", 20, 4, false, nil); strings.Contains(got, "\x1b[2mbody") {
 		t.Fatalf("layout.focus.dim = false: panel = %q, want a full-color body", got)
 	}
