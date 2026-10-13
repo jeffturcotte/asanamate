@@ -604,6 +604,39 @@ func (m *Model) openAttachments() {
 	m.modal = newPicker(pickValue(m.pickedAttachment), "Attachments", items)
 }
 
+// openContentLinks lists the links in the ticket's description and comments,
+// by label and URL; picking one opens it, and copy copies it.
+func (m *Model) openContentLinks() {
+	t, ok := m.selectedDetail()
+	if !ok {
+		m.status = "ticket details are still loading"
+		return
+	}
+	links := t.Links()
+	if len(links) == 0 {
+		m.status = "no links"
+		return
+	}
+	items := make([]pickItem, len(links))
+	for i, l := range links {
+		items[i] = pickItem{Label: cmp.Or(l.Label, l.URL), Value: l.URL}
+		if l.Label != "" {
+			items[i].Hint, items[i].Search = l.URL, l.URL
+		}
+	}
+	p := newPicker(func(res pickResult) tea.Cmd {
+		m.modal = nil
+		url := res.item.Value.(string)
+		if res.copy {
+			m.status = "link sent to clipboard"
+			return tea.SetClipboard(url)
+		}
+		return openURL(url)
+	}, "Links", items)
+	p.links = true
+	m.modal = p
+}
+
 func (m *Model) showsInline(a asana.Attachment) bool {
 	return m.deps.Images && a.Host == "asana" && kitty.IsImage(a.Name)
 }

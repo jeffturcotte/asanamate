@@ -112,6 +112,12 @@ func TestEveryScopeBindingRuns(t *testing.T) {
 				p.update(firstKey("picker", "toggle"))
 				expect(t, p.checked[0], "toggle")
 			},
+			"copy": func(t *testing.T) {
+				p := abc()
+				p.links = true
+				res, _ := p.update(firstKey("picker", "copy"))
+				expect(t, res.done && res.copy, "copy")
+			},
 			"use_typed": func(t *testing.T) {
 				p := abc()
 				p.allowFree = true

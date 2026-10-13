@@ -171,6 +171,7 @@ func handlers() map[string]handler {
 		"complete":     {run: edit(editComplete)},
 		"log_time":     {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.requestMenu(m.openTime) }},
 		"attachments":  {run: menu(func(m *Model) func() { return m.openAttachments })},
+		"links":        {run: menu(func(m *Model) func() { return m.openContentLinks })},
 		"open_browser": {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd {
 			if t, ok := m.selected(); ok {
 				return openURL(t.PermalinkURL)

@@ -14,11 +14,12 @@ import (
 )
 
 type pickItem struct {
-	Label string
-	Hint  string
-	Help  string // optional description shown below the list when selected
-	Key   string
-	Value any
+	Label  string
+	Hint   string
+	Help   string // optional description shown below the list when selected
+	Search string // optional text search matches besides Label
+	Key    string
+	Value  any
 }
 
 type pickResult struct {
@@ -28,6 +29,7 @@ type pickResult struct {
 	items     []pickItem // checked items, in list order, for a multi picker
 	free      string
 	reset     bool // return to defaults, when the picker offers a reset
+	copy      bool // copy the item instead of picking it, in a link picker
 }
 
 // picker is a modal list. It starts in browse mode, or in search mode with
@@ -48,6 +50,7 @@ type picker struct {
 	multi      bool
 	reorder    bool // ctrl+up/down reorders items in an unfiltered multi picker
 	allowReset bool // ctrl+r returns a reset result
+	links      bool // choose opens the item's link; copy returns a copy result
 	checked    map[int]bool
 	err        string
 }
@@ -91,7 +94,7 @@ func matchesWords(label, query string) bool {
 func (p *picker) refilter() {
 	p.matches = p.matches[:0]
 	for i, it := range p.items {
-		if matchesWords(it.Label, p.input.Value()) {
+		if matchesWords(it.Label+" "+it.Search, p.input.Value()) {
 			p.matches = append(p.matches, i)
 		}
 	}
@@ -208,6 +211,13 @@ func (p *picker) update(msg tea.KeyPressMsg) (pickResult, tea.Cmd) {
 		if p.multi && p.cursor < len(p.matches) {
 			i := p.matches[p.cursor]
 			p.checked[i] = !p.checked[i]
+		}
+		return pickResult{}, nil
+	case "copy":
+		if p.links && p.cursor < len(p.matches) {
+			res := p.choose(p.matches[p.cursor])
+			res.copy = true
+			return res, nil
 		}
 		return pickResult{}, nil
 	case "use_typed":
@@ -330,6 +340,12 @@ func (p *picker) controls(accent lipgloss.Style) string {
 			toggle = typedLabel("picker", "toggle")
 		}
 		hints = append(hints, [2]string{toggle, "toggle"}, [2]string{keyLabel("picker", "choose"), "done"})
+	} else if p.links {
+		copyKey := keyLabel("picker", "copy")
+		if p.searching {
+			copyKey = typedLabel("picker", "copy")
+		}
+		hints = append(hints, [2]string{keyLabel("picker", "choose"), "open"}, [2]string{copyKey, "copy"})
 	} else {
 		hints = append(hints, [2]string{keyLabel("picker", "choose"), "select"})
 	}
