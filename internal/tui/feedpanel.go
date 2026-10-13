@@ -29,20 +29,28 @@ type feedPanel struct {
 	height   int           // rows when expanded, borders included
 	interval time.Duration // feed and git refresh interval; 0 is off
 	feeds    []feedResult  // by index into feed.commands
+	feedSeq  uint64        // numbers feed runs, so an older run's answer loses
 	git      []feed.Item   // the last git check's items
+	unpushed int           // working trees the last git check found unpushed
 	gitSeq   uint64        // drops git checks older than the newest
 	since    map[string]agentMark
 	polled   bool   // agents were polled before, so new marks are state changes
 	open     bool   // expanded
 	manual   bool   // the toggle chose open; auto waits for the view to change
 	viewKey  string // the view the toggle chose open for
-	cursor   int    // selected item while the panel has focus
+	cursor   int    // selected row while the panel has focus
+	selected string // the selected row's key, so it stays selected as rows move
+	source   string // the only source shown; "" shows all
 }
 
-// feedResult is a feed command's last reply and whether its last run failed.
+// feedResult is a feed command's last reply, when it came, and the error of
+// its last run if that failed.
 type feedResult struct {
-	reply feed.Reply
-	err   string
+	reply    feed.Reply
+	at       time.Time
+	seq      uint64
+	err      string
+	failedAt time.Time
 }
 
 // agentMark is the state an agent was last seen in and since when.
@@ -65,12 +73,14 @@ type (
 	feedTickMsg struct{}
 	feedMsg     struct {
 		index int
+		seq   uint64
 		reply feed.Reply
 		err   error
 	}
 	gitMsg struct {
-		seq   uint64
-		items []feed.Item
+		seq      uint64
+		items    []feed.Item
+		unpushed int
 	}
 )
 
@@ -105,12 +115,14 @@ func (m *Model) refreshFeed() tea.Cmd { return tea.Batch(m.runFeeds(), m.checkGi
 func (m *Model) runFeeds() tea.Cmd {
 	var cmds []tea.Cmd
 	day := m.now()
+	m.feed.feedSeq++
+	seq := m.feed.feedSeq
 	for i, command := range m.deps.Config.Feed.Commands {
 		cmds = append(cmds, func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), feed.Timeout)
 			defer cancel()
 			reply, err := feed.Fetch(ctx, command, day)
-			return feedMsg{index: i, reply: reply, err: err}
+			return feedMsg{index: i, seq: seq, reply: reply, err: err}
 		})
 	}
 	return tea.Batch(cmds...)
@@ -121,11 +133,15 @@ func (m *Model) gotFeed(msg feedMsg) {
 		return
 	}
 	r := &m.feed.feeds[msg.index]
+	if msg.seq < r.seq {
+		return // a run that started earlier, such as before a reload, answered late
+	}
+	r.seq = msg.seq
 	if msg.err != nil {
-		r.err = msg.err.Error()
+		r.err, r.failedAt = strings.TrimPrefix(feed.OneLine(msg.err.Error()), "feed: "), m.now()
 		return
 	}
-	*r = feedResult{reply: msg.reply}
+	*r = feedResult{reply: msg.reply, at: m.now(), seq: msg.seq}
 }
 
 // gitTarget is a loaded ticket's branch and the repos to look for it in.
@@ -153,13 +169,14 @@ func (m *Model) checkGit() tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), feed.Timeout)
 		defer cancel()
-		return gitMsg{seq: seq, items: gitItems(ctx, targets)}
+		items, unpushed := gitItems(ctx, targets)
+		return gitMsg{seq: seq, items: items, unpushed: unpushed}
 	}
 }
 
-// gitItems reports each target's pending work, once per working tree.
-func gitItems(ctx context.Context, targets []gitTarget) []feed.Item {
-	var items []feed.Item
+// gitItems reports each target's pending work, once per working tree, and
+// how many working trees have commits not pushed.
+func gitItems(ctx context.Context, targets []gitTarget) (items []feed.Item, unpushed int) {
 	seen := map[string]bool{}
 	for _, t := range targets {
 		for _, r := range t.repos {
@@ -180,14 +197,16 @@ func gitItems(ctx context.Context, targets []gitTarget) []feed.Item {
 			switch {
 			case p.Unpushed > 0:
 				item.Time, item.Text = p.CommitAt, plural(p.Unpushed, "unpushed commit")
-				items = append(items, item)
 			case p.NoUpstream:
 				item.Time, item.Text = p.CommitAt, "not pushed"
-				items = append(items, item)
+			default:
+				continue
 			}
+			items = append(items, item)
+			unpushed++
 		}
 	}
-	return items
+	return items, unpushed
 }
 
 func plural(n int, noun string) string {
@@ -199,7 +218,7 @@ func plural(n int, noun string) string {
 
 func (m *Model) gotGit(msg gitMsg) {
 	if msg.seq == m.feed.gitSeq {
-		m.feed.git = msg.items
+		m.feed.git, m.feed.unpushed = msg.items, msg.unpushed
 	}
 }
 
@@ -223,20 +242,29 @@ func (m *Model) markAgents(list []agents.Agent) {
 	}
 }
 
-// feedRows collects the panel's items: upcoming ones first, soonest first,
-// then the rest newest first.
+// feedRows collects the panel's items from every source: upcoming ones
+// first, soonest first, then the rest newest first. A failed feed adds a row
+// with its error and mutes the items it keeps from its last answer.
 func (m *Model) feedRows() []feedRow {
-	byGID := map[string]*asana.Task{}
-	for i := range m.tasks {
-		byGID[m.tasks[i].GID] = &m.tasks[i]
-	}
+	links := m.feedLinks()
 	var items []feedRow
 	add := func(source string, it feed.Item) {
-		items = append(items, feedRow{Item: it, source: source, task: m.itemTicket(it, byGID)})
+		items = append(items, feedRow{Item: it, source: source, task: links.ticket(m, it)})
 	}
-	for _, r := range m.feed.feeds {
+	for i, r := range m.feed.feeds {
+		failed := r.err != ""
 		for _, it := range r.reply.Items {
+			if failed {
+				it.Tone = feed.ToneMuted
+			}
 			add(r.reply.Source, it)
+		}
+		if failed {
+			text := "failed: " + r.err
+			if len(r.reply.Items) > 0 {
+				text += " · showing items from " + r.at.In(m.now().Location()).Format("15:04")
+			}
+			add(feedName(r.reply.Source, m.deps.Config.Feed.Commands[i]), feed.Item{Time: r.failedAt, Text: text, Tone: feed.ToneError})
 		}
 	}
 	for _, it := range m.feed.git {
@@ -248,12 +276,12 @@ func (m *Model) feedRows() []feedRow {
 			continue
 		}
 		task := e.Task
-		if loaded, ok := byGID[task.GID]; ok {
+		if loaded, ok := links.byGID[task.GID]; ok {
 			task = *loaded
 		}
 		items = append(items, feedRow{Item: feed.Item{Time: e.At, Text: activitySummary(e), Tone: toneAccent}, source: "asana", task: &task})
 	}
-	items = append(items, m.agentItems(byGID)...)
+	items = append(items, m.agentItems(links.byGID)...)
 	slices.SortStableFunc(items, func(a, b feedRow) int {
 		au, bu := a.Time.After(now), b.Time.After(now)
 		switch {
@@ -270,27 +298,88 @@ func (m *Model) feedRows() []feedRow {
 	return items
 }
 
-// itemTicket is the loaded ticket an item links to: by its ticket GID, its
+// feedLinks indexes the loaded tickets by GID and by branch, in list order.
+type feedLinks struct {
+	byGID    map[string]*asana.Task
+	byBranch map[string][]*asana.Task
+}
+
+func (m *Model) feedLinks() feedLinks {
+	l := feedLinks{byGID: map[string]*asana.Task{}, byBranch: map[string][]*asana.Task{}}
+	preferred := m.projectFields[gidOf(m.viewProject)]
+	for i := range m.tasks {
+		t := &m.tasks[i]
+		l.byGID[t.GID] = t
+		branch := action.Branch(*t, m.deps.State.TaskBranches[t.GID], m.deps.Config.BranchField, preferred)
+		l.byBranch[branch] = append(l.byBranch[branch], t)
+	}
+	return l
+}
+
+// ticket is the loaded ticket an item links to: by its ticket GID, its
 // Asana task URL, or its branch, narrowed to tickets linked to its repo.
-func (m *Model) itemTicket(it feed.Item, byGID map[string]*asana.Task) *asana.Task {
+func (l feedLinks) ticket(m *Model, it feed.Item) *asana.Task {
 	for _, gid := range []string{it.TicketGID, asana.TaskGIDFromURL(it.URL)} {
-		if t, ok := byGID[gid]; ok && gid != "" {
+		if t, ok := l.byGID[gid]; ok && gid != "" {
 			return t
 		}
 	}
 	if it.Branch == "" {
 		return nil
 	}
-	preferred := m.projectFields[gidOf(m.viewProject)]
-	for i, t := range m.tasks {
-		if action.Branch(t, m.deps.State.TaskBranches[t.GID], m.deps.Config.BranchField, preferred) != it.Branch {
-			continue
-		}
-		if it.Repo == "" || slices.Contains(m.deps.State.LinkedRepos(t), it.Repo) {
-			return &m.tasks[i]
+	for _, t := range l.byBranch[it.Branch] {
+		if it.Repo == "" || slices.Contains(m.deps.State.LinkedRepos(*t), it.Repo) {
+			return t
 		}
 	}
 	return nil
+}
+
+// feedSources lists the sources with rows, feeds first in config order,
+// then the built-in ones, keeping the shown source even while it has none.
+func (m *Model) feedSources(rows []feedRow) []string {
+	order := make([]string, 0, len(m.feed.feeds)+3)
+	for i, r := range m.feed.feeds {
+		order = append(order, feedName(r.reply.Source, m.deps.Config.Feed.Commands[i]))
+	}
+	var sources []string
+	for _, s := range append(order, "git", "asana", "agents") {
+		has := slices.ContainsFunc(rows, func(r feedRow) bool { return r.source == s })
+		if (has || s == m.feed.source) && !slices.Contains(sources, s) {
+			sources = append(sources, s)
+		}
+	}
+	return sources
+}
+
+// shownFeed is the rows of the shown source, or all rows.
+func (m *Model) shownFeed(rows []feedRow) []feedRow {
+	if m.feed.source == "" {
+		return rows
+	}
+	return slices.DeleteFunc(slices.Clone(rows), func(r feedRow) bool { return r.source != m.feed.source })
+}
+
+// cycleFeedSource shows the next source, step 1, or the previous, step -1,
+// with All before the first.
+func (m *Model) cycleFeedSource(rows []feedRow, step int) {
+	tabs := append([]string{""}, m.feedSources(rows)...)
+	i := slices.Index(tabs, m.feed.source)
+	m.feed.source = tabs[(i+step+len(tabs))%len(tabs)]
+}
+
+// key identifies a row across refreshes, which reorder the rows.
+func (r feedRow) key() string {
+	return r.source + "\x00" + r.Time.String() + "\x00" + r.Text
+}
+
+// feedCursor is the selected row's index in rows: where the selected item
+// moved to, else the selected position, so a refresh keeps the selection.
+func (m *Model) feedCursor(rows []feedRow) int {
+	if i := slices.IndexFunc(rows, func(r feedRow) bool { return r.key() == m.feed.selected }); i >= 0 {
+		return i
+	}
+	return max(min(m.feed.cursor, len(rows)-1), 0)
 }
 
 // agentItems lists each agent once, from when it entered its state: linked
@@ -349,14 +438,8 @@ func (m *Model) feedSummary() string {
 	if n := m.activity.newActivity(); n > 0 {
 		parts = append(parts, fmt.Sprintf("%d new", n))
 	}
-	branches := map[string]bool{}
-	for _, it := range m.feed.git {
-		if strings.Contains(it.Text, "unpushed") || it.Text == "not pushed" {
-			branches[it.TicketGID] = true
-		}
-	}
-	if len(branches) > 0 {
-		parts = append(parts, fmt.Sprintf("%d unpushed", len(branches)))
+	if m.feed.unpushed > 0 {
+		parts = append(parts, fmt.Sprintf("%d unpushed", m.feed.unpushed))
 	}
 	return strings.Join(parts, " · ")
 }
@@ -444,33 +527,49 @@ func (m *Model) focusFeedPanel() {
 	m.focusFeed = true
 }
 
-// updateFeed runs a [keys.views] binding while the panel has focus.
+// updateFeed runs a [keys.feed] or [keys.views] binding while the panel has
+// focus.
 func (m *Model) updateFeed(name string) tea.Cmd {
-	items := m.feedRows()
+	all := m.feedRows()
+	switch name {
+	case "next_source":
+		m.cycleFeedSource(all, 1)
+		return nil
+	case "prev_source":
+		m.cycleFeedSource(all, -1)
+		return nil
+	}
+	items := m.shownFeed(all)
 	if len(items) == 0 {
 		return nil
 	}
-	c := &m.feed.cursor
-	*c = min(*c, len(items)-1)
+	c := m.feedCursor(items)
 	switch name {
 	case "down":
-		*c = min(*c+1, len(items)-1)
+		c = min(c+1, len(items)-1)
 	case "up":
-		*c = max(*c-1, 0)
+		c = max(c-1, 0)
 	case "top":
-		*c = 0
+		c = 0
 	case "bottom":
-		*c = len(items) - 1
-	case "open":
-		it := items[*c]
-		switch {
-		case it.task != nil:
-			m.focusFeed = false
-			return m.showTicket(*it.task)
-		case it.URL != "":
-			return openURL(it.URL)
-		}
+		c = len(items) - 1
 	}
+	it := items[c]
+	m.feed.cursor, m.feed.selected = c, it.key()
+	if name != "open" && name != "select" {
+		return nil
+	}
+	switch {
+	case it.task != nil && name == "select":
+		m.focusList()
+		return m.selectTicket(*it.task)
+	case it.task != nil:
+		m.focusFeed = false
+		return m.showTicket(*it.task)
+	case it.URL != "" && name == "open":
+		return openURL(it.URL)
+	}
+	m.status = "this item links to no loaded ticket"
 	return nil
 }
 
@@ -491,13 +590,33 @@ func (m *Model) feedView(width, rows int) string {
 	return m.panel("[3] Feed", right, m.feedLines(width-panelFrame, rows-panelFrame), width, rows, highlight)
 }
 
-// feedLines lists the items in height rows, keeping the cursor in view.
+// feedLines lists the shown items in height rows, keeping the cursor in
+// view, under the source tabs while the panel has focus or a source is
+// picked.
 func (m *Model) feedLines(width, height int) string {
-	items := m.feedRows()
+	all := m.feedRows()
+	items := m.shownFeed(all)
+	var tabs []string
+	if sources := m.feedSources(all); m.feed.source != "" || (m.focusFeed && len(sources) > 1) {
+		tabs = append(tabs, m.feedTabs(all, sources, width))
+		height = max(height-1, 1)
+	}
 	if len(items) == 0 {
-		return dimStyle.Render(" nothing in the feed yet")
+		empty := " nothing in the feed yet"
+		switch {
+		case m.feed.source != "":
+			empty = " nothing from " + m.feed.source
+		case len(m.deps.Config.Feed.Commands) == 0:
+			empty += " · add sources with feed.commands (docs/extensions.md#feeds)"
+		}
+		return strings.Join(append(tabs, dimStyle.Render(ansi.Truncate(empty, width, "…"))), "\n")
 	}
 	now := m.now()
+	cursor := m.feedCursor(items)
+	timeWidth := 5 // "15:04", so the text column holds still as items come and go
+	for _, it := range items {
+		timeWidth = max(timeWidth, ansi.StringWidth(feedTime(it.Time, now)))
+	}
 	upcoming := 0
 	for _, it := range items {
 		if it.Time.After(now) {
@@ -517,23 +636,42 @@ func (m *Model) feedLines(width, height int) string {
 			}
 			rows = append(rows, row{m.groupHeader(m.headerStyle, label, n, width), -1})
 		}
-		rows = append(rows, row{m.feedLine(it, i == m.feed.cursor && m.focusFeed, width), i})
+		rows = append(rows, row{m.feedLine(it, i == cursor && m.focusFeed, width, timeWidth), i})
 	}
-	cursorRow := slices.IndexFunc(rows, func(r row) bool { return r.item == min(m.feed.cursor, len(items)-1) })
+	cursorRow := slices.IndexFunc(rows, func(r row) bool { return r.item == cursor })
 	start := max(cursorRow-height+1, 0)
 	if !m.focusFeed {
 		start = 0
 	}
-	var lines []string
+	lines := tabs
 	for _, r := range rows[start:min(start+height, len(rows))] {
 		lines = append(lines, r.line)
 	}
 	return strings.Join(lines, "\n")
 }
 
-// feedLine is one item: its time, its text in its tone, the linked
-// ticket's title, and its source at the right edge.
-func (m *Model) feedLine(it feedRow, selected bool, width int) string {
+// feedTabs is the source filter: All, then each source, with their item
+// counts, the shown one picked out.
+func (m *Model) feedTabs(all []feedRow, sources []string, width int) string {
+	counts := map[string]int{"": len(all)}
+	for _, r := range all {
+		counts[r.source]++
+	}
+	var tabs []string
+	for _, s := range append([]string{""}, sources...) {
+		tab := fmt.Sprintf("%s %d", cmp.Or(s, "All"), counts[s])
+		if s == m.feed.source {
+			tabs = append(tabs, m.accentStyle.Bold(true).Underline(true).Render(tab))
+		} else {
+			tabs = append(tabs, dimStyle.Render(tab))
+		}
+	}
+	return ansi.Truncate(" "+strings.Join(tabs, "  "), width, "…")
+}
+
+// feedLine is one item: its time in timeWidth columns, its text in its tone,
+// the linked ticket's title, and its source at the right edge.
+func (m *Model) feedLine(it feedRow, selected bool, width, timeWidth int) string {
 	style := map[string]lipgloss.Style{feed.ToneOK: okStyle, feed.ToneWarn: warnStyle, feed.ToneError: errorStyle, feed.ToneMuted: dimStyle, toneAccent: m.accentStyle.UnsetBold()}[it.Tone]
 	when := feedTime(it.Time, m.now())
 	source := " " + it.source
@@ -541,9 +679,9 @@ func (m *Model) feedLine(it feedRow, selected bool, width int) string {
 	if it.task != nil {
 		text += dimStyle.Render(" · ") + tagTitle(ticket.Clean(it.task.Name), lipgloss.NewStyle())
 	}
-	room := max(width-8-ansi.StringWidth(source), 1)
+	room := max(width-timeWidth-2-ansi.StringWidth(source), 1)
 	text = ansi.Truncate(text, room, "…")
-	line := " " + dimStyle.Render(fmt.Sprintf("%-7s", when)) + text +
+	line := " " + dimStyle.Render(when+strings.Repeat(" ", timeWidth+1-ansi.StringWidth(when))) + text +
 		strings.Repeat(" ", max(room-ansi.StringWidth(text), 0)) + dimStyle.Render(source)
 	if selected {
 		return selectedStyle.Render(ansi.Strip(line))

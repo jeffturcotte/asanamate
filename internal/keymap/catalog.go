@@ -75,6 +75,11 @@ var catalog = []Scope{
 		{Name: "bottom", Keys: []string{"G", "end"}, Desc: "last row"},
 		{Name: "open", Keys: []string{"enter", "l"}, Desc: "open the row"},
 	}},
+	{Name: "feed", Doc: "Feed panel (3). Other keys use [keys.views], then [keys.main].", Bindings: []Binding{
+		{Name: "next_source", Keys: []string{"]"}, Desc: "show the next source: All / each source"},
+		{Name: "prev_source", Keys: []string{"["}, Desc: "show the previous source"},
+		{Name: "select", Keys: []string{"space"}, Desc: "select the item's ticket in the list"},
+	}},
 	{Name: "filter", Doc: "While typing a filter. Printable keys type, so these need others.", Bindings: []Binding{
 		{Name: "done", Keys: []string{"enter"}, Desc: "keep the filter", Typing: true},
 		{Name: "cancel", Keys: []string{"esc"}, Desc: "restore the filter from before /", Typing: true},

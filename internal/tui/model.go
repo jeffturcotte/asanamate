@@ -600,7 +600,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 	if m.focusFeed {
-		if name := keys.Name("views", k); name != "" {
+		if name := cmp.Or(keys.Name("feed", k), keys.Name("views", k)); name != "" {
 			return m.updateFeed(name)
 		}
 	}

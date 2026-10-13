@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/sadmachine/asanamate/internal/config"
+	"github.com/sadmachine/asanamate/internal/feed"
 	"github.com/sadmachine/asanamate/internal/form"
 	"github.com/sadmachine/asanamate/internal/keymap"
 )
@@ -58,6 +59,19 @@ func TestEveryScopeBindingRuns(t *testing.T) {
 			},
 			"bottom": func(t *testing.T) { expect(t, views(t, "bottom").navCursor > 1, "cursor did not go to the bottom") },
 			"open":   func(t *testing.T) { expect(t, !views(t, "down", "open").focusNav, "open left the panel focused") },
+		},
+		"feed": {
+			"next_source": func(t *testing.T) {
+				expect(t, feedSources(t, "next_source").feed.source == "ci", "next_source did not show ci")
+			},
+			"prev_source": func(t *testing.T) {
+				expect(t, feedSources(t, "prev_source").feed.source == "ci", "prev_source did not show ci")
+			},
+			"select": func(t *testing.T) {
+				m := feedSources(t, "select")
+				t1, _ := m.selected()
+				expect(t, !m.focusFeed && t1.GID == "2", "select did not select the item's ticket")
+			},
 		},
 		"filter": {
 			"done": func(t *testing.T) {
@@ -252,4 +266,16 @@ func expect(t *testing.T, ok bool, msg string) {
 	if !ok {
 		t.Fatal(msg)
 	}
+}
+
+// feedSources is feedModel with one ci item on ticket 2, the Feed panel
+// focused, and the [keys.feed] bindings named pressed.
+func feedSources(t *testing.T, names ...string) *Model {
+	m := feedModel(t)
+	m.Update(feedMsg{reply: feed.Reply{Source: "ci", Items: []feed.Item{{Time: testToday, Text: "run", TicketGID: "2"}}}})
+	m.Update(key("3"))
+	for _, n := range names {
+		m.Update(firstKey("feed", n))
+	}
+	return m
 }
