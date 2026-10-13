@@ -89,7 +89,7 @@ func TestFeedLinksItemsToTickets(t *testing.T) {
 			t.Errorf("%q links to %q, want %q", it.Text, got, want[it.Text])
 		}
 	}
-	if line := ansi.Strip(m.feedLine(m.feedRows()[0], false, 100)); !strings.Contains(line, "by gid · Other") {
+	if line := ansi.Strip(m.feedLine(m.feedRows()[0], false, 100, 5)); !strings.Contains(line, "by gid · Other") {
 		t.Fatalf("linked line = %q", line)
 	}
 
@@ -120,6 +120,14 @@ func TestFeedFailedFeedKeepsItems(t *testing.T) {
 	if s := m.feedSummary(); s != "ci failed" || !slices.Contains(itemTexts(m.feedRows()), "run") {
 		t.Fatalf("after failure: summary %q, items %q", s, itemTexts(m.feedRows()))
 	}
+	rows := m.feedRows()
+	failure := rows[slices.IndexFunc(rows, func(r feedRow) bool { return r.Tone == feed.ToneError })]
+	if failure.source != "ci" || failure.Text != "failed: exit status 1 · showing items from 12:00" {
+		t.Fatalf("failure row = %+v", failure)
+	}
+	if kept := rows[slices.IndexFunc(rows, func(r feedRow) bool { return r.Text == "run" })]; kept.Tone != feed.ToneMuted {
+		t.Fatalf("a failed feed's kept item has tone %q, want muted", kept.Tone)
+	}
 	fresh := feedModel(t)
 	fresh.Update(feedMsg{err: errors.New("exit status 1")})
 	if s := fresh.feedSummary(); s != "ci-feed failed" {
@@ -140,7 +148,7 @@ func TestFeedAgentsShowStateChangesAndUnlinked(t *testing.T) {
 			t.Errorf("first-poll %q has time %v, want none", it.Text, it.Time)
 		}
 	}
-	if line := ansi.Strip(m.feedLine(items[1], false, 120)); !strings.Contains(line, "api · dev · idle · no ticket") {
+	if line := ansi.Strip(m.feedLine(items[1], false, 120, 5)); !strings.Contains(line, "api · dev · idle · no ticket") {
 		t.Fatalf("unlinked line = %q", line)
 	}
 
@@ -150,7 +158,7 @@ func TestFeedAgentsShowStateChangesAndUnlinked(t *testing.T) {
 	if first.Text != "🤖 wt · completed" || first.task == nil || first.task.GID != "1" || !first.Time.Equal(testToday.Add(time.Minute)) {
 		t.Fatalf("state change = %+v", first)
 	}
-	if line := ansi.Strip(m.feedLine(first, false, 120)); !strings.Contains(line, "12:01") {
+	if line := ansi.Strip(m.feedLine(first, false, 120, 5)); !strings.Contains(line, "12:01") {
 		t.Fatalf("state change line = %q", line)
 	}
 	m.Update(agentsMsg{list: []agents.Agent{stray}})
@@ -238,16 +246,16 @@ func TestGitItemsReportPendingWork(t *testing.T) {
 		}
 	}
 	targets := []gitTarget{{gid: "1", branch: "feat/x", repos: []string{main}}, {gid: "2", branch: "feat/x", repos: []string{main}}, {gid: "3", branch: "none", repos: []string{main}}}
-	if items := gitItems(context.Background(), targets); len(items) != 1 || items[0].Text != "not pushed" || items[0].TicketGID != "1" {
-		t.Fatalf("clean branch without upstream = %+v", items)
+	if items, n := gitItems(context.Background(), targets); len(items) != 1 || items[0].Text != "not pushed" || items[0].TicketGID != "1" || n != 1 {
+		t.Fatalf("clean branch without upstream = %+v, %d unpushed", items, n)
 	}
 	os.WriteFile(filepath.Join(wt, "a.txt"), []byte("x"), 0o600)
-	items := gitItems(context.Background(), targets)
-	if got := itemTexts(wrapRows(items)); !slices.Equal(got, []string{"1 uncommitted file", "not pushed"}) {
-		t.Fatalf("dirty = %q", got)
+	items, n := gitItems(context.Background(), targets)
+	if got := itemTexts(wrapRows(items)); !slices.Equal(got, []string{"1 uncommitted file", "not pushed"}) || n != 1 {
+		t.Fatalf("dirty = %q, %d unpushed", got, n)
 	}
 	m := feedModel(t)
-	m.Update(gitMsg{seq: m.feed.gitSeq, items: append(items, feed.Item{TicketGID: "2", Text: "2 unpushed commits"})})
+	m.Update(gitMsg{seq: m.feed.gitSeq, items: items, unpushed: 2})
 	if s := m.feedSummary(); s != "2 unpushed" {
 		t.Fatalf("summary = %q", s)
 	}
@@ -263,4 +271,83 @@ func wrapRows(items []feed.Item) []feedRow {
 		out = append(out, feedRow{Item: it})
 	}
 	return out
+}
+
+func TestFeedSelectionFollowsItsItem(t *testing.T) {
+	m := feedModel(t)
+	at := func(d time.Duration) time.Time { return testToday.Add(d) }
+	older := feed.Item{Time: at(-2 * time.Hour), Text: "older", TicketGID: "1"}
+	m.Update(feedMsg{reply: feed.Reply{Source: "ci", Items: []feed.Item{{Time: at(-time.Hour), Text: "newer"}, older}}})
+	press(m, "3", "j")
+	m.Update(feedMsg{reply: feed.Reply{Source: "ci", Items: []feed.Item{{Time: at(-time.Minute), Text: "newest"}, {Time: at(-time.Hour), Text: "newer"}, older}}})
+	if c := m.feedCursor(m.feedRows()); m.feedRows()[c].Text != "older" {
+		t.Fatalf("selection moved to %q", m.feedRows()[c].Text)
+	}
+	press(m, "space")
+	if t1, _ := m.selected(); m.focusFeed || m.focusReader || t1.GID != "1" {
+		t.Fatalf("space: feed focus %v, reader focus %v, selected %q", m.focusFeed, m.focusReader, t1.GID)
+	}
+}
+
+func TestFeedDropsAnOlderRunsLateAnswer(t *testing.T) {
+	m := feedModel(t)
+	m.Update(feedMsg{seq: 2, reply: feed.Reply{Source: "ci", Items: []feed.Item{{Time: testToday, Text: "new"}}}})
+	m.Update(feedMsg{seq: 1, err: errors.New("killed")})
+	m.Update(feedMsg{seq: 1, reply: feed.Reply{Source: "ci", Items: []feed.Item{{Time: testToday, Text: "old"}}}})
+	if got := itemTexts(m.feedRows()); !slices.Equal(got, []string{"new"}) || m.feedSummary() != "" {
+		t.Fatalf("items %q, summary %q", got, m.feedSummary())
+	}
+}
+
+func TestFeedFiltersBySource(t *testing.T) {
+	m := feedModel(t)
+	m.Update(feedMsg{reply: feed.Reply{Source: "ci", Items: []feed.Item{{Time: testToday.Add(-time.Hour), Text: "run"}}}})
+	m.Update(gitMsg{seq: m.feed.gitSeq, items: []feed.Item{{Time: testToday.Add(-time.Minute), Text: "1 uncommitted file"}}})
+	if tabs := ansi.Strip(m.feedLines(100, 10)); strings.Contains(tabs, "All") {
+		t.Fatalf("tabs without focus or filter: %q", tabs)
+	}
+	press(m, "3")
+	if first := strings.Split(ansi.Strip(m.feedLines(100, 10)), "\n")[0]; first != " All 2  ci 1  git 1" {
+		t.Fatalf("tabs = %q", first)
+	}
+	press(m, "]", "]")
+	if got := itemTexts(m.shownFeed(m.feedRows())); m.feed.source != "git" || !slices.Equal(got, []string{"1 uncommitted file"}) {
+		t.Fatalf("source %q shows %q", m.feed.source, got)
+	}
+	// The shown source keeps its tab while it has nothing.
+	m.Update(gitMsg{seq: m.feed.gitSeq})
+	if out := ansi.Strip(m.feedLines(100, 10)); !strings.Contains(out, "git 0") || !strings.Contains(out, "nothing from git") {
+		t.Fatalf("empty source = %q", out)
+	}
+	press(m, "]")
+	if m.feed.source != "" {
+		t.Fatalf("] after the last source shows %q, want All", m.feed.source)
+	}
+	// Once left, a source with nothing drops out of the tabs.
+	press(m, "[")
+	if m.feed.source != "ci" {
+		t.Fatalf("[ from All shows %q, want the last source with items", m.feed.source)
+	}
+}
+
+func TestFeedOpenExplainsUnlinkedItems(t *testing.T) {
+	m := feedModel(t)
+	m.Update(feedMsg{reply: feed.Reply{Source: "ci", Items: []feed.Item{{Time: testToday, Text: "loose"}}}})
+	press(m, "3", "enter")
+	if !m.focusFeed || m.status != "this item links to no loaded ticket" {
+		t.Fatalf("focus %v, status %q", m.focusFeed, m.status)
+	}
+}
+
+func TestFeedEmptyAndWideTimes(t *testing.T) {
+	m := feedModel(t)
+	m.deps.Config.Feed.Commands = nil
+	m.feed = newFeedPanel(m.deps.Config.Feed)
+	if out := ansi.Strip(m.feedLines(100, 5)); !strings.Contains(out, "feed.commands") {
+		t.Fatalf("empty panel = %q", out)
+	}
+	m.Update(gitMsg{seq: m.feed.gitSeq, items: []feed.Item{{Time: testToday.AddDate(-1, 0, 0), Text: "stale work"}}})
+	if out := ansi.Strip(m.feedLines(100, 5)); !strings.Contains(out, testToday.AddDate(-1, 0, 0).Format("Jan 2 2006")+" stale work") {
+		t.Fatalf("last year's item = %q", out)
+	}
 }

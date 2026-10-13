@@ -452,9 +452,13 @@ Items linked to a ticket show its title. With `feed.expand = "auto"`, the
 panel opens when the list leaves `feed.height` empty rows; it decides when a
 view loads or the terminal resizes, never on a background refresh, so the
 list does not jump. `F` expands or collapses it until the view changes. `3`
-focuses it: `j`/`k` select an item, `enter` opens its ticket (or its link),
-and `esc` returns to the list. Feeds and the git check run at start, every
-`feed.refresh_interval`, and on reload (`r`).
+focuses it: `j`/`k` select an item, `enter` opens its ticket in the reader
+(or its link), `space` selects its ticket in the list, and `esc` returns to
+the list. While it has focus, a tab row lists `All` and each source with its
+item count; `]` and `[` step through them to show one source only, and the
+tab row stays while one is picked. A feed that fails shows a red row with its
+error, and the items it keeps from its last answer turn muted. Feeds and the
+git check run at start, every `feed.refresh_interval`, and on reload (`r`).
 
 ```toml
 [feed]
