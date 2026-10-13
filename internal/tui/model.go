@@ -92,6 +92,7 @@ type Model struct {
 	activityOpen    bool
 	activityTicket  bool // Esc returns from a ticket opened through Activity
 	feed            feedPanel
+	focusDim        bool             // panes without focus draw faint; starts at layout.focus.dim
 	palette         config.Palette   // resolved theme, for Markdown
 	bindings        []binding        // [keys.main] with their handlers
 	accentStyle     lipgloss.Style   // reader headings
@@ -182,6 +183,7 @@ func New(d Deps) *Model {
 			imageSeq:   rand.IntN(imageIDs),
 		},
 		lastAction:      -1,
+		focusDim:        *cmp.Or(d.State.Display.FocusDim, &d.Config.Layout.Focus.Dim),
 		palette:         p,
 		accentStyle:     lipStyle(c.Accent),
 		headerStyle:     lipStyle(c.Header),

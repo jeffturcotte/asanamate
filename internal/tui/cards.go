@@ -537,7 +537,7 @@ func (m *Model) panel(title, right, body string, width, height int, focused bool
 		head = lipgloss.NewStyle().Bold(true).Reverse(true).Foreground(edge.GetForeground())
 	case alert != nil:
 		head = lipgloss.NewStyle().Bold(true).Foreground(alert)
-	case m.deps.Config.Layout.Focus.Dim:
+	case m.focusDim:
 		body = faint(body)
 	}
 	box := lipgloss.NewStyle().Border(m.sym.border).BorderTop(false).BorderForeground(edge.GetForeground()).

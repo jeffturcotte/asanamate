@@ -44,6 +44,7 @@ func (m *Model) openSettings(cursor int) {
 			}
 			m.fitList()
 		})},
+		{Label: "Dim unfocused panes", Hint: onOff(m.focusDim), Key: "d", Value: toggle(5, func() { m.focusDim = !m.focusDim })},
 	}
 	items = append(items, pickItem{Label: "Build / edit actions", Key: "a", Value: func() tea.Cmd { m.modal = nil; m.openActionBuilder(); return nil }})
 	items = append(items, pickItem{Label: "List columns for this project", Key: "c", Value: m.openColumns})
@@ -55,13 +56,14 @@ func (m *Model) openSettings(cursor int) {
 
 // saveDisplay saves the display settings for later sessions.
 func (m *Model) saveDisplay() {
-	separator, spacing := m.separator, m.spacing
+	separator, spacing, focusDim := m.separator, m.spacing, m.focusDim
 	m.deps.State.Display = state.Display{
 		Separator:       &separator,
 		HeaderSpacing:   &spacing,
 		SelectionStyle:  m.selectionStyle,
 		ReaderView:      m.readerView,
 		RefreshInterval: shortDuration(m.refreshInterval),
+		FocusDim:        &focusDim,
 	}
 	if err := m.deps.State.Save(); err != nil {
 		m.status = "saving settings: " + err.Error()
