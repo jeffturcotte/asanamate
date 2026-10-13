@@ -158,9 +158,17 @@ func (c Config) SymbolSet(getenv func(string) string) string {
 // --hide-preview starts with it hidden and the toggle_reader key flips it for the
 // session. ListWidth fixes the list pane's width in columns, borders
 // included, and gives the reader the rest; 0 sizes the list automatically.
+// Focus styles the focused pane against the rest.
 type Layout struct {
-	Reader    bool `toml:"reader"`
-	ListWidth int  `toml:"list_width"`
+	Reader    bool  `toml:"reader"`
+	ListWidth int   `toml:"list_width"`
+	Focus     Focus `toml:"focus"`
+}
+
+// Focus configures how the focused pane stands out. The focused pane's title
+// is always a filled tab; Dim also draws every other pane faint.
+type Focus struct {
+	Dim bool `toml:"dim"`
 }
 
 // List configures how tickets appear in the list. The title is always shown;
@@ -315,7 +323,7 @@ func Default() Config {
 		TimeTracking: TimeTracking{},
 		ProjectLinks: ProjectLinks{},
 		Actions:      nil,
-		Layout:       Layout{Reader: true},
+		Layout:       Layout{Reader: true, Focus: Focus{Dim: true}},
 		List: List{
 			RefreshInterval: "30s",
 			Sort:            Sort{By: "", Direction: "asc"},

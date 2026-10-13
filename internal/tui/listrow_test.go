@@ -279,6 +279,7 @@ func TestViewingHeaderColor(t *testing.T) {
 				if m.viewingStyle.GetForeground() != lipgloss.Color(wantColor) {
 					t.Fatalf("Viewing color = %v, want %q", m.viewingStyle.GetForeground(), wantColor)
 				}
+				m.focusList() // headers are muted while the list lacks focus
 				lines := strings.Split(m.listView(50, 20), "\n")
 				for _, header := range []struct{ label, color string }{
 					{pinnedLabel, "208"}, {viewingLabel, wantColor}, {viewingLabel, "2"},

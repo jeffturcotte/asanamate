@@ -742,7 +742,7 @@ func (m *Model) activityPanes(h int) string {
 			body = a.reader.View()
 		}
 		if m.showNav() {
-			nav := m.panel("[0] Views", "", m.navView(navW-panelFrame, max(h-panelFrame, 1)), navW, h, m.focusColor(m.focusNav))
+			nav := m.panel("[0] Views", "", m.navView(navW-panelFrame, max(h-panelFrame, 1)), navW, h, m.focusNav, nil)
 			return lipgloss.JoinHorizontal(lipgloss.Top, nav, lipgloss.NewStyle().Width(listW).Height(h).Render(body))
 		}
 		return lipgloss.NewStyle().Width(m.width).Height(h).Render(body)
@@ -753,10 +753,10 @@ func (m *Model) activityPanes(h int) string {
 	if len(a.rows) == 0 {
 		count = "0/0"
 	}
-	list := m.panel("[1] Activity · "+a.mode, count, m.activityList(listW, inner), listW+panelFrame, h, m.focusColor(!a.details && !m.focusNav))
-	reader := m.panel("[2] Event", "enter ticket", a.reader.View(), readerW+panelFrame, h, m.focusColor(a.details))
+	list := m.panel("[1] Activity · "+a.mode, count, m.activityList(listW, inner), listW+panelFrame, h, !a.details && !m.focusNav, nil)
+	reader := m.panel("[2] Event", "enter ticket", a.reader.View(), readerW+panelFrame, h, a.details, nil)
 	if m.showNav() {
-		nav := m.panel("[0] Views", "", m.navView(navW-panelFrame, inner), navW, h, m.focusColor(m.focusNav))
+		nav := m.panel("[0] Views", "", m.navView(navW-panelFrame, inner), navW, h, m.focusNav, nil)
 		return lipgloss.JoinHorizontal(lipgloss.Top, nav, list, reader)
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, list, reader)

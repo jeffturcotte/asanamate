@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 
@@ -413,5 +414,29 @@ func TestLoadedProjectsAreCachedOncePerSession(t *testing.T) {
 	}
 	if cmd := m.requestProjects(func() tea.Cmd { return nil }); cmd != nil || m.loadingProjects {
 		t.Fatal("projects loaded this session must not load again")
+	}
+}
+
+func TestPanelFocus(t *testing.T) {
+	m, _ := testModel(t, config.Default())
+	tab := lipgloss.NewStyle().Bold(true).Reverse(true).Foreground(m.accentStyle.GetForeground()).Render("[1] T")
+	focused := m.panel("[1] T", "", "body", 20, 4, true, nil)
+	if !strings.Contains(focused, tab) || strings.Contains(focused, "\x1b[2mbody") {
+		t.Fatalf("focused panel = %q, want a filled title tab and a full-color body", focused)
+	}
+	if got := m.panel("[1] T", "", "body", 20, 4, false, nil); !strings.Contains(got, "\x1b[2mbody") || strings.Contains(got, tab) {
+		t.Fatalf("unfocused panel = %q, want a faint body and no tab", got)
+	}
+	m.deps.Config.Layout.Focus.Dim = false
+	if got := m.panel("[1] T", "", "body", 20, 4, false, nil); strings.Contains(got, "\x1b[2mbody") {
+		t.Fatalf("layout.focus.dim = false: panel = %q, want a full-color body", got)
+	}
+}
+
+func TestFaint(t *testing.T) {
+	got := faint("a\x1b[1mb\x1b[mc\nd\x1b[0me")
+	want := "\x1b[2ma\x1b[1mb\x1b[m\x1b[2mc\x1b[m\n\x1b[2md\x1b[m\x1b[2me\x1b[m"
+	if got != want {
+		t.Fatalf("faint = %q, want %q", got, want)
 	}
 }

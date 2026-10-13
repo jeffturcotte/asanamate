@@ -352,6 +352,10 @@ reader = true
 # 0 sizes the list automatically (= fits it to its content).
 list_width = 0
 
+[layout.focus]
+# Draw every pane but the focused one faint, so focus stands out.
+dim = true
+
 [list]
 # Automatically reload the list at this interval (at least 1s).
 # R changes it for the current session only; use durations such as "15s" or "1m".

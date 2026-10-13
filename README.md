@@ -227,11 +227,17 @@ Fit asanamate to its spot with the `[layout]` table in `config.toml`:
   the reader the rest of the width. `=` and the automatic fitting leave it
   alone. When fewer than 30 columns would be left for the reader beside the
   list and the views panel, the reader hides, as in narrow terminals.
+- `focus.dim = false` keeps every pane at full color. By default, panes
+  without focus draw faint. The focused pane's title is always a filled tab,
+  and only that pane shows its headings in color and its selection as a bar.
 
 ```toml
 [layout]
 reader = true
 list_width = 60
+
+[layout.focus]
+dim = true
 ```
 
 Select `+ Add project` below the ticket's project rows and press `enter` to
@@ -577,6 +583,7 @@ once. Run `asanamate doctor` to check a change without starting the TUI.
 | `confirm_writes` | `true` | write-back subcommands ask before writing |
 | `layout.reader` | `true` | start with the reader beside the list; `z` shows or hides it for the session; `--hide-preview` starts with it hidden. See [Layout](#layout) |
 | `layout.list_width` | `0` | fix the list pane at this many columns (at least 30), borders included, and give the reader the rest; the reader hides when fewer than 30 columns remain for it; `0` sizes the list automatically. See [Layout](#layout) |
+| `layout.focus.dim` | `true` | draw every pane but the focused one faint. See [Layout](#layout) |
 | `list.layout` | `"single"` | `single` (one line per ticket) or `multi` (title, then fields on a second line) |
 | `list.refresh_interval` | `"30s"` | automatic list reload interval, at least `1s`; durations such as `"15s"` or `"1m"`; `R` or the `s` settings menu overrides it and the override persists, `ctrl+s` applies it; the statusline shows the interval, and an automatic reload marks the list border yellow instead of opening the loading modal |
 | `list.fields` | `["section", "due"]` | default values shown with the title, in aligned columns (`single` layout); `s`, then `c` overrides columns per project; due dates show relative to today and are colored by urgency |
