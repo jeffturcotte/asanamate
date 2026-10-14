@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/sadmachine/asanamate/internal/asana"
 	"github.com/sadmachine/asanamate/internal/dateinput"
@@ -150,21 +151,56 @@ func (s Service) Comment(ctx context.Context, gid, text string) error {
 			return err
 		}
 	}
-	if len(paths) > 0 {
-		images := make(map[string]string, len(paths))
-		for i, p := range paths {
-			a, err := s.Client.UploadAttachment(ctx, gid, filepath.Base(p), files[i])
-			if err != nil {
-				return fmt.Errorf("uploading %s: %w", p, err)
-			}
-			images[p] = a.GID
+	if len(paths) == 0 {
+		if html == "<body>"+escapeHTML.Replace(text)+"</body>" {
+			return s.Client.AddComment(ctx, gid, text)
 		}
-		html, _ = CommentHTML(text, users, images)
+		return s.Client.AddCommentHTML(ctx, gid, html)
 	}
-	if html == "<body>"+escapeHTML.Replace(text)+"</body>" {
-		return s.Client.AddComment(ctx, gid, text)
+	// Margin for clock skew between this machine and Asana.
+	since := time.Now().Add(-time.Minute)
+	images := make(map[string]string, len(paths))
+	names := make([]string, len(paths))
+	for i, p := range paths {
+		names[i] = filepath.Base(p)
+		a, err := s.Client.UploadAttachment(ctx, gid, names[i], files[i])
+		if err != nil {
+			return fmt.Errorf("uploading %s: %w", p, err)
+		}
+		images[p] = a.GID
 	}
-	return s.Client.AddCommentHTML(ctx, gid, html)
+	html, _ = CommentHTML(text, users, images)
+	if err := s.Client.AddCommentHTML(ctx, gid, html); err != nil {
+		return err
+	}
+	if err := s.removeAttachedStories(ctx, gid, since, names); err != nil {
+		return fmt.Errorf("comment posted, but removing its separate image entries failed: %w", err)
+	}
+	return nil
+}
+
+// removeAttachedStories deletes the "attached" story Asana adds for each
+// upload, so an inline comment image is not also shown as its own entry.
+// The attachments stay on the task.
+func (s Service) removeAttachedStories(ctx context.Context, gid string, since time.Time, names []string) error {
+	stories, err := s.Client.Stories(ctx, gid, since)
+	if err != nil {
+		return err
+	}
+	for _, name := range names {
+		for i := len(stories) - 1; i >= 0; i-- {
+			st := stories[i]
+			if st.ResourceSubtype != "attachment_added" || !strings.HasSuffix(st.Text, " "+name) {
+				continue
+			}
+			if err := s.Client.DeleteStory(ctx, st.GID); err != nil {
+				return err
+			}
+			stories = slices.Delete(stories, i, i+1)
+			break
+		}
+	}
+	return nil
 }
 
 // ErrReactionIgnored means Asana accepted a reaction write but the story's

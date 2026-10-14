@@ -3,6 +3,7 @@ package writeback
 import (
 	"encoding/xml"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -119,11 +120,14 @@ func TestCommentUploadsLocalImages(t *testing.T) {
 	if err := service.Comment(ctx, "1", "Context:\n\n![shot]("+png+")"); err != nil {
 		t.Fatal(err)
 	}
-	if len(*writes) != 2 || (*writes)[0].path != "/attachments" || (*writes)[0].body["parent"] != "1" || (*writes)[0].body["name"] != "shot.png" {
+	if len(*writes) != 3 || (*writes)[0].path != "/attachments" || (*writes)[0].body["parent"] != "1" || (*writes)[0].body["name"] != "shot.png" {
 		t.Fatalf("writes = %+v", *writes)
 	}
 	if want := "<body>Context:\n\n<img data-asana-gid=\"a1\"/></body>"; (*writes)[1].body["html_text"] != want {
 		t.Fatalf("html_text = %q; want %q", (*writes)[1].body["html_text"], want)
+	}
+	if w := (*writes)[2]; w.method != http.MethodDelete || w.path != "/stories/st1" {
+		t.Fatalf("attached story not removed: %+v", w)
 	}
 	if !strings.Contains(asked, "Uploads: "+png) {
 		t.Fatalf("confirmation omits uploads: %q", asked)
