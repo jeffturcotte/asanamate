@@ -122,7 +122,7 @@ func TestLabel(t *testing.T) {
 
 func TestResolveRejectsCtrlC(t *testing.T) {
 	_, err := Resolve(map[string]map[string][]string{"picker": {"cancel": {"esc", "ctrl+c"}}})
-	if err == nil || !strings.Contains(err.Error(), "keys.picker.cancel: ctrl+c always quits") {
+	if err == nil || !strings.Contains(err.Error(), "keys.picker.cancel: ctrl+c is reserved for quitting") {
 		t.Fatalf("err = %v", err)
 	}
 }

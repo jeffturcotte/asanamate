@@ -7,6 +7,7 @@ import (
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/sadmachine/asanamate/internal/clipboard"
 )
@@ -19,6 +20,7 @@ type inputBox struct {
 	area           textarea.Model
 	err            string
 	onSubmit       func(string) tea.Cmd // optional handler outside ticket actions and edits
+	onSaveDraft    func() tea.Cmd       // only inputs with persistent drafts
 	sanitizedPaste bool                 // tracks content changed by the textarea during paste
 	images         bool                 // paste_image inserts clipboard images as Markdown
 	oneLine        bool                 // enter adds no newline, as for a title
@@ -26,13 +28,9 @@ type inputBox struct {
 
 // imagePasteMsg is a clipboard image saved to path for an input box, or why not.
 type imagePasteMsg struct {
+	box  *inputBox
 	path string
 	err  error
-}
-
-func pasteImage() tea.Msg {
-	path, err := clipboard.SaveImage()
-	return imagePasteMsg{path, err}
 }
 
 func newInputBox(title, placeholder string) *inputBox {
@@ -52,10 +50,17 @@ func (b *inputBox) update(msg tea.Msg) (res pickResult, cmd tea.Cmd) {
 			return pickResult{cancelled: true}, nil
 		case "submit":
 			return pickResult{done: true, free: strings.TrimSpace(b.area.Value())}, nil
+		case "save_draft":
+			if b.onSaveDraft != nil {
+				return pickResult{}, b.onSaveDraft()
+			}
 		case "paste_image":
 			if b.images {
 				b.err = ""
-				return pickResult{}, pasteImage
+				return pickResult{}, func() tea.Msg {
+					path, err := clipboard.SaveImage()
+					return imagePasteMsg{box: b, path: path, err: err}
+				}
 			}
 		case "external_editor":
 			return pickResult{}, externalEditor(b.area.Value(), func(text string, err error) {
@@ -73,6 +78,9 @@ func (b *inputBox) update(msg tea.Msg) (res pickResult, cmd tea.Cmd) {
 		}
 		b.err = ""
 	} else if pasted, ok := msg.(imagePasteMsg); ok {
+		if pasted.box != nil && pasted.box != b {
+			return pickResult{}, nil
+		}
 		if pasted.err != nil {
 			b.err = "image paste failed: " + pasted.err.Error()
 			return pickResult{}, nil
@@ -101,8 +109,20 @@ func (b *inputBox) update(msg tea.Msg) (res pickResult, cmd tea.Cmd) {
 }
 
 func (b *inputBox) view(width, height int, accent lipgloss.Style) string {
+	newlineHint, pasteHint := [2]string{"enter", "newline"}, [2]string{}
+	if b.oneLine {
+		newlineHint = [2]string{}
+	}
+	if b.images {
+		pasteHint = [2]string{keyLabel("input", "paste_image"), "paste image"}
+	}
+	draftHint := [2]string{}
+	if b.onSaveDraft != nil {
+		draftHint = [2]string{keyLabel("input", "save_draft"), "save draft"}
+	}
+	hints := ansi.Wrap(hintLine(accent, newlineHint, pasteHint, [2]string{keyLabel("input", "submit"), "submit"}, draftHint, [2]string{keyLabel("input", "external_editor"), "editor"}, [2]string{keyLabel("input", "cancel"), "cancel"}), max(width-2, 1), "")
 	errorLine := ""
-	available := height - 2 // title and keyboard hints
+	available := height - 1 - lipgloss.Height(hints) // title and keyboard hints
 	help := ""
 	if b.help != "" {
 		help = modalHelp(b.help, b.helpIcon, width, min(2, max(height-4, 1))) + "\n"
@@ -121,13 +141,6 @@ func (b *inputBox) view(width, height int, accent lipgloss.Style) string {
 	if !b.area.DynamicHeight {
 		b.area.SetHeight(min(available, 8))
 	}
-	newlineHint, pasteHint := [2]string{"enter", "newline"}, [2]string{}
-	if b.oneLine {
-		newlineHint = [2]string{}
-	}
-	if b.images {
-		pasteHint = [2]string{keyLabel("input", "paste_image"), "paste image"}
-	}
 	return accent.Render(b.title) + "\n" + b.area.View() + "\n" + errorLine + help +
-		hintLine(accent, newlineHint, pasteHint, [2]string{keyLabel("input", "submit"), "submit"}, [2]string{keyLabel("input", "external_editor"), "editor"}, [2]string{keyLabel("input", "cancel"), "cancel"})
+		hints
 }

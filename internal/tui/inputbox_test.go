@@ -18,8 +18,7 @@ func TestInputBoxPasteMessages(t *testing.T) {
 	const text = "first\nsecond"
 	for _, method := range []string{"terminal", "clipboard"} {
 		t.Run(method, func(t *testing.T) {
-			m := &Model{edit: &pendingEdit{}}
-			m.pickedEdit(editComment)
+			m := &Model{input: newInputBox("Comment", "")}
 			submitted := false
 			m.input.onSubmit = func(value string) tea.Cmd {
 				submitted = true
@@ -92,7 +91,8 @@ func TestInputBoxClipboardFailure(t *testing.T) {
 }
 
 func TestCommentBoxGrowsAndScrolls(t *testing.T) {
-	m := &Model{edit: &pendingEdit{}}
+	m, _ := testModel(t, config.Config{})
+	m.edit = &pendingEdit{}
 	m.pickedEdit(editComment)
 	b := m.input
 	for _, tc := range []struct {
@@ -105,7 +105,7 @@ func TestCommentBoxGrowsAndScrolls(t *testing.T) {
 		{"newlines", strings.Repeat("line\n", 12), 100, 30, 13},
 		{"wrapped", strings.Repeat("x", 1100), 100, 30, 12},
 		{"scroll", strings.Repeat("line\n", 20), 100, 30, 16},
-		{"short terminal", strings.Repeat("line\n", 20), 80, 10, 8},
+		{"short terminal", strings.Repeat("line\n", 20), 80, 10, 7},
 		{"shrink", "short", 100, 30, 10},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -169,5 +169,9 @@ func TestInputBoxInsertsPastedImage(t *testing.T) {
 	b.update(imagePasteMsg{err: clipboard.ErrNoImage})
 	if !strings.Contains(b.err, "no image") {
 		t.Fatalf("err = %q", b.err)
+	}
+	b.update(imagePasteMsg{box: newInputBox("Other", ""), path: "/tmp/late.png"})
+	if strings.Contains(b.area.Value(), "late.png") {
+		t.Fatal("late image paste reached a different editor")
 	}
 }

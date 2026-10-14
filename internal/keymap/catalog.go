@@ -105,6 +105,7 @@ var catalog = []Scope{
 	{Name: "input", Doc: "Multi-line text boxes such as comments. enter adds a newline.", Bindings: []Binding{
 		{Name: "external_editor", Keys: []string{"ctrl+e"}, Desc: "edit the draft in VISUAL, EDITOR, or vim", Typing: true},
 		{Name: "submit", Keys: []string{"ctrl+s"}, Desc: "submit", Typing: true},
+		{Name: "save_draft", Keys: []string{"ctrl+d"}, Desc: "comments: save a draft and close", Typing: true},
 		{Name: "cancel", Keys: []string{"esc"}, Desc: "cancel", Typing: true},
 		{Name: "paste_image", Keys: []string{"alt+v"}, Desc: "comments: insert the clipboard image as Markdown", Typing: true},
 	}},

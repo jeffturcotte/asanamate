@@ -62,6 +62,9 @@ type Service struct {
 	Workspace string
 	// Users are the people a comment can @mention; nil loads them on demand.
 	Users []asana.Ref
+	// Images supplies saved local image data for a draft. Other local images
+	// are read from disk. Comment validates both sources before uploading.
+	Images map[string][]byte
 }
 
 // users returns s.Users, or loads the workspace's users when it is nil.
@@ -114,7 +117,13 @@ func (s Service) Comment(ctx context.Context, gid, text string) error {
 	paths := LocalImages(text)
 	files := make([][]byte, len(paths))
 	for i, p := range paths {
-		data, err := readImage(p)
+		data, saved := s.Images[p]
+		var err error
+		if saved {
+			err = validateImage(data)
+		} else {
+			data, err = ReadImage(p)
+		}
 		if err != nil {
 			return fmt.Errorf("comment image %s: %w", p, err)
 		}
@@ -211,10 +220,10 @@ func snippet(text string) string {
 // maxImageSize is Asana's attachment size limit.
 const maxImageSize = 100 << 20
 
-// readImage reads a comment image path; a leading ~/ is the home directory.
+// ReadImage reads a comment image path; a leading ~/ is the home directory.
 // Only regular files whose content is an image qualify, so a comment cannot
 // upload other local files.
-func readImage(path string) ([]byte, error) {
+func ReadImage(path string) ([]byte, error) {
 	if rest, ok := strings.CutPrefix(path, "~/"); ok {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -233,10 +242,17 @@ func readImage(path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !strings.HasPrefix(http.DetectContentType(data), "image/") {
-		return nil, errors.New("not an image")
+	return data, validateImage(data)
+}
+
+func validateImage(data []byte) error {
+	if len(data) > maxImageSize {
+		return errors.New("image exceeds 100 MB")
 	}
-	return data, nil
+	if !strings.HasPrefix(http.DetectContentType(data), "image/") {
+		return errors.New("not an image")
+	}
+	return nil
 }
 
 // MyTasks, passed to Move as the project, moves the task within My Tasks

@@ -304,6 +304,26 @@ Quit without saving (`:q!`) to keep the previous draft. Editor failures also kee
 the previous draft and show an error. The private temporary buffer is deleted
 when the editor exits. Search and filter inputs keep their inline controls.
 
+Comments support one local draft per workspace and ticket, shared across project
+views. Press `ctrl+d` to save a draft and close the editor; remap it with
+`keys.input.save_draft`. Pressing `esc` with content offers Save draft, Discard,
+or Keep editing. An empty or whitespace-only comment closes without a prompt.
+`ctrl+c` uses the same choices before quitting. Opening the comment editor again
+restores the draft, including after a restart.
+
+Drafts live in `~/.local/state/asanamate/drafts/comments/` (or under
+`XDG_STATE_HOME/asanamate`), with owner-only permissions. Each JSON snapshot holds
+the text and local image data, so pasted images survive temporary-file cleanup.
+Saving and posting happen in the background; the editor stays open if either
+fails. A successful post or Discard removes the draft. Concurrent sessions cannot
+overwrite or discard a draft changed since they opened it.
+
+Before posting, asanamate saves a recovery draft. A connection failure or an
+interrupted post can leave delivery uncertain: check the ticket's comments before
+retrying. The editor shows this warning and asks before posting again. Unposted
+edits are saved only when you choose Save draft or submit, not on every keystroke.
+Action inputs and forms do not yet support saved drafts.
+
 Inline images are cached by attachment for the current session. Manual reload
 downloads the displayed ticket's images again; automatic reload keeps the cache.
 The attachment viewer downloads its image each time it opens.
@@ -539,7 +559,8 @@ once. Run `asanamate doctor` to check a change without starting the TUI.
 | `images.inline` | `false` | cards view: draw images in descriptions and comments in place of their links (needs `images.mode` on and a terminal with kitty Unicode placeholders, such as kitty or Ghostty) |
 | `activity.refresh_interval` | `"2m"` | background Activity scan interval, at least `1s`; `"0"` turns background scans off, and Activity then scans when opened. See [Activity](#activity) |
 | `picker.type_first` | `false` | open pickers in search mode, so typing filters at once; `esc` leaves search for browse mode |
-| `keys.<scope>.<name>` | see the template | key bindings: a list of keys per binding, such as `[keys.main] quit = ["q", "ctrl+q"]`; `[]` unbinds. Scopes: `main`, `activity`, `views`, `filter`, `picker`, `form`, `form_field`, `input`, `builder`, `notice`. Keys are a character (`"j"`, `"?"`) or a key name with modifiers (`"ctrl+d"`, `"shift+tab"`, `"enter"`, `"space"`, `"pgdown"`); a letter with `ctrl` or `alt` is lower case, plus `shift` for the capital (`"ctrl+shift+q"`, not `"ctrl+Q"`); `ctrl+c` always quits and can't be bound. `asanamate setup` and `asanamate config update` write every binding, commented, with its default |
+| `keys.<scope>.<name>` | see the template | key bindings: a list of keys per binding, such as `[keys.main] quit = ["q", "ctrl+q"]`; `[]` unbinds. Scopes: `main`, `activity`, `views`, `filter`, `picker`, `form`, `form_field`, `input`, `builder`, `notice`. Keys are a character (`"j"`, `"?"`) or a key name with modifiers (`"ctrl+d"`, `"shift+tab"`, `"enter"`, `"space"`, `"pgdown"`); a letter with `ctrl` or `alt` is lower case, plus `shift` for the capital (`"ctrl+shift+q"`, not `"ctrl+Q"`); `ctrl+c` is reserved for quitting and protects unsent comments. `asanamate setup` and `asanamate config update` write every binding, commented, with its default |
+| `keys.input.save_draft` | `["ctrl+d"]` | save a comment draft and close; other text inputs keep their editing controls |
 | `reader.max_text_width` | `0` | cards view: wrap description and comment text at this many columns (words are kept whole); `0` wraps at the pane width |
 | `repo_source.root` | your setup directory, or empty | directory whose direct children with a `.git` entry (clones and worktrees) fill the repo picker; absolute or starting with `~`; empty: type a path |
 | `repo_source.command` | unset | prints one repo path per line; replaces `repo_source.root` when set; see [Repo sources](docs/extensions.md#repo-sources) |

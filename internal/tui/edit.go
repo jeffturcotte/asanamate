@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 	"fmt"
-	"math"
 	"slices"
 	"strings"
 
@@ -92,12 +91,7 @@ func (m *Model) pickedEdit(op editOp) tea.Cmd {
 	t := m.edit.ticket
 	switch op {
 	case editComment:
-		m.input = newInputBox("Comment on "+ticket.Clean(t.Name), "comment text")
-		m.input.area.DynamicHeight = true
-		m.input.area.MinHeight = 10
-		// Keep the viewport limit separate from the amount of text accepted.
-		m.input.area.MaxContentHeight = math.MaxInt
-		m.input.images = true
+		m.openComment(t.Task)
 	case editSection:
 		targets := m.sectionTargets(t.Task)
 		switch len(targets) {
@@ -483,7 +477,7 @@ func (m *Model) setField(value string) tea.Cmd {
 	})
 }
 
-// typedEdit takes the input box's text: a field value or a comment.
+// typedEdit takes the input box's text for a due date or custom field.
 func (m *Model) typedEdit(text string) tea.Cmd {
 	m.input = nil
 	if m.edit.due {
@@ -495,14 +489,7 @@ func (m *Model) typedEdit(text string) tea.Cmd {
 	if m.edit.field != nil {
 		return m.setField(text)
 	}
-	if text == "" {
-		m.edit, m.status = nil, "comment is empty; nothing posted"
-		return nil
-	}
-	svc, gid := m.writer(), m.edit.ticket.GID
-	return m.saveEdit("comment", func(ctx context.Context) error {
-		return svc.Comment(ctx, gid, text)
-	})
+	return nil
 }
 
 // pickedValues sets a multi_enum or people field to the checked option or

@@ -194,8 +194,8 @@ func keysTemplate() string {
 [keys]
 # Key bindings. Each name takes a list of keys: a character ("j", "G", "?")
 # or a key name with modifiers ("ctrl+d", "shift+tab", "enter", "space",
-# "pgdown"). An empty list unbinds. ctrl+c always quits. Action keys stay in
-# each actions/*.toml file.
+# "pgdown"). An empty list unbinds. ctrl+c quits after protecting comment input.
+# Action keys stay in each actions/*.toml file.
 `)
 	for _, s := range keymap.Catalog() {
 		fmt.Fprintf(&b, "\n[keys.%s]\n# %s\n", s.Name, s.Doc)

@@ -560,6 +560,13 @@ func TestKeysConfig(t *testing.T) {
 	if len(cfg.Keys) != 1 {
 		t.Fatalf("empty scopes must be dropped: %v", cfg.Keys)
 	}
+	if cfg.Keymap.Name("input", "ctrl+d") != "save_draft" {
+		t.Fatal("comment draft key missing from defaults")
+	}
+	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[keys.input]\nsave_draft = [\"alt+s\"]\n"))
+	if err != nil || cfg.Keymap.Name("input", "alt+s") != "save_draft" || cfg.Keymap.Name("input", "ctrl+d") != "" {
+		t.Fatalf("draft key override = %v, %v", cfg.Keymap, err)
+	}
 
 	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[keys.main]\nactivity = [\"i\"]\n[keys.activity]\nautomated = [\"A\"]\n"))
 	if err != nil {

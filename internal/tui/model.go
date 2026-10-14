@@ -132,6 +132,7 @@ type Model struct {
 	// Modals, and the actions, edits, and time entries they collect.
 	modal          *picker
 	input          *inputBox // free-text modal for input actions
+	composer       *commentComposer
 	builder        *actionBuilder
 	form           *formModal // shared action and time-entry controls
 	notices        []string   // messages that block input until dismissed
@@ -296,6 +297,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.openUserPicker(msg.err)
 	case editDoneMsg:
 		return m, m.editDone(msg)
+	case commentDoneMsg:
+		return m, m.commentDone(msg)
 	case createdMsg:
 		return m, m.created(msg)
 	case inlineImageMsg:
@@ -517,6 +520,9 @@ func gidOf(project *asana.Ref) string {
 func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	k := msg.String()
 	if k == "ctrl+c" {
+		if m.composer != nil {
+			return m.leaveComment(true)
+		}
 		m.closeActivity()
 		return tea.Quit
 	}
@@ -607,6 +613,9 @@ func (m *Model) updateModal(msg tea.KeyPressMsg) tea.Cmd {
 }
 
 func (m *Model) updateInput(msg tea.Msg) tea.Cmd {
+	if m.composer != nil {
+		return m.updateComment(msg)
+	}
 	res, cmd := m.input.update(msg)
 	switch {
 	case res.cancelled:
@@ -989,6 +998,8 @@ func (m *Model) body() string {
 		style = modalStyle.BorderForeground(warnStyle.GetForeground())
 	case m.builder != nil:
 		content = m.builder.view(w, mh, m.accentStyle)
+	case m.composer != nil && m.composer.confirm != nil:
+		content = m.composer.confirm.view(w, mh, m.accentStyle)
 	case m.input != nil:
 		if m.input.area.DynamicHeight {
 			w = max(min(m.width-4, 100), 10)

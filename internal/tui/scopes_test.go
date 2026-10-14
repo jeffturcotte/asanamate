@@ -164,6 +164,13 @@ func TestEveryScopeBindingRuns(t *testing.T) {
 			"cancel": func(t *testing.T) { f := editing("cancel"); expect(t, !f.editing && f.values["a"] == "", "cancel") },
 		},
 		"input": {
+			"save_draft": func(t *testing.T) {
+				m, _ := editModel(t)
+				press(m, "c")
+				m.input.area.SetValue("draft")
+				send(m, firstKey("input", "save_draft"))
+				expect(t, m.input == nil && savedComment(t, m).Text == "draft", "save_draft")
+			},
 			"external_editor": func(t *testing.T) {
 				t.Setenv("VISUAL", "true")
 				b := newInputBox("Comment", "")

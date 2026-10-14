@@ -103,6 +103,27 @@ func TestCommentPosts(t *testing.T) {
 	}
 }
 
+func TestCommentSavedImages(t *testing.T) {
+	for _, valid := range []bool{true, false} {
+		t.Run(strconv.FormatBool(valid), func(t *testing.T) {
+			c, writes := fake(t)
+			image := []byte("\x89PNG\r\n\x1a\nimage")
+			if !valid {
+				image = []byte("private text must never upload")
+			}
+			svc := Service{Client: c, Images: map[string][]byte{"/missing/image.png": image}}
+			err := svc.Comment(ctx, "1", "![](/missing/image.png)")
+			if valid {
+				if err != nil || len(*writes) != 2 || (*writes)[0].path != "/attachments" || !strings.Contains((*writes)[1].body["html_text"].(string), `data-asana-gid="a1"`) {
+					t.Fatalf("saved image: %v, %+v", err, *writes)
+				}
+			} else if err == nil || len(*writes) != 0 {
+				t.Fatalf("invalid saved image uploaded: %v, %+v", err, *writes)
+			}
+		})
+	}
+}
+
 func TestDeclineBlocksWrite(t *testing.T) {
 	c, writes := fake(t)
 	var asked string
