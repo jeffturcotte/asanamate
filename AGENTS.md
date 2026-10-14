@@ -21,13 +21,35 @@ The config is TOML, decoded into the structs in `internal/config/config.go`.
   changing them, and make a breaking change only with the user's approval.
 - **Approved breaking changes:** teach `Merge` to move the old key to the new
   one, mark the commit breaking (`feat!:` plus a `BREAKING CHANGE:` footer
-  naming the old and new keys), add the upgrade steps under the next
-  version's `## vX.Y.Z` heading in `docs/migrations.md` (the release workflow
-  puts that section atop the release notes; use absolute links), and tell the user the next release tag needs a
-  breaking version bump. Releases come only from `v*` tags; there is no version
-  file. Under semver that means the minor version while on `v0`, the major from
-  `v1` on. A `v2` or later tag also requires the module path in `go.mod` to end
-  in `/v2`.
+  naming the old and new keys), add the upgrade steps under `## Unreleased` in
+  `docs/migrations.md` (it becomes the release notes' opening section; use
+  absolute links), and tell the user the next release tag needs a breaking
+  version bump (see Version bumps).
+
+## Version bumps
+
+Releases come only from `v*` tags; there is no version file. Everything on
+`main` since the latest tag (`git describe --tags --abbrev=0 main`) ships in
+the next release, so the pending bump is the largest one any of those commits
+needs:
+
+| Change | Before `v1.0.0` | From `v1.0.0` |
+|---|---|---|
+| Breaking (`!` or `BREAKING CHANGE:`; see Config keys) | minor | major |
+| `feat` | patch | minor |
+| `fix`, `perf`, or another change users see | patch | patch |
+| `docs`, `test`, `ci`, `chore`, `refactor` only | none | none |
+
+A `v2` or later tag also requires the module path in `go.mod` to end in `/v2`.
+
+After merging a branch into local `main`, read `git log --oneline <tag>..main`
+and tell the user the pending bump and the version it gives, such as "patch:
+v0.2.0 to v0.2.1". The user often holds several merges for one release, so
+recommend a tag, never create or push one. Say whether this merge raised the
+pending bump; a merge that adds only `none` commits, or no more than the bump
+already pending, needs no new recommendation beyond naming it. Before a tag,
+rename `## Unreleased` in `docs/migrations.md` to the tag's `## vX.Y.Z` (the
+release workflow matches the exact tag); drop the heading if it is empty.
 
 ## Local config migration
 
