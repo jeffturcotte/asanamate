@@ -103,14 +103,16 @@ type sectionsMsg struct {
 
 type usersMsg struct {
 	users []asana.Ref
+	me    string // your user GID; "" when Asana did not say
 	err   error
 }
 
 type editDoneMsg struct {
-	gid  string
-	what string
-	done string // the status line on success; "" shows "<what>: done"
-	err  error
+	gid     string
+	what    string
+	done    string // the status line on success; "" shows "<what>: done"
+	logTime bool   // open the log time form on success (time_tracking.prompt_after)
+	err     error
 }
 
 type imageMsg struct {
@@ -270,7 +272,9 @@ func loadSections(c *asana.Client, workspace string, project asana.Ref) tea.Cmd 
 func loadUsers(c *asana.Client, workspace string) tea.Cmd {
 	return request(func(ctx context.Context) tea.Msg {
 		users, err := c.WorkspaceUsers(ctx, workspace)
-		return usersMsg{users: users, err: err}
+		// Knowing you only skips the log time prompt after assigning yourself.
+		me, _ := c.Me(ctx)
+		return usersMsg{users: users, me: me.GID, err: err}
 	})
 }
 

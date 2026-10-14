@@ -82,8 +82,15 @@ func (m *Model) retainedSection(i int) (string, int) {
 	if i < m.pinnedCount {
 		return pinnedLabel, m.pinnedCount
 	}
-	if m.viewingRow && i == m.pinnedCount {
-		return viewingLabel, 1
+	start := m.pinnedCount
+	if m.viewingRow {
+		if i == start {
+			return viewingLabel, 1
+		}
+		start++
+	}
+	if i >= start && i < start+m.newCount {
+		return newLabel, m.newCount
 	}
 	return "", 0
 }

@@ -188,6 +188,54 @@ func TestListViewGroups(t *testing.T) {
 	}
 }
 
+func TestSharedColumnValuesMoveToHeaders(t *testing.T) {
+	sec := func(name string) *asana.Ref { return &asana.Ref{Name: name} }
+	tasks := []asana.Task{
+		{GID: "1", Name: "A", AssigneeSection: sec("Inbox"), DueOn: strp("2026-09-28")},
+		{GID: "2", Name: "B", AssigneeSection: sec("Inbox"), DueOn: strp("2026-10-01")},
+		{GID: "3", Name: "C", AssigneeSection: sec("Later"), DueOn: strp("2026-10-20")},
+	}
+	fields := []string{"section", "due"}
+	t.Run("grouped by the column", func(t *testing.T) {
+		m, _ := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle, Fields: fields, GroupBy: "section", Header: config.Header{Style: config.StyleRule}}})
+		m.Update(tasksMsg{tasks: tasks})
+		got := strings.Join(listLines(m, 40, 6), "\n")
+		if strings.Count(got, "Inbox") != 1 || !strings.Contains(got, "── Inbox (2) ──") || !strings.Contains(got, "today") {
+			t.Fatalf("grouped column must leave the rows, header unchanged:\n%s", got)
+		}
+	})
+	t.Run("one value per group", func(t *testing.T) {
+		m, _ := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle, Fields: fields, GroupBy: "due", Header: config.Header{Style: config.StyleRule}}})
+		m.Update(tasksMsg{tasks: append(slices.Clone(tasks[:2]), asana.Task{GID: "4", Name: "D", AssigneeSection: sec("Inbox"), DueOn: strp("2026-09-30")})})
+		got := strings.Join(listLines(m, 40, 6), "\n")
+		row := slices.IndexFunc(strings.Split(got, "\n"), func(l string) bool { return strings.Contains(l, "□  D") })
+		if !strings.Contains(got, "Next 7 days (2) · Inbox") || row < 0 || strings.Contains(strings.Split(got, "\n")[row], "Inbox") {
+			t.Fatalf("shared section must move to the group header:\n%s", got)
+		}
+	})
+	t.Run("mixed values stay", func(t *testing.T) {
+		m, _ := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle, Fields: fields}})
+		m.Update(tasksMsg{tasks: tasks})
+		if got := strings.Join(listLines(m, 40, 4), "\n"); strings.Count(got, "Inbox") != 2 || !strings.Contains(got, "Later") {
+			t.Fatalf("mixed column must stay:\n%s", got)
+		}
+	})
+	t.Run("ungrouped list", func(t *testing.T) {
+		m, _ := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle, Fields: fields}})
+		m.Update(tasksMsg{tasks: tasks[:2]})
+		if _, count := m.listTitle(); !strings.Contains(count, "Inbox") || strings.Contains(strings.Join(listLines(m, 40, 3), "\n"), "Inbox") {
+			t.Fatalf("shared value must move to the list title, count = %q", count)
+		}
+	})
+	t.Run("one ticket per group", func(t *testing.T) {
+		m, _ := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle, Fields: fields, GroupBy: "due"}})
+		m.Update(tasksMsg{tasks: []asana.Task{tasks[0], tasks[2]}})
+		if got := strings.Join(listLines(m, 40, 4), "\n"); strings.Count(got, "Inbox") != 1 || !strings.Contains(got, "Later") {
+			t.Fatalf("single-ticket groups keep their columns:\n%s", got)
+		}
+	})
+}
+
 func TestGroupPicker(t *testing.T) {
 	m, _ := testModel(t, config.Config{List: config.List{Fields: []string{"Section", "Status"}, GroupBy: "section"}})
 	m.Update(tasksMsg{tasks: []asana.Task{
@@ -287,7 +335,7 @@ func TestViewingHeaderColor(t *testing.T) {
 					if len(lines) < 2 {
 						t.Fatalf("missing header %q", header.label)
 					}
-					want := m.groupHeader(lipStyle(config.Style{FG: header.color, Bold: &bold}), header.label, 1, 50)
+					want := m.groupHeader(lipStyle(config.Style{FG: header.color, Bold: &bold}), header.label, 1, 50, "")
 					if lines[0] != want {
 						t.Fatalf("%s header = %q, want %q", header.label, lines[0], want)
 					}
@@ -404,6 +452,70 @@ func TestChangedMyTasksRowsMarked(t *testing.T) {
 	m.Update(tasksMsg{project: m.viewProject, tasks: []asana.Task{c}})
 	if got := listLines(m, 20, 1); !slices.Equal(got, []string{"□  C"}) {
 		t.Fatalf("project view rows = %q", got)
+	}
+}
+
+func TestNewSectionHoldsChangedTickets(t *testing.T) {
+	gids := func(m *Model) string {
+		var out []string
+		for _, t := range m.visible {
+			out = append(out, t.GID)
+		}
+		return strings.Join(out, ",")
+	}
+	for _, on := range []bool{false, true} {
+		a := asana.Task{GID: "1", Name: "A", ModifiedAt: "t1"}
+		b := asana.Task{GID: "2", Name: "B", ModifiedAt: "t1"}
+		c := asana.Task{GID: "3", Name: "C", ModifiedAt: "t1"}
+		m, _ := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle, New: config.NewTickets{Section: on}}})
+		m.Update(tasksMsg{tasks: []asana.Task{a, b, c}})
+		c.ModifiedAt = "t2"
+		m.Update(tasksMsg{tasks: []asana.Task{a, b, c}})
+		if !on {
+			if gids(m) != "1,2,3" {
+				t.Fatalf("section off: order = %s", gids(m))
+			}
+			continue
+		}
+		if label, n := m.retainedSection(0); gids(m) != "3,1,2" || label != newLabel || n != 1 {
+			t.Fatalf("order = %s, section = %q (%d); want C under New", gids(m), label, n)
+		}
+		if got := listLines(m, 20, 6); !slices.ContainsFunc(got, func(l string) bool { return strings.Contains(l, "New (1)") }) {
+			t.Fatalf("New header missing: %q", got)
+		}
+
+		// Reading C keeps it under New, through a refresh, until the cursor leaves.
+		m.cursor = 0
+		m.selectionChanged()
+		m.Update(detailMsg{gid: "3", ticket: ticket.Ticket{Task: c}})
+		m.Update(tasksMsg{tasks: []asana.Task{a, b, c}})
+		if label, _ := m.retainedSection(0); gids(m) != "3,1,2" || label != newLabel {
+			t.Fatalf("read ticket left New early: order = %s", gids(m))
+		}
+		m.Update(key("j"))
+		if sel, _ := m.selected(); gids(m) != "1,2,3" || sel.GID != "1" {
+			t.Fatalf("after moving off: order = %s, selected = %s", gids(m), sel.GID)
+		}
+	}
+}
+
+func TestNextNewSelectsChangedTickets(t *testing.T) {
+	m, _ := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle}})
+	tasks := []asana.Task{{GID: "1", ModifiedAt: "t1"}, {GID: "2", ModifiedAt: "t1"}, {GID: "3", ModifiedAt: "t1"}, {GID: "4", ModifiedAt: "t1"}}
+	m.Update(tasksMsg{tasks: tasks})
+	tasks[1].ModifiedAt, tasks[3].ModifiedAt = "t2", "t2"
+	m.Update(tasksMsg{tasks: tasks})
+	for _, want := range []int{1, 3, 1} {
+		m.Update(key("i"))
+		if m.cursor != want {
+			t.Fatalf("cursor = %d, want %d", m.cursor, want)
+		}
+	}
+	m.viewProject = &asana.Ref{GID: "p"}
+	m.Update(tasksMsg{project: m.viewProject, tasks: tasks})
+	m.Update(key("i"))
+	if m.status != "no new tickets" {
+		t.Fatalf("status = %q", m.status)
 	}
 }
 

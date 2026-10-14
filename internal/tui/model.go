@@ -47,6 +47,10 @@ const (
 	readerMinW   = 80
 )
 
+// readerFocusTitleW is the title room the fitted list keeps while the reader
+// has focus, when layout.focus.resize gives the reader the rest.
+const readerFocusTitleW = 40
+
 // panelFrame is the cells a panel's border takes across and down.
 const panelFrame = 2
 
@@ -124,6 +128,7 @@ type Model struct {
 	projectFields   map[string]map[string]bool // project gid -> its custom field gids
 	projectCatalogs map[string][]asana.Ref     // project gid -> its custom field names and gids
 	users           []asana.Ref                // workspace users, loaded on first assign
+	meGID           string                     // your user GID, loaded with users
 
 	agents    []agents.Agent
 	linked    map[string][]agents.Agent // viewAgents by ticket gid; nil when stale
@@ -307,7 +312,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.openSectionPicker(msg)
 	case usersMsg:
 		if msg.err == nil {
-			m.users = msg.users
+			m.users, m.meGID = msg.users, msg.me
 		}
 		m.openUserPicker(msg.err)
 	case editDoneMsg:
@@ -514,13 +519,17 @@ func (m *Model) editDone(msg editDoneMsg) tea.Cmd {
 		m.status = msg.done
 	}
 	// Keep the edited ticket shown even if the reload drops it from the view.
+	var logTime tea.Cmd
 	if t, ok := m.selected(); ok && t.GID == msg.gid {
 		m.viewing = &t
+		if msg.logTime && m.deps.Config.TimeTrackingEnabled() {
+			logTime = m.openTime()
+		}
 	}
 	if m.shownGID != msg.gid {
 		delete(m.details, msg.gid)
 	}
-	return m.refresh()
+	return tea.Batch(m.refresh(), logTime)
 }
 
 func sameProject(a, b *asana.Ref) bool {
@@ -708,15 +717,18 @@ func (m *Model) applyFilter() {
 	}
 	visible := filter.Parse(m.filterInput.Value()).Apply(m.tasks, m.agentStates, m.now())
 	visible = slices.DeleteFunc(visible, func(t asana.Task) bool { return slices.Contains(pins, t.GID) })
-	m.visible, m.groups = groupTasks(visible, m.groupBy, m.rowContext(), m.now())
+	fresh, rest := m.splitNew(visible)
+	m.visible, m.groups = groupTasks(rest, m.groupBy, m.rowContext(), m.now())
 	sortTasks(m.visible, m.groups, m.sortBy, m.rowContext())
-	m.pinnedCount, m.viewingRow = len(pinned), false
+	freshLabels := slices.Repeat([]string{newLabel}, len(fresh))
+	sortTasks(fresh, freshLabels, m.sortBy, m.rowContext())
+	m.pinnedCount, m.viewingRow, m.newCount = len(pinned), false, len(fresh)
 	var viewing []asana.Task
 	if t := m.viewing; t != nil && !slices.Contains(pins, t.GID) && !slices.ContainsFunc(visible, func(v asana.Task) bool { return v.GID == t.GID }) {
 		viewing = []asana.Task{*t}
 		m.viewingRow = true
 	}
-	if len(pinned)+len(viewing) > 0 {
+	if len(pinned)+len(viewing)+len(fresh) > 0 {
 		if m.groups == nil {
 			m.groups = slices.Repeat([]string{ungroupedLabel}, len(m.visible))
 		}
@@ -724,8 +736,8 @@ func (m *Model) applyFilter() {
 		if m.viewingRow {
 			labels = append(labels, viewingLabel)
 		}
-		m.visible = append(append(pinned, viewing...), m.visible...)
-		m.groups = append(labels, m.groups...)
+		m.visible = slices.Concat(pinned, viewing, fresh, m.visible)
+		m.groups = slices.Concat(labels, freshLabels, m.groups)
 	}
 	m.measureColumns()
 	if prevGID != "" {
@@ -806,11 +818,20 @@ func (m *Model) selectedDetail() (ticket.Ticket, bool) {
 
 func (m *Model) selectionChanged() tea.Cmd {
 	t, ok := m.selected()
-	if m.viewing != nil && (!ok || t.GID != m.viewing.GID) {
-		// Moving off the viewed ticket drops it unless the view still lists it.
-		m.viewing = nil
+	leftViewing := m.viewing != nil && (!ok || t.GID != m.viewing.GID)
+	leftNew := m.newHeld != "" && (!ok || t.GID != m.newHeld)
+	if leftViewing || leftNew {
+		// Moving off the viewed ticket drops it unless the view still lists
+		// it, and moving off a read New ticket lets it leave New.
+		if leftViewing {
+			m.viewing = nil
+		}
+		m.newHeld = ""
 		m.applyFilter()
 		t, ok = m.selected()
+	}
+	if label, _ := m.retainedSection(m.cursor); ok && label == newLabel {
+		m.newHeld = t.GID
 	}
 	if !ok {
 		m.shownGID = ""
@@ -957,7 +978,11 @@ func (m *Model) paneWidths() (listW, readerW int, split bool) {
 		outer = room - readerMinW - panelFrame
 	}
 	if m.listW > 0 && !m.activityOpen {
-		outer = min(m.listW, room-readerMinW-panelFrame)
+		w := m.listW
+		if m.focusReader && m.deps.Config.Layout.Focus.Resize {
+			w -= max(m.titleW-readerFocusTitleW, 0)
+		}
+		outer = min(w, room-readerMinW-panelFrame)
 	}
 	outer = min(max(outer, minPaneW), room-minPaneW)
 	return outer - panelFrame, room - outer - panelFrame, true

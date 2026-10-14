@@ -3,6 +3,9 @@ package tui
 import (
 	"slices"
 
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+
 	"github.com/sadmachine/asanamate/internal/asana"
 )
 
@@ -32,6 +35,46 @@ func (m *Model) markSeen(t asana.Task) {
 	if m.deps.State.MarkSeen(t) {
 		m.saveSeen()
 	}
+}
+
+// splitNew separates the tickets the New section lists from the rest, in
+// order: with list.new.section on in My Tasks, the changed tickets not being
+// read, and the held one being read.
+func (m *Model) splitNew(tasks []asana.Task) (fresh, rest []asana.Task) {
+	if !m.deps.Config.List.New.Section || m.changed == nil {
+		return nil, tasks
+	}
+	for _, t := range tasks {
+		if t.GID == m.newHeld || m.changed[t.GID] && t.GID != m.shownGID {
+			fresh = append(fresh, t)
+		} else {
+			rest = append(rest, t)
+		}
+	}
+	return fresh, rest
+}
+
+// nextNew selects the next ticket with a NEW badge after the cursor,
+// wrapping around.
+func (m *Model) nextNew() tea.Cmd {
+	for step := 1; step <= len(m.visible); step++ {
+		if i := (m.cursor + step) % len(m.visible); m.newBadge(i) != "" {
+			m.moveTo(i)
+			return m.selectionChanged()
+		}
+	}
+	m.status = "no new tickets"
+	return nil
+}
+
+// newHeaderStyle is the New section header: the NEW badge's fill color as
+// text, or its text color when the badge has no fill.
+func newHeaderStyle() lipgloss.Style {
+	c := newStyle.GetBackground()
+	if _, none := c.(lipgloss.NoColor); none {
+		c = newStyle.GetForeground()
+	}
+	return lipgloss.NewStyle().Foreground(c).Bold(true)
 }
 
 func (m *Model) saveSeen() {

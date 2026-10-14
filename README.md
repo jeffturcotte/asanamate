@@ -228,6 +228,10 @@ Fit asanamate to its spot with the `[layout]` table in `config.toml`:
   the reader the rest of the width. `=` and the automatic fitting leave it
   alone. When fewer than 30 columns would be left for the reader beside the
   list and the views panel, the reader hides, as in narrow terminals.
+- `focus.resize = false` keeps the list one width. By default, the list fits
+  full titles while it, the views panel, or the Feed panel has focus, and
+  shrinks to 40-column titles while the reader has focus, giving the reader
+  the rest.
 - `focus.dim = false` keeps every pane at full color. By default, panes
   without focus draw faint; `s`, then `d` toggles it, and the change persists. The focused pane's title is always a filled tab,
   and only that pane shows its headings in color and its selection as a bar.
@@ -239,6 +243,7 @@ list_width = 60
 
 [layout.focus]
 dim = true
+resize = true
 ```
 
 Select `+ Add project` below the ticket's project rows and press `enter` to
@@ -267,6 +272,7 @@ key press.
 | `p` | switch project (recent first) |
 | `I` | open Activity: your actions and changes directly related to you |
 | `H` | ticket history: the last 10 tickets focused in the reader, most recent first; picking one selects it (keeping it in the Viewing section when the view doesn't show it) and focuses the reader |
+| `i` | select the next ticket with a `NEW` badge, wrapping around |
 | `L` | repo links: link, relink, or unlink each project's repo (starts on the viewed project), or give the selected ticket its own repo that overrides its projects' links without changing them |
 | `space`, `a` | run an action on the selected ticket |
 | `A` | create or edit action files (also available in Settings) |
@@ -343,7 +349,9 @@ you last viewed them, including tickets newly assigned to you. The `new` color
 role styles it; the selected row shows it reversed. Asana counts new comments, assignment, completion, and edits
 to the name, due date, description, or custom fields as changes; moving a
 ticket between projects is not. The mark clears once the ticket loads in the
-reader. The first My Tasks load marks nothing.
+reader. The first My Tasks load marks nothing. Press `i` to jump to the next
+marked ticket. Set `list.new.section = true` to list marked tickets first,
+under a **New** header; a ticket you open stays there until you move away.
 
 ## Filtering
 
@@ -543,9 +551,10 @@ once. Run `asanamate doctor` to check a change without starting the TUI.
 | `layout.reader` | `true` | start with the reader beside the list; `z` shows or hides it for the session; `--hide-preview` starts with it hidden. See [Layout](#layout) |
 | `layout.list_width` | `0` | fix the list pane at this many columns (at least 30), borders included, and give the reader the rest; the reader hides when fewer than 30 columns remain for it; `0` sizes the list automatically. See [Layout](#layout) |
 | `layout.focus.dim` | `true` | draw every pane but the focused one faint; the `s` settings menu overrides it and the override persists. See [Layout](#layout) |
+| `layout.focus.resize` | `true` | give the focused pane the room: the list fits its titles while it (or the views or Feed panel) has focus, and shrinks to short titles while the reader has it; does nothing while `layout.list_width` is set. See [Layout](#layout) |
 | `list.layout` | `"single"` | `single` (one line per ticket) or `multi` (title, then fields on a second line) |
 | `list.refresh_interval` | `"30s"` | automatic list reload interval, at least `1s`; durations such as `"15s"` or `"1m"`; `R` or the `s` settings menu overrides it and the override persists, `ctrl+s` applies it; the statusline shows the interval, and an automatic reload marks the list border yellow instead of opening the loading modal |
-| `list.fields` | `["section", "due"]` | default values shown with the title, in aligned columns (`single` layout); `s`, then `c` overrides columns per project; due dates show relative to today and are colored by urgency |
+| `list.fields` | `["section", "due"]` | default values shown with the title, in aligned columns (`single` layout); `s`, then `c` overrides columns per project; due dates show relative to today and are colored by urgency; a column with one value in each group (such as the grouped field) leaves the rows and shows that value once in the group header, or after the count when the list is ungrouped |
 | `branch_field` | `""` | custom field holding the ticket's git branch (`$ASANAMATE_BRANCH`); empty uses the ticket's ID field, else the title slug |
 | `agents.command` | unset (off) | opt-in agent tracking, such as `"asanamate-ccmux"`; see [Agents](#agents-optional) |
 | `symbols` | `unicode` on UTF-8, else `ascii` | `unicode`, `nerd`, or `ascii` for ticket markers and agent states |
@@ -556,6 +565,7 @@ once. Run `asanamate doctor` to check a change without starting the TUI.
 | `list.sort.direction` | `"asc"` | `asc` (earliest dates / A–Z) or `desc` (latest dates / Z–A); missing values always last |
 | `list.header.style` | `"rule"` | group headers: `rule` (`── Label (n) ───`) or `bar` (reversed bar) |
 | `list.header.spacing` | `false` | `true` adds a blank line above and below each group header; the `s` settings menu toggles it and the choice persists |
+| `list.new.section` | `false` | in My Tasks, list tickets with a `NEW` badge first, under a **New** header; a ticket you open stays there until you move away. See [Keys](#keys) |
 | `list.selection.style` | `"marker"` | selected ticket: `marker` (bold title with a left `▌`) or `bar` (reversed row; agent badges swap colors); press `s`, then `l` to toggle it and persist the choice |
 | `reader.view` | `"cards"` | reader's starting view: `cards` (details card, titled sections, one box per comment) or `markdown` (the rendered ticket Markdown); `v` switches and the choice persists |
 | `images.mode` | `"auto"` | kitty graphics: `auto`, `kitty` (force on), or `off` |
@@ -573,6 +583,7 @@ once. Run `asanamate doctor` to check a change without starting the TUI.
 | `repo_source.root` | your setup directory, or empty | directory whose direct children with a `.git` entry (clones and worktrees) fill the repo picker; absolute or starting with `~`; empty: type a path |
 | `repo_source.command` | unset | prints one repo path per line; replaces `repo_source.root` when set; see [Repo sources](docs/extensions.md#repo-sources) |
 | `time_tracking.id` / `time_tracking.command` | unset (off) | provider ID for saved choices and command implementing the [time tracking JSON protocol](docs/extensions.md#time-tracking) |
+| `time_tracking.prompt_after` | `[]` | TUI edits that open the log time form once they succeed: `"assign"` (to someone else) and `"complete"`; `esc` skips it. See [Time tracking](#time-tracking-optional) |
 | `project_links.command` | unset (off) | command implementing the [project links JSON protocol](docs/extensions.md#project-links); its links preselect the repo picker and time form |
 
 The title is always shown. `list.fields` picks the other columns and their
@@ -784,6 +795,11 @@ command = "asanamate-hrvst --task-id YOUR_TASK_ID"
 
 To turn time tracking off, remove the `[time_tracking]` keys.
 
+To be asked for time when you hand a ticket off, add
+`prompt_after = ["assign", "complete"]`. Assigning a ticket to someone else or
+completing it then opens the log time form; `esc` skips it. Unassigning,
+assigning to yourself, and reopening never ask.
+
 Press `t` on a ticket. If ticket belongs to several Asana projects, choose one.
 The form shows the Harvest projects where your task is active, the task under
 its real name, decimal hours, and the date; an error naming the task ID means
@@ -796,9 +812,9 @@ such as `yesterday` (relative dates need GNU date; see the CLI notes in
 Harvest notes contain ticket title; external reference links to Asana ticket
 and chosen Asana project.
 
-The ticket's header shows **Time tracked** with a clock icon below the local
-repo information; the Markdown reader shows an equivalent summary. It shows
-total time first, then today's time: **3h 45m (1h 15m today)**. Today uses your
+The ticket's header shows the time tracked after a clock icon, below the
+local repo information; the Markdown reader shows it as **Time tracked**. It
+shows total time first, then today's time: **3h 45m · 1h 15m today**. Today uses your
 local calendar date and the entry's logged date, so backdated entries count
 only toward the total. Providers without daily totals show only the total.
 Both values use unrounded time from stopped entries linked to that exact ticket,

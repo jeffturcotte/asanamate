@@ -215,6 +215,13 @@ func TestListConfig(t *testing.T) {
 			t.Errorf("colors.viewing %q: expected error naming colors.viewing, got %v", color, err)
 		}
 	}
+	if cfg.List.New.Section {
+		t.Fatal("list.new.section must default to false")
+	}
+	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[list.new]\nsection = true\n"))
+	if err != nil || !cfg.List.New.Section {
+		t.Fatalf("list.new.section: %+v, err = %v", cfg.List.New, err)
+	}
 	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[list]\nlayout = \"multi\"\nfields = [\"status\", \"Branch Name\", \"due\"]\n"))
 	if err != nil || cfg.List.Layout != LayoutMulti || len(cfg.List.Fields) != 3 {
 		t.Fatalf("custom: %+v, err = %v", cfg.List, err)
@@ -230,6 +237,7 @@ func TestListConfig(t *testing.T) {
 		"title group":   "[list]\ngroup_by = \"title\"\n",
 		"bad header":    "[list.header]\nstyle = \"box\"\n",
 		"int spacing":   "[list.header]\nspacing = 1\n",
+		"int new":       "[list.new]\nsection = 1\n",
 		"bad selection": "[list.selection]\nstyle = \"rule\"\n",
 		"bad accent":    "[colors]\naccent = \"blue\"\n",
 		"bad more":      "[colors]\nmore = { bg = \"cyan\" }\n",
@@ -305,6 +313,13 @@ func TestTimeTrackingConfig(t *testing.T) {
 	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[time_tracking]\nid = \"hrvst\"\ncommand = \"asanamate-hrvst --task-id 456\"\n"))
 	if err != nil || !cfg.TimeTrackingEnabled() {
 		t.Fatalf("configured time tracking = %+v, err = %v", cfg.TimeTracking, err)
+	}
+	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[time_tracking]\nid = \"hrvst\"\ncommand = \"p\"\nprompt_after = [\"assign\", \"complete\"]\n"))
+	if err != nil || !cfg.TimeTracking.PromptsAfter(PromptAssign) || !cfg.TimeTracking.PromptsAfter(PromptComplete) {
+		t.Fatalf("prompt_after = %+v, err = %v", cfg.TimeTracking, err)
+	}
+	if _, err := Load(writeFile(t, "workspace = \"1\"\n[time_tracking]\nid = \"hrvst\"\ncommand = \"p\"\nprompt_after = [\"move\"]\n")); err == nil || !strings.Contains(err.Error(), "time_tracking.prompt_after") {
+		t.Fatalf("bad prompt_after: err = %v", err)
 	}
 	for _, body := range []string{"id = \"hrvst\"", "command = \"provider\"", "id = \"hrvst\"\ncommand = \"  \""} {
 		if _, err := Load(writeFile(t, "workspace = \"1\"\n[time_tracking]\n"+body+"\n")); err == nil || !strings.Contains(err.Error(), "time_tracking") {
@@ -574,11 +589,11 @@ func TestKeysConfig(t *testing.T) {
 		t.Fatalf("empty scopes must be dropped: %v", cfg.Keys)
 	}
 
-	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[keys.main]\nactivity = [\"i\"]\n[keys.activity]\nautomated = [\"A\"]\n"))
+	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[keys.main]\nactivity = [\"w\"]\n[keys.activity]\nautomated = [\"A\"]\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Keymap.Name("main", "i") != "activity" || cfg.Keymap.Name("activity", "A") != "automated" || cfg.Keymap.Name("activity", "!") != "" {
+	if cfg.Keymap.Name("main", "w") != "activity" || cfg.Keymap.Name("activity", "A") != "automated" || cfg.Keymap.Name("activity", "!") != "" {
 		t.Fatalf("activity keymap = %v", cfg.Keymap)
 	}
 	_, err = Load(writeFile(t, "workspace = \"1\"\n[keys.main]\ndwon = [\"j\"]\n"))
@@ -600,10 +615,10 @@ func TestPickerConfig(t *testing.T) {
 
 func TestLayoutConfig(t *testing.T) {
 	cfg, err := Load(writeFile(t, "workspace = \"1\"\n"))
-	if err != nil || cfg.Layout != (Layout{Reader: true, Focus: Focus{Dim: true}}) {
+	if err != nil || cfg.Layout != (Layout{Reader: true, Focus: Focus{Dim: true, Resize: true}}) {
 		t.Fatalf("default: %+v, err = %v", cfg.Layout, err)
 	}
-	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[layout]\nreader = false\nlist_width = 60\n[layout.focus]\ndim = false\n"))
+	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[layout]\nreader = false\nlist_width = 60\n[layout.focus]\ndim = false\nresize = false\n"))
 	if err != nil || cfg.Layout != (Layout{ListWidth: 60}) {
 		t.Fatalf("set: %+v, err = %v", cfg.Layout, err)
 	}

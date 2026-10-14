@@ -95,7 +95,19 @@ type TimeTracking struct {
 	ID string `toml:"id"`
 	// Command reads a JSON request from stdin and returns a form spec as JSON.
 	Command string `toml:"command"`
+	// PromptAfter lists the TUI edits that open the log time form once they
+	// succeed: PromptAssign (to someone else) and PromptComplete.
+	PromptAfter []string `toml:"prompt_after"`
 }
+
+// Edits time_tracking.prompt_after accepts.
+const (
+	PromptAssign   = "assign"
+	PromptComplete = "complete"
+)
+
+// PromptsAfter reports whether a successful edit opens the log time form.
+func (t TimeTracking) PromptsAfter(edit string) bool { return slices.Contains(t.PromptAfter, edit) }
 
 func (c Config) TimeTrackingEnabled() bool {
 	return c.TimeTracking.ID != "" && c.TimeTracking.Command != ""
@@ -166,9 +178,12 @@ type Layout struct {
 }
 
 // Focus configures how the focused pane stands out. The focused pane's title
-// is always a filled tab; Dim also draws every other pane faint.
+// is always a filled tab; Dim also draws every other pane faint. Resize gives
+// the focused pane the room: the list fits its titles while it has focus, and
+// shrinks to short titles while the reader has it.
 type Focus struct {
-	Dim bool `toml:"dim"`
+	Dim    bool `toml:"dim"`
+	Resize bool `toml:"resize"`
 }
 
 // List configures how tickets appear in the list. The title is always shown;
@@ -177,14 +192,15 @@ type Focus struct {
 // GroupBy groups tickets under a header per value of one such field; "" is ungrouped.
 type List struct {
 	// RefreshInterval is the automatic list reload interval, at least one second.
-	RefreshInterval string    `toml:"refresh_interval"`
-	Layout          string    `toml:"layout"`
-	Fields          []string  `toml:"fields"`
-	Separator       bool      `toml:"separator"`
-	GroupBy         string    `toml:"group_by"`
-	Sort            Sort      `toml:"sort"`
-	Header          Header    `toml:"header"`
-	Selection       Selection `toml:"selection"`
+	RefreshInterval string     `toml:"refresh_interval"`
+	Layout          string     `toml:"layout"`
+	Fields          []string   `toml:"fields"`
+	Separator       bool       `toml:"separator"`
+	GroupBy         string     `toml:"group_by"`
+	Sort            Sort       `toml:"sort"`
+	Header          Header     `toml:"header"`
+	Selection       Selection  `toml:"selection"`
+	New             NewTickets `toml:"new"`
 }
 
 // Sort orders tickets within each group, or the whole ungrouped list.
@@ -199,6 +215,12 @@ type Sort struct {
 type Header struct {
 	Style   string `toml:"style"`
 	Spacing bool   `toml:"spacing"`
+}
+
+// NewTickets configures My Tasks tickets changed since last viewed, which
+// carry a NEW badge. Section lists them first, under a New header.
+type NewTickets struct {
+	Section bool `toml:"section"`
 }
 
 // Selection configures the selected ticket. Style marks it with a bold title
@@ -323,7 +345,7 @@ func Default() Config {
 		TimeTracking: TimeTracking{},
 		ProjectLinks: ProjectLinks{},
 		Actions:      nil,
-		Layout:       Layout{Reader: true, Focus: Focus{Dim: true}},
+		Layout:       Layout{Reader: true, Focus: Focus{Dim: true, Resize: true}},
 		List: List{
 			RefreshInterval: "30s",
 			Sort:            Sort{By: "", Direction: "asc"},
@@ -439,6 +461,11 @@ func (c Config) validate() error {
 	}
 	if strings.TrimSpace(c.TimeTracking.ID) != c.TimeTracking.ID {
 		return errors.New("time_tracking.id must not have surrounding whitespace")
+	}
+	for _, edit := range c.TimeTracking.PromptAfter {
+		if edit != PromptAssign && edit != PromptComplete {
+			return fmt.Errorf("time_tracking.prompt_after: %q must be %q or %q", edit, PromptAssign, PromptComplete)
+		}
 	}
 	if c.ProjectLinks.Command != "" && strings.TrimSpace(c.ProjectLinks.Command) == "" {
 		return errors.New("project_links.command must not be blank; remove it to turn project links off")

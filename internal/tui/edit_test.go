@@ -354,6 +354,68 @@ func TestWideCardsPutSubtasksBesideDetails(t *testing.T) {
 	}
 }
 
+func TestTimePromptAfterHandoff(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		prompt []string
+		keys   []string
+		want   bool
+	}{
+		{"assign to someone else", []string{config.PromptAssign}, []string{"@", "j", "j", "enter"}, true},
+		{"assign to yourself", []string{config.PromptAssign}, []string{"@", "j", "enter"}, false},
+		{"unassign", []string{config.PromptAssign}, []string{"@", "enter"}, false},
+		{"complete", []string{config.PromptComplete}, []string{"x"}, true},
+		{"assign without the prompt", []string{config.PromptComplete}, []string{"@", "j", "j", "enter"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, writes := editModel(t)
+			m.deps.Config.ConfirmWrites = false
+			m.deps.Config.TimeTracking = config.TimeTracking{ID: "hrvst", Command: "printf '%s' '" + timeFormJSON + "'", PromptAfter: tc.prompt}
+			tk := m.details["1"]
+			tk.PermalinkURL = "https://app.asana.com/0/p1/1"
+			m.details["1"] = tk
+			press(m, tc.keys...)
+			if len(*writes) != 1 {
+				t.Fatalf("writes = %q", *writes)
+			}
+			if got := m.form != nil && strings.HasPrefix(m.form.title, "Log time"); got != tc.want {
+				t.Fatalf("log time form open = %v, want %v (status %q)", got, tc.want, m.status)
+			}
+		})
+	}
+}
+
+func TestDetailsCardLeavesOutNoise(t *testing.T) {
+	m, _ := editModel(t)
+	tk := m.details["1"]
+	tk.PermalinkURL = "https://app.asana.com/0/p1/1"
+	tk.Memberships[0].Project.Name = strings.Repeat("Long project name ", 5)
+	m.fieldLines = map[string]int{}
+	body := ansi.Strip(m.detailsBody(tk, 56, 0))
+	if strings.Contains(body, "URL") || strings.Contains(body, "Status") {
+		t.Fatalf("open ticket shows URL or Status:\n%s", body)
+	}
+	row := slices.IndexFunc(strings.Split(body, "\n"), func(l string) bool { return strings.Contains(l, "Project") })
+	if lines := strings.Split(body, "\n"); row < 0 || !strings.Contains(lines[row], "… / Todo") {
+		t.Fatalf("project row must cut the name and keep the section on one line:\n%s", body)
+	}
+	tk.Completed = true
+	if body := ansi.Strip(m.detailsBody(tk, 56, 0)); !strings.Contains(body, "Status") {
+		t.Fatalf("complete ticket hides Status:\n%s", body)
+	}
+	cardLines(t, m, tk, 60)
+}
+
+func TestAttachmentsListNamesOnly(t *testing.T) {
+	m, _ := editModel(t)
+	tk := m.details["1"]
+	tk.Attachments = []asana.Attachment{{GID: "a", Name: "setup.pdf", Host: "asana", PermanentURL: "https://app.asana.com/app/asana/-/get_asset?asset_id=a"}}
+	body := ansi.Strip(m.renderCards(tk, 60))
+	if !strings.Contains(body, "1. setup.pdf") || strings.Contains(body, "get_asset") {
+		t.Fatalf("attachments must list names without URLs:\n%s", body)
+	}
+}
+
 func TestInlineAddProjectRow(t *testing.T) {
 	for _, tc := range []struct {
 		count   int

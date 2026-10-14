@@ -25,6 +25,7 @@ type readerState struct {
 	viewImages     []asana.Attachment      // images the attachment viewer steps through
 	viewIndex      int                     // viewImages index of the image in the viewer
 	shownGID       string
+	shownWidth     int               // text width shownGID was rendered at
 	shownAgents    string            // agents section rendered for shownGID
 	fieldKey       string            // selected cards view target; "" for none
 	showEmpty      bool              // the cards view lists empty custom fields; resets per ticket
@@ -91,6 +92,7 @@ func (m *Model) renderDetail(keepScroll bool) {
 			content = lipgloss.NewStyle().PaddingLeft(1).Render(m.renderCards(t, width))
 		}
 	}
+	lines := m.reader.TotalLineCount()
 	if content != m.reader.GetContent() {
 		m.reader.SetContent(content)
 	}
@@ -98,11 +100,16 @@ func (m *Model) renderDetail(keepScroll bool) {
 		if line, ok := m.fieldLines[anchor]; anchor != "" && ok {
 			offset += line - anchorLine
 		}
+		// Markdown has no targets to anchor on; a new width keeps the same
+		// share of the ticket above the viewport.
+		if m.readerView == config.ViewMarkdown && width != m.shownWidth && lines > 0 {
+			offset = offset * m.reader.TotalLineCount() / lines
+		}
 		m.reader.SetYOffset(offset)
 	} else {
 		m.reader.GotoTop()
 	}
-	m.shownGID, m.shownAgents = t.GID, section
+	m.shownGID, m.shownAgents, m.shownWidth = t.GID, section, width
 }
 
 // stepField moves the cards view's tabbed-to row by dir, wrapping, and

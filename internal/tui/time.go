@@ -227,11 +227,9 @@ func (m *Model) timeSummary(gid string, styled bool) string {
 			if styled && *today > 0 {
 				label = okStyle.Faint(false).Render(label)
 			}
-			value += " (" + label + ")"
+			value += " · " + label
 		}
-		value += " · visible entries"
 	}
-	value += " · " + ticket.OneLine(m.deps.Config.TimeTracking.ID)
 	if styled {
 		return dimStyle.Render(value)
 	}

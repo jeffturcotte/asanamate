@@ -26,11 +26,12 @@ const (
 	dueNone     = "No due date"
 )
 
-// Section labels for explicit pins, a viewed ticket outside the filter, and
-// tickets of an ungrouped list.
+// Section labels for explicit pins, a viewed ticket outside the filter,
+// changed My Tasks tickets (list.new.section), and tickets of an ungrouped list.
 const (
 	pinnedLabel    = "Pinned"
 	viewingLabel   = "Viewing"
+	newLabel       = "New"
 	ungroupedLabel = "Tickets"
 )
 
@@ -191,15 +192,23 @@ func (m *Model) distant(i int) bool {
 	return m.groups[i] == dueLater || m.groups[i] == dueNone
 }
 
-// groupHeaderWidth is the width that shows a group's header in full, rule or bar.
-func groupHeaderWidth(label string, n int) int {
-	return ansi.StringWidth("── " + label + " (" + strconv.Itoa(n) + ") ─")
+// groupHeaderWidth is the width that shows a group's header in full, rule or
+// bar, with its note.
+func groupHeaderWidth(label string, n int, note string) int {
+	if note != "" {
+		note = " · " + note
+	}
+	return ansi.StringWidth("── " + label + " (" + strconv.Itoa(n) + ")" + note + " ─")
 }
 
 // groupHeader renders a group's header across width in style: a reversed
-// " Label (n)" bar, or a "── Label (n) ───" rule.
-func (m *Model) groupHeader(style lipgloss.Style, label string, n, width int) string {
+// " Label (n)" bar, or a "── Label (n) ───" rule. A note, such as the values
+// its tickets share, follows the count.
+func (m *Model) groupHeader(style lipgloss.Style, label string, n, width int, note string) string {
 	count := " (" + strconv.Itoa(n) + ")"
+	if note != "" {
+		count += " · " + note
+	}
 	if m.deps.Config.List.Header.Style == config.StyleRule {
 		rule := style.UnsetBold()
 		head := rule.Render("── ") + style.Render(label) + rule.Render(count+" ")

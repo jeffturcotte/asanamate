@@ -316,6 +316,22 @@ func TestReaderListsAgentsAndKeepsScroll(t *testing.T) {
 	}
 }
 
+func TestReaderAgentRowsStayOnOneLine(t *testing.T) {
+	for _, width := range []int{160, 70} {
+		m := agentModel(t, config.SymbolsUnicode, true)
+		m.Update(tea.WindowSizeMsg{Width: width, Height: 40})
+		m.Update(detailMsg{gid: "1", ticket: ticket.Ticket{Task: agentTask("feat/x")}})
+		a := titled(agents.Working, "w1", strings.Repeat("Improve SSO OAuth compatibility ", 3))
+		a.Path = "/code/web/feature-3091-masterclass-sso-46450568f0323c4b"
+		m.Update(agentsMsg{list: []agents.Agent{a}})
+		lines := strings.Split(ansi.Strip(m.reader.GetContent()), "\n")
+		i := slices.IndexFunc(lines, func(l string) bool { return strings.Contains(l, "◐ working · Improve") })
+		if i < 0 || !strings.Contains(lines[i], "…") || strings.Contains(lines[i+1], "compatibility") || strings.Contains(lines[i+1], "46450568") {
+			t.Fatalf("width %d: agent row must stay on one line:\n%s", width, strings.Join(lines, "\n"))
+		}
+	}
+}
+
 func TestAgentsOnOtherBranchesHideUntilShown(t *testing.T) {
 	other := func(target, branch string) agents.Agent {
 		a := onBranch(agents.Idle, target)

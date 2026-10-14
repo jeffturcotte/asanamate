@@ -36,7 +36,7 @@ func (m *Model) renderCards(t ticket.Ticket, width int) string {
 		head += "\n" + line
 	}
 	if value := m.timeSummaryStyled(t.GID); value != "" {
-		line := dimStyle.Render(m.sym.icon(iconClock)+"Time tracked · ") + value
+		line := dimStyle.Render(m.sym.icon(iconClock)) + value
 		head += "\n" + ansi.Truncate(line, width, "…")
 	}
 	m.fieldLines, m.fieldEnds = map[string]int{}, map[string]int{}
@@ -58,15 +58,12 @@ func (m *Model) renderCards(t ticket.Ticket, width int) string {
 		agentLines = append(agentLines, style.Render("+ Show "+otherAgents(hidden)))
 	}
 	// markOthers records the Show agents row, the Agents body's last line, for
-	// a body that starts on line and wraps at width.
-	markOthers := func(line, width int) {
+	// a body that starts on line. Each agent row takes one line.
+	markOthers := func(line int) {
 		if hidden == 0 {
 			return
 		}
-		if above := agentLines[:len(agentLines)-1]; len(above) > 0 {
-			line += lipgloss.Height(wrap(strings.Join(above, "\n"), width))
-		}
-		m.fieldLines[otherAgentsKey] = line
+		m.fieldLines[otherAgentsKey] = line + len(agentLines) - 1
 		m.cardTargets = append(m.cardTargets, otherAgentsKey)
 	}
 	subtaskTitle, subtasks := m.subtasks(t)
@@ -92,10 +89,10 @@ func (m *Model) renderCards(t ticket.Ticket, width int) string {
 			key := "section:agents"
 			m.fieldLines[key] = sideLine
 			m.cardTargets = append(m.cardTargets, key)
-			card := m.card(m.sym.robot+"   Agents", wrap(strings.Join(agentLines, "\n"), rightW-4), rightW, m.fieldKey == key)
+			card := m.card(m.sym.robot+"   Agents", cutLines(agentLines, rightW-4), rightW, m.fieldKey == key)
 			side = append(side, card)
 			m.fieldEnds[key] = sideLine + lipgloss.Height(card) - 1
-			markOthers(sideLine+1, rightW-4)
+			markOthers(sideLine + 1)
 			sideLine += lipgloss.Height(card) + 1
 		}
 		if subtasks != "" {
@@ -111,8 +108,8 @@ func (m *Model) renderCards(t ticket.Ticket, width int) string {
 		add("section:description", "Description", m.renderRich(t.HTMLNotes, width))
 	} else {
 		blocks = []string{head, m.card("Details", m.detailsBody(t, width-4, top), width, false)}
-		add("section:agents", "Agents", wrap(strings.Join(agentLines, "\n"), width))
-		markOthers(m.fieldLines["section:agents"]+1, width)
+		add("section:agents", "Agents", cutLines(agentLines, width))
+		markOthers(m.fieldLines["section:agents"] + 1)
 		add("section:description", "Description", m.renderRich(t.HTMLNotes, width))
 		add("section:subtasks", subtaskTitle, wrap(subtasks, width))
 	}
@@ -121,8 +118,7 @@ func (m *Model) renderCards(t ticket.Ticket, width int) string {
 
 	var attachments []string
 	for i, a := range t.Attachments {
-		attachments = append(attachments, fmt.Sprintf("%d. %s%s\n   %s", i+1, m.sym.icon(iconClip), ticket.OneLine(a.Name),
-			dimStyle.Render(ansi.Truncate(ticket.OneLine(ticket.AttachmentURL(a)), width-3, "…"))))
+		attachments = append(attachments, ansi.Truncate(fmt.Sprintf("%d. %s%s", i+1, m.sym.icon(iconClip), ticket.OneLine(a.Name)), width, "…"))
 	}
 	add("section:attachments", fmt.Sprintf("Attachments %d", len(t.Attachments)), strings.Join(attachments, "\n"))
 
@@ -340,9 +336,12 @@ func shortDate(d, today time.Time) string {
 	return d.Format("Jan 2 2006")
 }
 
-// detailMeta inserts the Add project row after the ticket's projects.
+// detailMeta inserts the Add project row after the ticket's projects. It
+// leaves out the URL, which o and y cover, and the Status of an open ticket.
 func detailMeta(t ticket.Ticket) []ticket.Field {
-	rows := t.Meta()
+	rows := slices.DeleteFunc(t.Meta(), func(f ticket.Field) bool {
+		return f.Key == "" && (f.Label == "URL" || f.Label == "Status" && !t.Completed)
+	})
 	index := -1
 	for i, f := range rows {
 		if strings.HasPrefix(f.Key, ticket.KeyProject+":") {
@@ -395,10 +394,17 @@ func (m *Model) detailsBody(t ticket.Ticket, width, top int) string {
 				gid := strings.TrimPrefix(f.Key, ticket.KeyProject+":")
 				for _, membership := range t.Memberships {
 					if membership.Project.GID == gid {
-						value = m.projectLabel(membership.Project, lipgloss.NewStyle())
+						var section string
 						if membership.Section != nil {
-							value += " / " + ticket.Clean(membership.Section.Name)
+							section = " / " + ticket.Clean(membership.Section.Name)
 						}
+						// Cut the project name so its section stays on the row,
+						// unless that leaves too little of the name to read.
+						value = m.projectLabel(membership.Project, lipgloss.NewStyle())
+						if room := width - labelW - 2 - ansi.StringWidth(section); room >= 12 {
+							value = ansi.Truncate(value, room, "…")
+						}
+						value += section
 						break
 					}
 				}
@@ -610,6 +616,15 @@ func wrap(s string, width int) string {
 		return ""
 	}
 	return lipgloss.NewStyle().Width(width).Render(s)
+}
+
+// cutLines joins lines, each cut to width with an ellipsis.
+func cutLines(lines []string, width int) string {
+	out := make([]string, len(lines))
+	for i, l := range lines {
+		out[i] = ansi.Truncate(l, width, "…")
+	}
+	return strings.Join(out, "\n")
 }
 
 func refLines(refs []asana.Ref) string {

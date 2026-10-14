@@ -11,6 +11,7 @@ import (
 	"github.com/sadmachine/asanamate/internal/agents"
 	"github.com/sadmachine/asanamate/internal/asana"
 	"github.com/sadmachine/asanamate/internal/config"
+	"github.com/sadmachine/asanamate/internal/state"
 	"github.com/sadmachine/asanamate/internal/ticket"
 )
 
@@ -23,11 +24,14 @@ type listState struct {
 	groups      []string    // group label per visible task; nil when ungrouped
 	pinnedCount int         // leading visible rows in the Pinned section
 	viewingRow  bool        // visible[pinnedCount] is the temporary ticket, under Viewing
+	newCount    int         // rows after Pinned and Viewing in the New section
+	newHeld     string      // the New ticket being read, kept there until the cursor leaves
 	sortBy      config.Sort // ordering within groups; empty By keeps Asana order
 	groupBy     string      // list field the list is grouped by; "" for none
 	listW       int         // fitted list pane width; 0 for the default split
 	cursor      int
-	cols        []int           // width of each list field column; 0 when empty
+	cols        []int           // width of each list field column; 0 when empty or folded
+	folded      []bool          // list columns whose one value per section shows in its header
 	badgeW      int             // width of the widest agent badge
 	titleW      int             // width of the widest ticket title
 	changed     map[string]bool // My Tasks tickets modified since last shown
@@ -50,6 +54,9 @@ func (m *Model) listTitle() (title, count string) {
 		if m.sym.spinner != nil {
 			count = m.sym.spinner[m.frame%len(m.sym.spinner)] + " " + count
 		}
+	}
+	if note := m.foldedNote(0, ""); m.groups == nil && note != "" && !m.loading {
+		count = note + " · " + count
 	}
 	title = "[1] Tickets · " + m.viewName()
 	if len(m.deps.State.SavedViews) > 0 {
@@ -142,7 +149,15 @@ func (m *Model) listView(width, height int) string {
 		spacing = 1
 	}
 	header := func(i, start int) bool {
-		return m.groups != nil && (i == start || m.groups[i] != m.groups[i-1] || i == m.pinnedCount || m.viewingRow && i == m.pinnedCount+1)
+		if m.groups == nil {
+			return false
+		}
+		if i == start || m.groups[i] != m.groups[i-1] {
+			return true
+		}
+		label, _ := m.retainedSection(i)
+		prev, _ := m.retainedSection(i - 1)
+		return label != prev
 	}
 	above := func(i, start int) int {
 		if i == start {
@@ -194,12 +209,15 @@ func (m *Model) listView(width, height int) string {
 			}
 			if label, n := m.retainedSection(i); label != "" {
 				style := m.viewingStyle
-				if i < m.pinnedCount {
+				switch {
+				case i < m.pinnedCount:
 					style = m.pinnedStyle
+				case label == newLabel:
+					style = newHeaderStyle()
 				}
-				lines = append(lines, m.groupHeader(m.headingStyle(style, m.listFocused()), label, n, width))
+				lines = append(lines, m.groupHeader(m.headingStyle(style, m.listFocused()), label, n, width, m.foldedNote(i, label)))
 			} else {
-				lines = append(lines, m.groupHeader(m.headingStyle(m.groupStyle(m.groups[i]), m.listFocused()), m.groups[i], counts[m.groups[i]], width))
+				lines = append(lines, m.groupHeader(m.headingStyle(m.groupStyle(m.groups[i]), m.listFocused()), m.groups[i], counts[m.groups[i]], width, m.foldedNote(i, m.groups[i])))
 			}
 			for range spacing {
 				lines = append(lines, "")
@@ -293,9 +311,9 @@ func (m *Model) listRow(i int, cols []int) (row []string, tail string) {
 	rc, today := m.rowContext(), m.now()
 	if m.deps.Config.List.Layout == config.LayoutMulti {
 		var parts []string
-		for _, column := range m.listColumns() {
+		for j, column := range m.listColumns() {
 			v, style := columnValue(t, column, rc, today)
-			if v == "" {
+			if v == "" || j < len(m.folded) && m.folded[j] {
 				continue
 			}
 			parts = append(parts, style.Render(v))
@@ -380,6 +398,72 @@ func (m *Model) measureColumns() {
 		}
 		m.badgeW = max(m.badgeW, ansi.StringWidth(m.sym.badge(m.viewAgents(t), 0, false)))
 	}
+	m.folded = m.foldedColumns(columns)
+	for j, folded := range m.folded {
+		if folded {
+			m.cols[j] = 0
+		}
+	}
+}
+
+// sectionKey names the section visible ticket i sits in: Pinned, Viewing,
+// New, its group, or "" for the whole ungrouped list. Retained sections get a
+// prefix so a group named like one stays apart.
+func (m *Model) sectionKey(i int) string {
+	if label, _ := m.retainedSection(i); label != "" {
+		return "\x00" + label
+	}
+	if m.groups == nil {
+		return ""
+	}
+	return m.groups[i]
+}
+
+// foldedColumns reports the list columns that hold one value in each
+// section. Their values show once in the section's header, so the rows leave
+// them out. Nothing folds while every section holds a single ticket.
+func (m *Model) foldedColumns(columns []state.Column) []bool {
+	folded := make([]bool, len(columns))
+	sections := map[string]bool{}
+	for i := range m.visible {
+		sections[m.sectionKey(i)] = true
+	}
+	if len(sections) >= len(m.visible) {
+		return folded
+	}
+	rc, today := m.rowContext(), m.now()
+	for j, column := range columns {
+		values := map[string]string{}
+		folded[j] = true
+		for i, t := range m.visible {
+			v, _ := columnValue(t, column, rc, today)
+			if prev, ok := values[m.sectionKey(i)]; ok && prev != v {
+				folded[j] = false
+				break
+			}
+			values[m.sectionKey(i)] = v
+		}
+	}
+	return folded
+}
+
+// foldedNote lists the folded column values of the section that visible
+// ticket i opens, leaving out a value its header label already shows.
+func (m *Model) foldedNote(i int, label string) string {
+	if i >= len(m.visible) {
+		return ""
+	}
+	var parts []string
+	rc, today := m.rowContext(), m.now()
+	for j, column := range m.listColumns() {
+		if j >= len(m.folded) || !m.folded[j] {
+			continue
+		}
+		if v, _ := columnValue(m.visible[i], column, rc, today); v != "" && !strings.EqualFold(v, label) {
+			parts = append(parts, v)
+		}
+	}
+	return strings.Join(parts, " · ")
 }
 
 // fitList sizes the list pane to its widest row or group header. paneWidths
@@ -391,14 +475,15 @@ func (m *Model) fitList() {
 	}
 	gutter := ansi.StringWidth(m.marker())
 	w := 0
-	if m.viewingRow {
-		w = groupHeaderWidth(viewingLabel, 1)
-	}
-	if m.pinnedCount > 0 {
-		w = max(w, groupHeaderWidth(pinnedLabel, m.pinnedCount))
-	}
-	for label, n := range m.groupCounts() {
-		w = max(w, groupHeaderWidth(label, n))
+	counts := m.groupCounts()
+	for i := range m.visible {
+		if m.groups != nil && (i == 0 || m.sectionKey(i) != m.sectionKey(i-1)) {
+			label, n := m.retainedSection(i)
+			if label == "" {
+				label, n = m.groups[i], counts[m.groups[i]]
+			}
+			w = max(w, groupHeaderWidth(label, n, m.foldedNote(i, label)))
+		}
 	}
 	for i := range m.visible {
 		row, tail := m.listRow(i, m.cols)

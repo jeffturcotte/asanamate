@@ -158,6 +158,7 @@ func handlers() map[string]handler {
 		}},
 		"activity":      {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.openActivity() }},
 		"history":       {splitOnly: true, run: do((*Model).openHistory)},
+		"next_new":      {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.nextNew() }},
 		"action":        {run: menu(func(m *Model) func() { return m.openActionMenu })},
 		"repeat_action": {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.requestMenu(m.repeatAction) }},
 		"pin":           {run: (*Model).togglePin},
@@ -303,6 +304,7 @@ func (m *Model) focusList() {
 	if m.focusReader {
 		m.focusReader = false
 		m.fieldKey = ""
+		m.layout()
 		m.renderDetail(true)
 	}
 }
@@ -321,6 +323,7 @@ func (m *Model) focusReaderPane() {
 	m.focusNav, m.focusFeed = false, false
 	if !m.focusReader {
 		m.focusReader = true
+		m.layout()
 		if !m.stepField(1) {
 			m.renderDetail(true)
 		}
