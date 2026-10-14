@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -54,6 +55,8 @@ const usage = `usage:
   asanamate config update [--yes]                  refresh the config's comments and new defaults,
                                                    keeping your values (old file saved as .<time>.bak)
   asanamate comment [--yes] <gid> <text | ->       comment on a task ("-" reads stdin)
+  asanamate batch   [--yes] <gid> <changes-json | ->
+                                                   validate and submit several task edits
   asanamate edit-comment [--yes] <comment-gid> <text | ->
                                                    replace a comment's text ("-" reads stdin)
   asanamate move    [--yes] [--project <gid> | --my-tasks] <gid> <section>
@@ -92,7 +95,7 @@ func run(args []string) int {
 		err = runSetup(args[1:])
 	case "config":
 		err = runConfig(args[1:])
-	case "comment", "edit-comment", "move", "field":
+	case "comment", "edit-comment", "move", "field", "batch":
 		err = writeCommand(name, args[1:])
 	case "assign", "due", "project":
 		err = writeCommand(name, args[1:])
@@ -206,7 +209,7 @@ func runWrite(name string, args []string, stdin io.Reader, writer func(bool) (wr
 		return err
 	}
 	rest := fs.Args()
-	want := map[string]int{"comment": 2, "edit-comment": 2, "move": 2, "field": 3, "assign": 2, "due": 2, "project add": 2, "project remove": 2, "react": 2}[name]
+	want := map[string]int{"comment": 2, "edit-comment": 2, "batch": 2, "move": 2, "field": 3, "assign": 2, "due": 2, "project add": 2, "project remove": 2, "react": 2}[name]
 	if name == "complete" {
 		want = 1
 	}
@@ -240,6 +243,31 @@ func runWrite(name string, args []string, stdin io.Reader, writer func(bool) (wr
 	}
 	ctx := context.Background()
 	switch name {
+	case "batch":
+		var input io.Reader = strings.NewReader(rest[1])
+		if rest[1] == "-" {
+			input = stdin
+		}
+		decoder := json.NewDecoder(input)
+		decoder.DisallowUnknownFields()
+		var changes []writeback.Change
+		if err := decoder.Decode(&changes); err != nil {
+			return fmt.Errorf("batch changes: %w", err)
+		}
+		var extra any
+		if err := decoder.Decode(&extra); err != io.EOF {
+			return errors.New("batch changes: expected one JSON array")
+		}
+		for _, change := range changes {
+			if change.Project != "" && change.Project != writeback.MyTasks && !asana.ValidGID(change.Project) {
+				return fmt.Errorf("project gid must be numeric, got %q", change.Project)
+			}
+			if (change.Kind == "project_add" || change.Kind == "project_remove") && !asana.ValidGID(change.Target) {
+				return fmt.Errorf("project gid must be numeric, got %q", change.Target)
+			}
+		}
+		_, err := svc.Batch(ctx, gid, changes)
+		return err
 	case "comment", "edit-comment":
 		text := rest[1]
 		if text == "-" {

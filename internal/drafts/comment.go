@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/sadmachine/asanamate/internal/writeback"
 	"golang.org/x/sys/unix"
 )
 
@@ -27,6 +28,10 @@ type Comment struct {
 	// Uncertain is saved before posting. A restart during a write cannot
 	// distinguish a delivered comment from one that never reached Asana.
 	Uncertain bool `json:"uncertain,omitempty"`
+	// Changes and Branch share the comment's save, discard, and recovery lifecycle.
+	Changes      []writeback.Change `json:"changes,omitempty"`
+	ChangeLabels map[string]string  `json:"change_labels,omitempty"`
+	Branch       *string            `json:"branch,omitempty"`
 }
 
 // CommentStore owns one workspace/ticket draft and remembers the version read.

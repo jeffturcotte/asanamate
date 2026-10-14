@@ -337,6 +337,25 @@ or Keep editing. An empty or whitespace-only comment closes without a prompt.
 `ctrl+c` uses the same choices before quitting. Opening the comment editor again
 restores the draft, including after a restart.
 
+Press `e`, then `m` for **Edit multiple** to stage several details on one ticket.
+The modal lists assignee, due date, completion, each project's section, editable
+custom fields, project membership, the local branch, and an optional comment.
+Pick a detail to change it; each picker returns to the same draft. `*` marks a
+pending change. Select **Submit all changes** or press `ctrl+s` to send them.
+Returning a detail to its original value removes its pending change.
+
+The new-comment editor also offers **Assign to**, **Change section**, and
+**Edit all details** below the text. Use `tab`/`shift+tab` to select a control,
+then `enter` to edit it. These changes are optional; `ctrl+s` submits the comment
+and staged details together. A comment is optional when details have changed.
+Save draft and Discard apply to the entire draft, including staged details.
+
+Task edits are validated before writing and sent before the comment. Asana
+receives separate requests, so a submission can partially succeed. On failure,
+the draft keeps the remaining edits and comment; retry skips successful edits.
+The local branch is saved on submission. Comment delivery uncertainty uses the
+same recovery warning described below.
+
 Drafts live in `~/.local/state/asanamate/drafts/comments/` (or under
 `XDG_STATE_HOME/asanamate`), with owner-only permissions. Each JSON snapshot holds
 the text and local image data, so pasted images survive temporary-file cleanup.
@@ -1214,6 +1233,7 @@ steer the agent. Be careful combining this with auto-approved tools.
 
 ```sh
 asanamate comment [--yes] <gid> "Opened PR https://..."   # "-" reads stdin
+asanamate batch [--yes] <gid> '[{"kind":"assign","value":"Ann Lee"},{"kind":"due","value":"2026-10-01"}]'
 asanamate edit-comment [--yes] <comment-gid> "Updated text" # "-" reads stdin
 asanamate move    [--yes] [--project <gid>] <gid> "In Review"
 asanamate move    [--yes] --my-tasks <gid> "Later"          # a section of your My Tasks
@@ -1229,6 +1249,15 @@ asanamate create  [--yes] [--project <gid> [--section "To Do"] | --parent <gid>]
 ```
 
 The TUI's edits run the same code, so each one is also a command here.
+
+`asanamate batch` takes a JSON array, or `-` to read it from stdin. Each change
+has `kind` and `value`. Kinds are `assign`, `due`, `complete` (`"true"` or
+`"false"`), `field` (`target` names the field), `move` (`project` selects the
+project, or `"my_tasks"`), `project_add`, and `project_remove` (`target` is the
+project gid). Empty values clear assignee, due date, or a custom field. Every
+change is validated before the first write, with one confirmation for the batch.
+Writes run in array order and stop on failure; the error reports how many saved.
+Retry only the remaining changes. Comments use `asanamate comment` separately.
 
 To edit a comment in the TUI, select it in the reader, press `enter`, then
 `e` for **Edit**. If the comment preview is clipped, the first `enter` expands
