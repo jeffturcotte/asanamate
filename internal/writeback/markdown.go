@@ -20,7 +20,8 @@ var commentMarkdown = goldmark.New(goldmark.WithExtensions(extension.Strikethrou
 // CommentHTML renders Markdown using only tags supported by Asana stories.
 // Code and links never expand mentions. Raw HTML stays literal. images maps
 // image destinations to the gids of attachments shown inline; other images
-// keep only their alt text. mentioned lists the users tagged, in order.
+// keep only their alt text. asana:<gid> destinations preserve existing resource
+// mentions and inline images. mentioned lists the users tagged, in order.
 func CommentHTML(markdown string, users []asana.Ref, images map[string]string) (string, []asana.Ref) {
 	source := []byte(markdown)
 	doc := commentMarkdown.Parser().Parse(text.NewReader(source))
@@ -112,7 +113,9 @@ func CommentHTML(markdown string, users []asana.Ref, images map[string]string) (
 			}
 		case *ast.Link:
 			destination := html.UnescapeString(string(util.UnescapePunctuations(n.Destination)))
-			if commentLink(&b, destination) {
+			if gid := asanaDestination(destination); gid != "" {
+				b.WriteString(`<a data-asana-gid="` + gid + `"/>`)
+			} else if commentLink(&b, destination) {
 				children(n, false)
 				b.WriteString("</a>")
 			} else {
@@ -129,7 +132,12 @@ func CommentHTML(markdown string, users []asana.Ref, images map[string]string) (
 				b.WriteString("</a>")
 			}
 		case *ast.Image:
-			if gid, ok := images[imageDestination(n)]; ok {
+			destination := imageDestination(n)
+			gid := images[destination]
+			if gid == "" {
+				gid = asanaDestination(destination)
+			}
+			if gid != "" {
 				b.WriteString(`<img data-asana-gid="` + html.EscapeString(gid) + `"/>`)
 			} else {
 				children(n, false)
@@ -178,6 +186,13 @@ func LocalImages(markdown string) []string {
 
 func imageDestination(n *ast.Image) string {
 	return html.UnescapeString(string(util.UnescapePunctuations(n.Destination)))
+}
+
+func asanaDestination(destination string) string {
+	if gid, ok := strings.CutPrefix(destination, "asana:"); ok && asana.ValidGID(gid) {
+		return gid
+	}
+	return ""
 }
 
 // commentLink opens only links with supported, safe absolute destinations.

@@ -59,12 +59,12 @@ func TTYConfirm(question string) (bool, error) {
 type Service struct {
 	Client  *asana.Client
 	Confirm Confirmer
-	// Workspace is where Comment looks up @mentioned users when Users is nil.
+	// Workspace scopes comment @mention lookups when Users is nil.
 	Workspace string
 	// Users are the people a comment can @mention; nil loads them on demand.
 	Users []asana.Ref
 	// Images supplies saved local image data for a draft. Other local images
-	// are read from disk. Comment validates both sources before uploading.
+	// are read from disk. Both sources are validated before uploading.
 	Images map[string][]byte
 }
 
@@ -107,15 +107,42 @@ func (s Service) confirm(question string) error {
 // workspace user becomes a mention that notifies them. Each local image,
 // ![alt](path), is attached to the task and shown inline.
 func (s Service) Comment(ctx context.Context, gid, text string) error {
+	return s.writeComment(ctx, gid, "", text)
+}
+
+// EditComment replaces an editable comment's Markdown, keeping its identity
+// and reactions. Asana's current edit permission is checked before any write.
+func (s Service) EditComment(ctx context.Context, storyGID, text string) error {
+	return s.writeComment(ctx, "", storyGID, text)
+}
+
+func (s Service) writeComment(ctx context.Context, gid, storyGID, text string) error {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return errors.New("comment text is empty")
+	}
+	var original asana.Story
+	if storyGID != "" {
+		var err error
+		original, err = s.Client.Story(ctx, storyGID)
+		if err != nil {
+			return err
+		}
+		if original.Type != "comment" || !original.IsEditable {
+			return errors.New("comment cannot be edited by the authenticated user")
+		}
+		if original.Target != nil {
+			gid = original.Target.GID
+		}
 	}
 	users, err := s.mentionable(ctx, text)
 	if err != nil {
 		return err
 	}
 	paths := LocalImages(text)
+	if len(paths) > 0 && gid == "" {
+		return errors.New("comment's task is unavailable; cannot attach images")
+	}
 	files := make([][]byte, len(paths))
 	for i, p := range paths {
 		data, saved := s.Images[p]
@@ -132,11 +159,16 @@ func (s Service) Comment(ctx context.Context, gid, text string) error {
 	}
 	html, mentioned := CommentHTML(text, users, nil)
 	if s.Confirm != nil {
-		t, err := s.Client.Task(ctx, gid)
-		if err != nil {
-			return err
+		var question string
+		if storyGID != "" {
+			question = fmt.Sprintf("Edit %s's comment %q?\n%s\n", ticket.Author(original), snippet(original.Text), text)
+		} else {
+			t, err := s.Client.Task(ctx, gid)
+			if err != nil {
+				return err
+			}
+			question = fmt.Sprintf("Comment on %q?\n%s\n", t.Name, text)
 		}
-		question := fmt.Sprintf("Comment on %q?\n%s\n", t.Name, text)
 		if len(mentioned) > 0 {
 			names := make([]string, len(mentioned))
 			for i, u := range mentioned {
@@ -151,11 +183,17 @@ func (s Service) Comment(ctx context.Context, gid, text string) error {
 			return err
 		}
 	}
-	if len(paths) == 0 {
-		if html == "<body>"+escapeHTML.Replace(text)+"</body>" {
+	write := func(html string) error {
+		if storyGID != "" {
+			return s.Client.UpdateCommentHTML(ctx, storyGID, html)
+		}
+		if len(paths) == 0 && html == "<body>"+escapeHTML.Replace(text)+"</body>" {
 			return s.Client.AddComment(ctx, gid, text)
 		}
 		return s.Client.AddCommentHTML(ctx, gid, html)
+	}
+	if len(paths) == 0 {
+		return write(html)
 	}
 	// Margin for clock skew between this machine and Asana.
 	since := time.Now().Add(-time.Minute)
@@ -170,11 +208,15 @@ func (s Service) Comment(ctx context.Context, gid, text string) error {
 		images[p] = a.GID
 	}
 	html, _ = CommentHTML(text, users, images)
-	if err := s.Client.AddCommentHTML(ctx, gid, html); err != nil {
+	if err := write(html); err != nil {
 		return err
 	}
 	if err := s.removeAttachedStories(ctx, gid, since, names); err != nil {
-		return fmt.Errorf("comment posted, but removing its separate image entries failed: %w", err)
+		verb := "posted"
+		if storyGID != "" {
+			verb = "updated"
+		}
+		return fmt.Errorf("comment %s, but removing its separate image entries failed: %w", verb, err)
 	}
 	return nil
 }

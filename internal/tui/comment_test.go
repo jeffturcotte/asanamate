@@ -21,6 +21,132 @@ import (
 
 var ctrlD = tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl}
 
+func editableComment() asana.Story {
+	return asana.Story{GID: "9", Type: "comment", IsEditable: true, CreatedBy: &asana.Ref{Name: "Amy"}, HTMLText: "<body><strong>Original</strong></body>"}
+}
+
+func TestCommentEditMenuAndSave(t *testing.T) {
+	m, writes := editModel(t)
+	tk := m.details["1"]
+	tk.Comments = []asana.Story{editableComment()}
+	m.details["1"] = tk
+	m.fieldKey, m.focusReader = "comment:9", true
+	press(m, "enter", "e")
+	if m.input == nil || m.input.area.Value() != "**Original**" || m.composer.storyGID != "9" {
+		t.Fatalf("edit did not preload Markdown: %+v", m.composer)
+	}
+	m.input.area.SetValue("**Updated**")
+	send(m, ctrlS)
+	if m.input != nil || len(*writes) != 1 || !strings.HasPrefix((*writes)[0], "PUT /stories/9 ") {
+		t.Fatalf("input = %v, writes = %v", m.input, *writes)
+	}
+	var body struct {
+		Data map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimPrefix((*writes)[0], "PUT /stories/9 ")), &body); err != nil || body.Data["html_text"] != "<body><strong>Updated</strong></body>" {
+		t.Fatalf("body = %+v, err = %v", body, err)
+	}
+}
+
+func TestCommentEditDraftsAreIndependent(t *testing.T) {
+	m, writes := editModel(t)
+	press(m, "c")
+	m.input.area.SetValue("new comment draft")
+	send(m, ctrlD)
+	m.openCommentEditor("1", editableComment())
+	m.input.area.SetValue("edit draft")
+	send(m, ctrlD)
+	if savedComment(t, m).Text != "new comment draft" || len(*writes) != 0 {
+		t.Fatal("edit draft changed the new-comment draft or wrote to Asana")
+	}
+	m.openCommentEditor("1", asana.Story{GID: "10", HTMLText: "<body>Other comment</body>"})
+	if m.input.area.Value() != "Other comment" {
+		t.Fatal("edit draft leaked into another comment")
+	}
+	press(m, "esc")
+	m.openCommentEditor("1", editableComment())
+	if m.input.area.Value() != "edit draft" {
+		t.Fatal("edit draft not restored")
+	}
+}
+
+func TestCommentEditCancelUnchangedAndRejectEmpty(t *testing.T) {
+	m, writes := editModel(t)
+	m.openCommentEditor("1", editableComment())
+	press(m, "esc")
+	if m.input != nil || len(*writes) != 0 {
+		t.Fatal("unchanged edit did not close quietly")
+	}
+	m.openCommentEditor("1", editableComment())
+	m.input.area.SetValue(" \n ")
+	send(m, ctrlS)
+	if m.input == nil || !strings.Contains(m.input.err, "empty") || len(*writes) != 0 {
+		t.Fatal("empty edit closed or wrote")
+	}
+}
+
+func TestCommentEditFailureKeepsInputAndDraft(t *testing.T) {
+	for _, failure := range []string{"permission", "api"} {
+		t.Run(failure, func(t *testing.T) {
+			m, _ := editModel(t)
+			writes := 0
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet {
+					json.NewEncoder(w).Encode(map[string]any{"data": asana.Story{Type: "comment", IsEditable: failure != "permission"}})
+					return
+				}
+				writes++
+				w.WriteHeader(http.StatusForbidden)
+				io.WriteString(w, `{"errors":[{"message":"Edit denied"}]}`)
+			}))
+			t.Cleanup(srv.Close)
+			m.deps.Client.BaseURL = srv.URL
+			m.openCommentEditor("1", editableComment())
+			m.input.area.SetValue("keep edited text")
+			send(m, ctrlS)
+			if m.input == nil || m.input.area.Value() != "keep edited text" || m.input.err == "" || m.composer.busy {
+				t.Fatal("failed edit lost input or stayed busy")
+			}
+			_, draft, err := drafts.OpenComment(m.deps.StateDir, "w", "story:9")
+			if err != nil || draft.Text != "keep edited text" || draft.Uncertain {
+				t.Fatalf("draft = %+v, err = %v", draft, err)
+			}
+			if (writes == 0) != (failure == "permission") {
+				t.Fatalf("writes = %d after %s", writes, failure)
+			}
+		})
+	}
+}
+
+func TestCommentEditKeepsBusyUntilWriteCompletes(t *testing.T) {
+	m, writes := editModel(t)
+	m.openCommentEditor("1", editableComment())
+	m.input.area.SetValue("edited")
+	_, cmd := m.Update(ctrlS)
+	if cmd == nil || !m.composer.busy {
+		t.Fatal("edit did not start")
+	}
+	press(m, "x", "esc")
+	send(m, ctrlS)
+	if m.input.area.Value() != "edited" || len(*writes) != 0 {
+		t.Fatal("busy editor changed input or duplicated the write")
+	}
+	drain(m, cmd)
+	if m.input != nil || len(*writes) != 1 {
+		t.Fatalf("input = %v, writes = %v", m.input, *writes)
+	}
+}
+
+func TestCommentMenuHidesUnavailableEdit(t *testing.T) {
+	m, _ := editModel(t)
+	c := editableComment()
+	c.IsEditable = false
+	m.openCommentMenu("1", c)
+	if len(m.modal.items) != 1 || m.modal.items[0].Value != commentReact {
+		t.Fatalf("menu = %+v", m.modal.items)
+	}
+}
+
 func savedComment(t *testing.T, m *Model) drafts.Comment {
 	t.Helper()
 	_, draft, err := drafts.OpenComment(m.deps.StateDir, m.deps.Config.Workspace, "1")

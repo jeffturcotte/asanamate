@@ -84,7 +84,7 @@ func (c *Client) Task(ctx context.Context, gid string) (Task, error) {
 
 // Comments returns a task's comment stories, oldest first.
 func (c *Client) Comments(ctx context.Context, gid string) ([]Story, error) {
-	all, err := getAll[Story](ctx, c, "/tasks/"+gid+"/stories", fields("type,created_at,created_by.name,html_text,reaction_summary.variant,reaction_summary.count,reaction_summary.reacted"))
+	all, err := getAll[Story](ctx, c, "/tasks/"+gid+"/stories", fields("type,created_at,created_by.name,text,html_text,is_editable,reaction_summary.variant,reaction_summary.count,reaction_summary.reacted"))
 	if err != nil {
 		return nil, err
 	}
@@ -190,6 +190,11 @@ func (c *Client) AddCommentHTML(ctx context.Context, taskGID, html string) error
 	return c.addStory(ctx, taskGID, map[string]any{"html_text": html})
 }
 
+// UpdateCommentHTML replaces a comment's rich text, keeping its story identity.
+func (c *Client) UpdateCommentHTML(ctx context.Context, storyGID, html string) error {
+	return c.do(ctx, http.MethodPut, "/stories/"+storyGID, nil, map[string]any{"html_text": html}, nil)
+}
+
 func (c *Client) addStory(ctx context.Context, taskGID string, body map[string]any) error {
 	return c.do(ctx, http.MethodPost, "/tasks/"+taskGID+"/stories", nil, body, nil)
 }
@@ -199,9 +204,9 @@ func (c *Client) DeleteStory(ctx context.Context, gid string) error {
 	return c.do(ctx, http.MethodDelete, "/stories/"+gid, nil, nil, nil)
 }
 
-// Story returns one story with its author, text, and reactions.
+// Story returns one story with its author, text, edit permission, target, and reactions.
 func (c *Client) Story(ctx context.Context, gid string) (Story, error) {
-	return getOne[Story](ctx, c, "/stories/"+gid, fields("type,created_by.name,text,reaction_summary.emoji_base,reaction_summary.variant,reaction_summary.count,reaction_summary.reacted"))
+	return getOne[Story](ctx, c, "/stories/"+gid, fields("type,created_by.name,text,html_text,is_editable,target.gid,reaction_summary.emoji_base,reaction_summary.variant,reaction_summary.count,reaction_summary.reacted"))
 }
 
 // SetReaction adds the user's emoji reaction to a story, or removes it when

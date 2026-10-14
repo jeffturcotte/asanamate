@@ -61,6 +61,25 @@ func TestMarkdownStripsControlCharacters(t *testing.T) {
 	}
 }
 
+func TestCommentMarkdown(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		story asana.Story
+		want  string
+	}{
+		{"plain", asana.Story{Text: "Plain text"}, "Plain text"},
+		{"formatting", asana.Story{HTMLText: `<body><strong>Bold</strong> <a href="https://example.com">link</a></body>`}, "**Bold** [link](https://example.com)"},
+		{"mention", asana.Story{HTMLText: `<body><a data-asana-gid="123" data-asana-type="user" href="https://app.asana.com/0/123/list">Amy</a></body>`}, "[Amy](asana:123)"},
+		{"image", asana.Story{HTMLText: `<body><img data-asana-gid="456" src="https://expired.test/image"/></body>`}, "![](asana:456)"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := CommentMarkdown(tt.story); got != tt.want {
+				t.Fatalf("Markdown = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestHTMLToMarkdownAutolinksURLText(t *testing.T) {
 	for in, want := range map[string]string{
 		`<a href="https://google.com">https://google.com</a>`: "<https://google.com>",

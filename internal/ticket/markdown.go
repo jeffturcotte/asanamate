@@ -193,6 +193,43 @@ func HTMLToMarkdown(html string) string {
 
 var markdownConverter = newMarkdownConverter()
 
+// CommentMarkdown prepares a comment for editing. Asana resource links retain
+// their identity as asana:<gid>, including mentions and inline attachments.
+func CommentMarkdown(c asana.Story) string {
+	if strings.TrimSpace(c.HTMLText) == "" {
+		return Clean(c.Text)
+	}
+	md, err := commentConverter.ConvertString(c.HTMLText)
+	if err != nil {
+		return Clean(c.Text)
+	}
+	return Clean(strings.TrimSpace(md))
+}
+
+var commentConverter = func() *converter.Converter {
+	conv := newMarkdownConverter()
+	conv.Register.PreRenderer(editCommentReferences, converter.PriorityEarly)
+	return conv
+}()
+
+func editCommentReferences(_ converter.Context, n *html.Node) {
+	if n.Type == html.ElementNode && (n.Data == "a" || n.Data == "img") {
+		gid := dom.GetAttributeOr(n, "data-asana-gid", "")
+		if asana.ValidGID(gid) {
+			attr := "href"
+			if n.Data == "img" {
+				attr = "src"
+			}
+			// Remove the attributes used by the display renderer to flatten
+			// user mentions, and any expiring attachment download URL.
+			n.Attr = []html.Attribute{{Key: attr, Val: "asana:" + gid}}
+		}
+	}
+	for child := n.FirstChild; child != nil; child = child.NextSibling {
+		editCommentReferences(nil, child)
+	}
+}
+
 // newMarkdownConverter returns the CommonMark converter, rendering user
 // mentions as text and a link whose text is its URL as an autolink.
 func newMarkdownConverter() *converter.Converter {

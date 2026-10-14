@@ -135,10 +135,13 @@ func TestMemberProjectsFiltersByUser(t *testing.T) {
 
 func TestCommentsKeepsOnlyComments(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		io.WriteString(w, `{"data":[{"gid":"1","type":"system"},{"gid":"2","type":"comment","html_text":"<body>hi</body>"}]}`)
+		if !strings.Contains(r.URL.Query().Get("opt_fields"), "is_editable") {
+			t.Error("comment list must request edit permission")
+		}
+		io.WriteString(w, `{"data":[{"gid":"1","type":"system"},{"gid":"2","type":"comment","is_editable":true,"html_text":"<body>hi</body>"}]}`)
 	})
 	comments, err := c.Comments(ctx, "9")
-	if err != nil || len(comments) != 1 || comments[0].GID != "2" {
+	if err != nil || len(comments) != 1 || comments[0].GID != "2" || !comments[0].IsEditable {
 		t.Fatalf("comments = %+v, err = %v", comments, err)
 	}
 }

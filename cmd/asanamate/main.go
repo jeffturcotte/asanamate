@@ -54,6 +54,8 @@ const usage = `usage:
   asanamate config update [--yes]                  refresh the config's comments and new defaults,
                                                    keeping your values (old file saved as .<time>.bak)
   asanamate comment [--yes] <gid> <text | ->       comment on a task ("-" reads stdin)
+  asanamate edit-comment [--yes] <comment-gid> <text | ->
+                                                   replace a comment's text ("-" reads stdin)
   asanamate move    [--yes] [--project <gid> | --my-tasks] <gid> <section>
   asanamate field   [--yes] [--project <gid>] <gid> <field> <value>
                                                    set a custom field ("a, b" for multi-select
@@ -90,7 +92,7 @@ func run(args []string) int {
 		err = runSetup(args[1:])
 	case "config":
 		err = runConfig(args[1:])
-	case "comment", "move", "field":
+	case "comment", "edit-comment", "move", "field":
 		err = writeCommand(name, args[1:])
 	case "assign", "due", "project":
 		err = writeCommand(name, args[1:])
@@ -172,6 +174,10 @@ func newWriter(yes bool) (writeback.Service, error) {
 }
 
 func writeCommand(name string, args []string) error {
+	return runWrite(name, args, os.Stdin, newWriter)
+}
+
+func runWrite(name string, args []string, stdin io.Reader, writer func(bool) (writeback.Service, error)) error {
 	if name == "project" {
 		if len(args) == 0 || (args[0] != "add" && args[0] != "remove") {
 			return fmt.Errorf("project: want add or remove\n%s", usage)
@@ -200,7 +206,7 @@ func writeCommand(name string, args []string) error {
 		return err
 	}
 	rest := fs.Args()
-	want := map[string]int{"comment": 2, "move": 2, "field": 3, "assign": 2, "due": 2, "project add": 2, "project remove": 2, "react": 2}[name]
+	want := map[string]int{"comment": 2, "edit-comment": 2, "move": 2, "field": 3, "assign": 2, "due": 2, "project add": 2, "project remove": 2, "react": 2}[name]
 	if name == "complete" {
 		want = 1
 	}
@@ -208,7 +214,7 @@ func writeCommand(name string, args []string) error {
 		return fmt.Errorf("%s: wrong number of arguments\n%s", name, usage)
 	}
 	gid, noun := rest[0], "task"
-	if name == "react" {
+	if name == "react" || name == "edit-comment" {
 		noun = "comment"
 	}
 	if !asana.ValidGID(gid) {
@@ -228,20 +234,23 @@ func writeCommand(name string, args []string) error {
 		}
 		*project = writeback.MyTasks
 	}
-	svc, err := newWriter(*yes)
+	svc, err := writer(*yes)
 	if err != nil {
 		return err
 	}
 	ctx := context.Background()
 	switch name {
-	case "comment":
+	case "comment", "edit-comment":
 		text := rest[1]
 		if text == "-" {
-			data, err := io.ReadAll(os.Stdin)
+			data, err := io.ReadAll(stdin)
 			if err != nil {
 				return err
 			}
 			text = string(data)
+		}
+		if name == "edit-comment" {
+			return svc.EditComment(ctx, gid, text)
 		}
 		return svc.Comment(ctx, gid, text)
 	case "move":

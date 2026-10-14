@@ -22,6 +22,8 @@ import (
 // Keeping the editor while a write runs prevents failures from losing input.
 type commentComposer struct {
 	gid       string
+	storyGID  string // empty when composing a new comment
+	original  string // initial Markdown, used to close an unchanged edit quietly
 	box       *inputBox
 	store     *drafts.CommentStore
 	images    map[string][]byte
@@ -49,20 +51,33 @@ type commentDoneMsg struct {
 }
 
 func (m *Model) openCommentComposer(t asana.Task) {
-	b := newInputBox("Comment on "+ticket.Clean(t.Name), "comment text")
+	m.openCommentInput(t.GID, "", "Comment on "+ticket.Clean(t.Name), "")
+}
+
+func (m *Model) openCommentEditor(gid string, story asana.Story) {
+	m.openCommentInput(gid, story.GID, "Edit comment by "+ticket.Author(story), ticket.CommentMarkdown(story))
+}
+
+func (m *Model) openCommentInput(gid, storyGID, title, initial string) {
+	b := newInputBox(title, "comment text")
 	b.area.DynamicHeight = true
 	b.area.MinHeight = 10
 	b.area.MaxContentHeight = math.MaxInt
 	b.images = true
-	c := &commentComposer{gid: t.GID, box: b}
-	store, draft, err := drafts.OpenComment(m.deps.StateDir, m.deps.Config.Workspace, t.GID)
+	b.area.SetValue(initial)
+	c := &commentComposer{gid: gid, storyGID: storyGID, original: initial, box: b}
+	identity := gid
+	if storyGID != "" {
+		identity = "story:" + storyGID
+	}
+	store, draft, err := drafts.OpenComment(m.deps.StateDir, m.deps.Config.Workspace, identity)
 	if err != nil {
 		b.err = "loading draft: " + err.Error()
 	} else {
 		c.store, c.images, c.uncertain = store, draft.Images, draft.Uncertain
-		b.area.SetValue(draft.Text)
 		if draft.Text != "" {
-			b.title = "Comment draft on " + ticket.Clean(t.Name)
+			b.area.SetValue(draft.Text)
+			b.title += " (draft)"
 		}
 		c.deliveryHint()
 	}
@@ -78,8 +93,11 @@ func (m *Model) openCommentComposer(t asana.Task) {
 
 func (c *commentComposer) deliveryHint() {
 	c.box.help = ""
+	if c.storyGID != "" {
+		c.box.help = "Existing mentions and images use asana:<gid> links. Keep these links to preserve them."
+	}
 	if c.uncertain {
-		c.box.help = "Delivery uncertain. Check the ticket's comments before posting again."
+		c.box.help = "Delivery uncertain. Check the ticket's comments before submitting again."
 	}
 }
 
@@ -116,7 +134,7 @@ func (m *Model) leaveComment(quit bool) tea.Cmd {
 		return nil
 	}
 	c.quitting = quit
-	if strings.TrimSpace(c.box.area.Value()) == "" {
+	if strings.TrimSpace(c.box.area.Value()) == "" || (c.storyGID != "" && c.box.area.Value() == c.original) {
 		return m.runComment(commentDiscard)
 	}
 	c.confirm = newPicker(pickValue(func(choice string) tea.Cmd {
@@ -143,9 +161,17 @@ func (m *Model) leaveComment(quit bool) tea.Cmd {
 func (m *Model) postComment() tea.Cmd {
 	c := m.composer
 	if strings.TrimSpace(c.box.area.Value()) == "" {
+		if c.storyGID != "" {
+			c.box.err = "comment text is empty"
+			return nil
+		}
 		return m.leaveComment(false)
 	}
 	if c.uncertain {
+		retry := "Post again"
+		if c.storyGID != "" {
+			retry = "Save again"
+		}
 		c.confirm = newPicker(pickValue(func(post bool) tea.Cmd {
 			c.confirm = nil
 			if post {
@@ -154,7 +180,7 @@ func (m *Model) postComment() tea.Cmd {
 			return nil
 		}), "Delivery uncertain: check comments before retrying", []pickItem{
 			{Label: "Keep editing", Value: false},
-			{Label: "Post again", Value: true},
+			{Label: retry, Value: true},
 		})
 		c.confirm.stopSearch()
 		return nil
@@ -179,6 +205,9 @@ func (m *Model) runComment(op commentOperation) tea.Cmd {
 		c.box.help = "Discarding draft…"
 	} else if op == commentPost {
 		c.box.help = "Posting comment…"
+		if c.storyGID != "" {
+			c.box.help = "Updating comment…"
+		}
 	}
 	draft := drafts.Comment{Text: c.box.area.Value(), Images: maps.Clone(c.images), Uncertain: c.uncertain}
 	svc, gid := m.writer(), c.gid
@@ -213,7 +242,11 @@ func (m *Model) runComment(op commentOperation) tea.Cmd {
 			return msg
 		}
 		svc.Images = images
-		msg.err = svc.Comment(ctx, gid, draft.Text)
+		if c.storyGID != "" {
+			msg.err = svc.EditComment(ctx, c.storyGID, draft.Text)
+		} else {
+			msg.err = svc.Comment(ctx, gid, draft.Text)
+		}
 		if msg.err != nil {
 			draft.Uncertain = commentDeliveryUncertain(msg.err)
 			msg.draft = draft
@@ -268,9 +301,16 @@ func (m *Model) commentDone(msg commentDoneMsg) tea.Cmd {
 	case commentDiscard:
 		m.status = "comment draft discarded"
 	case commentPost:
-		cmd := m.editDone(editDoneMsg{gid: c.gid, what: "comment"})
+		what := "comment"
+		if c.storyGID != "" {
+			what = "edit comment"
+		}
+		cmd := m.editDone(editDoneMsg{gid: c.gid, what: what})
 		if msg.cleanup != nil {
 			m.status = "comment posted; removing draft failed: " + msg.cleanup.Error()
+			if c.storyGID != "" {
+				m.status = "comment updated; removing draft failed: " + msg.cleanup.Error()
+			}
 		}
 		return cmd
 	}

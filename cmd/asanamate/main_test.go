@@ -61,6 +61,58 @@ func TestCreateRejectsBadArguments(t *testing.T) {
 	}
 }
 
+func TestEditCommentCLI(t *testing.T) {
+	for _, input := range []string{"**Edited**", "-"} {
+		t.Run(input, func(t *testing.T) {
+			writes := 0
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/stories/9" {
+					t.Errorf("path = %q", r.URL.Path)
+				}
+				if r.Method == http.MethodGet {
+					io.WriteString(w, `{"data":{"type":"comment","is_editable":true}}`)
+					return
+				}
+				writes++
+				var body struct {
+					Data map[string]any `json:"data"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Error(err)
+				}
+				if r.Method != http.MethodPut || body.Data["html_text"] != "<body><strong>Edited</strong></body>" {
+					t.Errorf("%s: %+v", r.Method, body)
+				}
+				io.WriteString(w, `{"data":{}}`)
+			}))
+			t.Cleanup(srv.Close)
+			client := asana.New("tok")
+			client.BaseURL = srv.URL
+			writer := func(yes bool) (writeback.Service, error) {
+				if !yes {
+					t.Error("--yes not forwarded")
+				}
+				return writeback.Service{Client: client}, nil
+			}
+			if err := runWrite("edit-comment", []string{"--yes", "9", input}, strings.NewReader("**Edited**"), writer); err != nil || writes != 1 {
+				t.Fatalf("err = %v, writes = %d", err, writes)
+			}
+		})
+	}
+}
+
+func TestEditCommentCLIRejectsBadArguments(t *testing.T) {
+	for _, args := range [][]string{{}, {"9"}, {"9", "text", "extra"}, {"bad", "text"}} {
+		writer := func(bool) (writeback.Service, error) {
+			t.Fatal("invalid arguments loaded writer")
+			return writeback.Service{}, nil
+		}
+		if err := runWrite("edit-comment", args, strings.NewReader(""), writer); err == nil {
+			t.Errorf("accepted %q", args)
+		}
+	}
+}
+
 func TestCheckFeedsRunsEachFeed(t *testing.T) {
 	var out bytes.Buffer
 	checkFeeds(context.Background(), &out, []string{
