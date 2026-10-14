@@ -291,7 +291,7 @@ func TestHarvestFeedListsTheDaysEntries(t *testing.T) {
 		t.Fatalf("reply = %+v", reply)
 	}
 	linked, unlinked, running := reply.Items[0], reply.Items[1], reply.Items[2]
-	if linked.Text != "1.5h · MOCPA" || linked.TicketGID != "42" || linked.URL != "https://app.asana.com/0/7/42" || linked.Tone != feed.ToneOK {
+	if linked.Text != "1.5h · MOCPA · Fix login" || linked.TicketGID != "42" || linked.URL != "https://app.asana.com/0/7/42" || linked.Tone != feed.ToneOK {
 		t.Errorf("linked = %+v", linked)
 	}
 	if unlinked.Text != "0.75h · Internal · standup notes" || unlinked.TicketGID != "" {

@@ -446,11 +446,13 @@ func harvestFeed(ctx context.Context, configPath, endpoint, date string) (feed.R
 			if entry.Running {
 				item.Text, item.Tone = "running · "+item.Text, feed.ToneWarn
 			}
-			// A linked entry's notes are its ticket's title, which the panel shows.
+			// A linked entry's notes are its ticket's title, kept for tickets
+			// the panel has not loaded.
+			if notes := feed.OneLine(entry.Notes); notes != "" {
+				item.Text += " · " + notes
+			}
 			if ref := entry.Reference; ref != nil && digits(ref.ID) {
 				item.TicketGID, item.URL = ref.ID, ref.Permalink
-			} else if notes := feed.OneLine(entry.Notes); notes != "" {
-				item.Text += " · " + notes
 			}
 			reply.Items = append(reply.Items, item)
 		}

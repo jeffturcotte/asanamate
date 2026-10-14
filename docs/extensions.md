@@ -461,7 +461,8 @@ Each item has:
 asanamate links an item by `ticket_gid`, then `url`, then `branch`: the first
 that names a loaded ticket wins, and with several tickets on one branch, the
 first in the list. A linked item shows its ticket's title after its text,
-and `enter` opens the ticket. An item that links to nothing still shows.
+unless its text already ends with " · " and the title, and `enter` opens
+the ticket. An item that links to nothing still shows.
 
 ```json
 {"source":"ci","summary":"1 failed","icon":"warning","items":[

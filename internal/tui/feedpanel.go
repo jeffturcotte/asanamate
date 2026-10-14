@@ -675,8 +675,11 @@ func (m *Model) feedLine(it feedRow, selected bool, width, timeWidth int) string
 	when := feedTime(it.Time, m.now())
 	source := " " + it.source
 	text := style.Render(it.Text)
+	// Skip the title when the text already ends with it, as Harvest's does.
 	if it.task != nil {
-		text += dimStyle.Render(" · ") + tagTitle(ticket.Clean(it.task.Name), lipgloss.NewStyle())
+		if title := ticket.OneLine(it.task.Name); !strings.HasSuffix(it.Text, " · "+title) {
+			text += dimStyle.Render(" · ") + tagTitle(title, lipgloss.NewStyle())
+		}
 	}
 	room := max(width-timeWidth-2-ansi.StringWidth(source), 1)
 	text = ansi.Truncate(text, room, "…")
