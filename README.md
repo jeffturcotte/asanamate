@@ -796,9 +796,9 @@ such as `yesterday` (relative dates need GNU date; see the CLI notes in
 Harvest notes contain ticket title; external reference links to Asana ticket
 and chosen Asana project.
 
-The ticket's header shows **Time tracked** with a clock icon below the local
-repo information; the Markdown reader shows an equivalent summary. It shows
-total time first, then today's time: **3h 45m (1h 15m today)**. Today uses your
+The ticket's header shows the time tracked after a clock icon, below the
+local repo information; the Markdown reader shows it as **Time tracked**. It
+shows total time first, then today's time: **3h 45m · 1h 15m today**. Today uses your
 local calendar date and the entry's logged date, so backdated entries count
 only toward the total. Providers without daily totals show only the total.
 Both values use unrounded time from stopped entries linked to that exact ticket,
