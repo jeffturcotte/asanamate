@@ -45,11 +45,19 @@ A `v2` or later tag also requires the module path in `go.mod` to end in `/v2`.
 After merging a branch into local `main`, read `git log --oneline <tag>..main`
 and tell the user the pending bump and the version it gives, such as "patch:
 v0.2.0 to v0.2.1". The user often holds several merges for one release, so
-recommend a tag, never create or push one. Say whether this merge raised the
-pending bump; a merge that adds only `none` commits, or no more than the bump
-already pending, needs no new recommendation beyond naming it. Before a tag,
-rename `## Unreleased` in `docs/migrations.md` to the tag's `## vX.Y.Z` (the
-release workflow matches the exact tag); drop the heading if it is empty.
+recommend a tag; tag only when the user asks. Say whether this merge raised
+the pending bump; a merge that adds only `none` commits, or no more than the
+bump already pending, needs no new recommendation beyond naming it.
+
+When the user asks for a release, on local `main`:
+
+1. In `docs/migrations.md`, rename `## Unreleased` to the tag's `## vX.Y.Z`;
+   the release workflow copies only the section whose heading matches the tag
+   exactly. Delete the heading instead if nothing is under it.
+2. Commit it as `docs(migrations): release vX.Y.Z`.
+3. Create an annotated tag: `git tag -a vX.Y.Z -m vX.Y.Z`.
+4. Push `main`, then the tag: `git push origin main vX.Y.Z`. The tag push
+   starts the release workflow.
 
 ## Local config migration
 
