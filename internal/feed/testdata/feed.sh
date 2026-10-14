@@ -5,7 +5,7 @@ request=$(cat)
 printf '%s\n' "$request" >> "$1"
 case $request in
 *'"operation":"feed"'*)
-	printf '%s\n' '{"source":"ci","summary":"1 failed","items":[
+	printf '%s\n' '{"source":"ci","summary":"1 failed","icon":"warning","items":[
 	  {"time":"2026-10-12T14:05:00-04:00","text":"build failed","branch":"feature/x","repo":"/code/web","tone":"error"},
 	  {"time":"2026-10-12T15:30:00-04:00","text":"deploy window","url":"https://example.com/deploys"}]}'
 	;;

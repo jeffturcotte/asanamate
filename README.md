@@ -439,7 +439,8 @@ as current context, not proof of who owned a task when an older event occurred.
 
 A `[3] Feed` panel sits under the ticket list whenever the list has a
 bordered panel. Collapsed, it is one border line with each source's summary,
-such as `3h 10m logged · 4 new · 2 unpushed`. Expanded, it lists:
+such as `3h 10m logged · 4 new · 2 unpushed`, each led by an icon when
+`symbols` draws one (`nerd` draws them all). Expanded, it lists:
 
 - **Upcoming** items from feeds, such as meetings, soonest first under a
   `Next` header, shown as `in 25m`.

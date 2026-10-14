@@ -444,6 +444,7 @@ existing providers could not ignore.
 |---|---|
 | `source` | required, 1 to 8 characters, shown at each item's right edge, such as `ci` |
 | `summary` | optional; joined into the panel's top edge, cut to 24 characters, such as `1 failed` |
+| `icon` | optional: the glyph before `summary`, one of `clock`, `due`, `branch`, `repo`, `clip`, `folder`, `refresh`, `bell`, or `warning`. Glyphs follow `symbols`: `nerd` draws them all, `unicode` and `ascii` only `clock`; an unknown name draws none |
 | `items` | required, may be empty: the feed's lines |
 
 Each item has:
@@ -463,7 +464,7 @@ first in the list. A linked item shows its ticket's title after its text,
 and `enter` opens the ticket. An item that links to nothing still shows.
 
 ```json
-{"source":"ci","summary":"1 failed","items":[
+{"source":"ci","summary":"1 failed","icon":"warning","items":[
   {"time":"2026-10-12T14:05:00-04:00","text":"build failed","branch":"feature/x","tone":"error"},
   {"time":"2026-10-12T15:30:00-04:00","text":"deploy window","url":"https://example.com/deploys"}
 ]}
@@ -484,7 +485,7 @@ counts as failed.
 request=$(cat)
 case $request in
 *'"operation":"feed"'*)
-	printf '%s\n' '{"source":"ci","summary":"1 failed","items":[
+	printf '%s\n' '{"source":"ci","summary":"1 failed","icon":"warning","items":[
 	  {"time":"2026-10-12T14:05:00-04:00","text":"build failed","branch":"feature/x","repo":"/code/web","tone":"error"},
 	  {"time":"2026-10-12T15:30:00-04:00","text":"deploy window","url":"https://example.com/deploys"}]}'
 	;;

@@ -50,10 +50,12 @@ type Item struct {
 	Tone      string    `json:"tone,omitempty"`
 }
 
-// Reply is one feed command's answer.
+// Reply is one feed command's answer. Icon names a glyph that leads the
+// summary, such as "clock"; a name the panel does not know shows none.
 type Reply struct {
 	Source  string `json:"source"`
 	Summary string `json:"summary,omitempty"`
+	Icon    string `json:"icon,omitempty"`
 	Items   []Item `json:"items"`
 }
 
@@ -74,6 +76,7 @@ func Fetch(ctx context.Context, command string, day time.Time) (Reply, error) {
 	var r struct {
 		Source  string  `json:"source"`
 		Summary string  `json:"summary"`
+		Icon    string  `json:"icon"`
 		Items   *[]Item `json:"items"`
 	}
 	if err := json.Unmarshal(out, &r); err != nil {
@@ -86,7 +89,7 @@ func Fetch(ctx context.Context, command string, day time.Time) (Reply, error) {
 	if r.Items == nil {
 		return Reply{}, errors.New("feed: missing items")
 	}
-	reply := Reply{Source: source, Summary: cut(OneLine(r.Summary), MaxSummary), Items: *r.Items}
+	reply := Reply{Source: source, Summary: cut(OneLine(r.Summary), MaxSummary), Icon: OneLine(r.Icon), Items: *r.Items}
 	for i, it := range reply.Items {
 		if it.Time.IsZero() {
 			return Reply{}, fmt.Errorf("feed %s: item %d needs a time", source, i+1)

@@ -423,23 +423,23 @@ func sameDay(a, b time.Time) bool {
 	return ay == by && am == bm && ad == bd
 }
 
-// feedSummary is the collapsed panel's line: each source's summary, or
-// "<source> failed".
+// feedSummary is the collapsed panel's line: each source's summary after
+// its icon, or "<source> failed".
 func (m *Model) feedSummary() string {
 	var parts []string
 	for i, r := range m.feed.feeds {
 		switch {
 		case r.err != "":
-			parts = append(parts, feedName(r.reply.Source, m.deps.Config.Feed.Commands[i])+" failed")
+			parts = append(parts, m.sym.icon(iconWarning)+feedName(r.reply.Source, m.deps.Config.Feed.Commands[i])+" failed")
 		case r.reply.Summary != "":
-			parts = append(parts, r.reply.Summary)
+			parts = append(parts, m.sym.icon(r.reply.Icon)+r.reply.Summary)
 		}
 	}
 	if n := m.activity.newActivity(); n > 0 {
-		parts = append(parts, fmt.Sprintf("%d new", n))
+		parts = append(parts, m.sym.icon(iconBell)+fmt.Sprintf("%d new", n))
 	}
 	if m.feed.unpushed > 0 {
-		parts = append(parts, fmt.Sprintf("%d unpushed", m.feed.unpushed))
+		parts = append(parts, m.sym.icon(iconBranch)+fmt.Sprintf("%d unpushed", m.feed.unpushed))
 	}
 	return strings.Join(parts, " · ")
 }
