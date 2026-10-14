@@ -177,14 +177,15 @@ type Focus struct {
 // GroupBy groups tickets under a header per value of one such field; "" is ungrouped.
 type List struct {
 	// RefreshInterval is the automatic list reload interval, at least one second.
-	RefreshInterval string    `toml:"refresh_interval"`
-	Layout          string    `toml:"layout"`
-	Fields          []string  `toml:"fields"`
-	Separator       bool      `toml:"separator"`
-	GroupBy         string    `toml:"group_by"`
-	Sort            Sort      `toml:"sort"`
-	Header          Header    `toml:"header"`
-	Selection       Selection `toml:"selection"`
+	RefreshInterval string     `toml:"refresh_interval"`
+	Layout          string     `toml:"layout"`
+	Fields          []string   `toml:"fields"`
+	Separator       bool       `toml:"separator"`
+	GroupBy         string     `toml:"group_by"`
+	Sort            Sort       `toml:"sort"`
+	Header          Header     `toml:"header"`
+	Selection       Selection  `toml:"selection"`
+	New             NewTickets `toml:"new"`
 }
 
 // Sort orders tickets within each group, or the whole ungrouped list.
@@ -199,6 +200,12 @@ type Sort struct {
 type Header struct {
 	Style   string `toml:"style"`
 	Spacing bool   `toml:"spacing"`
+}
+
+// NewTickets configures My Tasks tickets changed since last viewed, which
+// carry a NEW badge. Section lists them first, under a New header.
+type NewTickets struct {
+	Section bool `toml:"section"`
 }
 
 // Selection configures the selected ticket. Style marks it with a bold title

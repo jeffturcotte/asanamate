@@ -215,6 +215,13 @@ func TestListConfig(t *testing.T) {
 			t.Errorf("colors.viewing %q: expected error naming colors.viewing, got %v", color, err)
 		}
 	}
+	if cfg.List.New.Section {
+		t.Fatal("list.new.section must default to false")
+	}
+	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[list.new]\nsection = true\n"))
+	if err != nil || !cfg.List.New.Section {
+		t.Fatalf("list.new.section: %+v, err = %v", cfg.List.New, err)
+	}
 	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[list]\nlayout = \"multi\"\nfields = [\"status\", \"Branch Name\", \"due\"]\n"))
 	if err != nil || cfg.List.Layout != LayoutMulti || len(cfg.List.Fields) != 3 {
 		t.Fatalf("custom: %+v, err = %v", cfg.List, err)
@@ -230,6 +237,7 @@ func TestListConfig(t *testing.T) {
 		"title group":   "[list]\ngroup_by = \"title\"\n",
 		"bad header":    "[list.header]\nstyle = \"box\"\n",
 		"int spacing":   "[list.header]\nspacing = 1\n",
+		"int new":       "[list.new]\nsection = 1\n",
 		"bad selection": "[list.selection]\nstyle = \"rule\"\n",
 		"bad accent":    "[colors]\naccent = \"blue\"\n",
 		"bad more":      "[colors]\nmore = { bg = \"cyan\" }\n",
@@ -574,11 +582,11 @@ func TestKeysConfig(t *testing.T) {
 		t.Fatalf("empty scopes must be dropped: %v", cfg.Keys)
 	}
 
-	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[keys.main]\nactivity = [\"i\"]\n[keys.activity]\nautomated = [\"A\"]\n"))
+	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[keys.main]\nactivity = [\"w\"]\n[keys.activity]\nautomated = [\"A\"]\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Keymap.Name("main", "i") != "activity" || cfg.Keymap.Name("activity", "A") != "automated" || cfg.Keymap.Name("activity", "!") != "" {
+	if cfg.Keymap.Name("main", "w") != "activity" || cfg.Keymap.Name("activity", "A") != "automated" || cfg.Keymap.Name("activity", "!") != "" {
 		t.Fatalf("activity keymap = %v", cfg.Keymap)
 	}
 	_, err = Load(writeFile(t, "workspace = \"1\"\n[keys.main]\ndwon = [\"j\"]\n"))

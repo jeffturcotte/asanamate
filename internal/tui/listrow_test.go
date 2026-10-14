@@ -407,6 +407,70 @@ func TestChangedMyTasksRowsMarked(t *testing.T) {
 	}
 }
 
+func TestNewSectionHoldsChangedTickets(t *testing.T) {
+	gids := func(m *Model) string {
+		var out []string
+		for _, t := range m.visible {
+			out = append(out, t.GID)
+		}
+		return strings.Join(out, ",")
+	}
+	for _, on := range []bool{false, true} {
+		a := asana.Task{GID: "1", Name: "A", ModifiedAt: "t1"}
+		b := asana.Task{GID: "2", Name: "B", ModifiedAt: "t1"}
+		c := asana.Task{GID: "3", Name: "C", ModifiedAt: "t1"}
+		m, _ := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle, New: config.NewTickets{Section: on}}})
+		m.Update(tasksMsg{tasks: []asana.Task{a, b, c}})
+		c.ModifiedAt = "t2"
+		m.Update(tasksMsg{tasks: []asana.Task{a, b, c}})
+		if !on {
+			if gids(m) != "1,2,3" {
+				t.Fatalf("section off: order = %s", gids(m))
+			}
+			continue
+		}
+		if label, n := m.retainedSection(0); gids(m) != "3,1,2" || label != newLabel || n != 1 {
+			t.Fatalf("order = %s, section = %q (%d); want C under New", gids(m), label, n)
+		}
+		if got := listLines(m, 20, 6); !slices.ContainsFunc(got, func(l string) bool { return strings.Contains(l, "New (1)") }) {
+			t.Fatalf("New header missing: %q", got)
+		}
+
+		// Reading C keeps it under New, through a refresh, until the cursor leaves.
+		m.cursor = 0
+		m.selectionChanged()
+		m.Update(detailMsg{gid: "3", ticket: ticket.Ticket{Task: c}})
+		m.Update(tasksMsg{tasks: []asana.Task{a, b, c}})
+		if label, _ := m.retainedSection(0); gids(m) != "3,1,2" || label != newLabel {
+			t.Fatalf("read ticket left New early: order = %s", gids(m))
+		}
+		m.Update(key("j"))
+		if sel, _ := m.selected(); gids(m) != "1,2,3" || sel.GID != "1" {
+			t.Fatalf("after moving off: order = %s, selected = %s", gids(m), sel.GID)
+		}
+	}
+}
+
+func TestNextNewSelectsChangedTickets(t *testing.T) {
+	m, _ := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle}})
+	tasks := []asana.Task{{GID: "1", ModifiedAt: "t1"}, {GID: "2", ModifiedAt: "t1"}, {GID: "3", ModifiedAt: "t1"}, {GID: "4", ModifiedAt: "t1"}}
+	m.Update(tasksMsg{tasks: tasks})
+	tasks[1].ModifiedAt, tasks[3].ModifiedAt = "t2", "t2"
+	m.Update(tasksMsg{tasks: tasks})
+	for _, want := range []int{1, 3, 1} {
+		m.Update(key("i"))
+		if m.cursor != want {
+			t.Fatalf("cursor = %d, want %d", m.cursor, want)
+		}
+	}
+	m.viewProject = &asana.Ref{GID: "p"}
+	m.Update(tasksMsg{project: m.viewProject, tasks: tasks})
+	m.Update(key("i"))
+	if m.status != "no new tickets" {
+		t.Fatalf("status = %q", m.status)
+	}
+}
+
 func TestDueGroupsShowUrgency(t *testing.T) {
 	tasks := []asana.Task{
 		{GID: "1", Name: "Late", DueOn: strp("2026-09-27")},

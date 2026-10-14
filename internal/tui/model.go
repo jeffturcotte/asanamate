@@ -708,15 +708,18 @@ func (m *Model) applyFilter() {
 	}
 	visible := filter.Parse(m.filterInput.Value()).Apply(m.tasks, m.agentStates, m.now())
 	visible = slices.DeleteFunc(visible, func(t asana.Task) bool { return slices.Contains(pins, t.GID) })
-	m.visible, m.groups = groupTasks(visible, m.groupBy, m.rowContext(), m.now())
+	fresh, rest := m.splitNew(visible)
+	m.visible, m.groups = groupTasks(rest, m.groupBy, m.rowContext(), m.now())
 	sortTasks(m.visible, m.groups, m.sortBy, m.rowContext())
-	m.pinnedCount, m.viewingRow = len(pinned), false
+	freshLabels := slices.Repeat([]string{newLabel}, len(fresh))
+	sortTasks(fresh, freshLabels, m.sortBy, m.rowContext())
+	m.pinnedCount, m.viewingRow, m.newCount = len(pinned), false, len(fresh)
 	var viewing []asana.Task
 	if t := m.viewing; t != nil && !slices.Contains(pins, t.GID) && !slices.ContainsFunc(visible, func(v asana.Task) bool { return v.GID == t.GID }) {
 		viewing = []asana.Task{*t}
 		m.viewingRow = true
 	}
-	if len(pinned)+len(viewing) > 0 {
+	if len(pinned)+len(viewing)+len(fresh) > 0 {
 		if m.groups == nil {
 			m.groups = slices.Repeat([]string{ungroupedLabel}, len(m.visible))
 		}
@@ -724,8 +727,8 @@ func (m *Model) applyFilter() {
 		if m.viewingRow {
 			labels = append(labels, viewingLabel)
 		}
-		m.visible = append(append(pinned, viewing...), m.visible...)
-		m.groups = append(labels, m.groups...)
+		m.visible = slices.Concat(pinned, viewing, fresh, m.visible)
+		m.groups = slices.Concat(labels, freshLabels, m.groups)
 	}
 	m.measureColumns()
 	if prevGID != "" {
@@ -806,11 +809,20 @@ func (m *Model) selectedDetail() (ticket.Ticket, bool) {
 
 func (m *Model) selectionChanged() tea.Cmd {
 	t, ok := m.selected()
-	if m.viewing != nil && (!ok || t.GID != m.viewing.GID) {
-		// Moving off the viewed ticket drops it unless the view still lists it.
-		m.viewing = nil
+	leftViewing := m.viewing != nil && (!ok || t.GID != m.viewing.GID)
+	leftNew := m.newHeld != "" && (!ok || t.GID != m.newHeld)
+	if leftViewing || leftNew {
+		// Moving off the viewed ticket drops it unless the view still lists
+		// it, and moving off a read New ticket lets it leave New.
+		if leftViewing {
+			m.viewing = nil
+		}
+		m.newHeld = ""
 		m.applyFilter()
 		t, ok = m.selected()
+	}
+	if label, _ := m.retainedSection(m.cursor); ok && label == newLabel {
+		m.newHeld = t.GID
 	}
 	if !ok {
 		m.shownGID = ""

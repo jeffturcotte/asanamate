@@ -26,11 +26,12 @@ const (
 	dueNone     = "No due date"
 )
 
-// Section labels for explicit pins, a viewed ticket outside the filter, and
-// tickets of an ungrouped list.
+// Section labels for explicit pins, a viewed ticket outside the filter,
+// changed My Tasks tickets (list.new.section), and tickets of an ungrouped list.
 const (
 	pinnedLabel    = "Pinned"
 	viewingLabel   = "Viewing"
+	newLabel       = "New"
 	ungroupedLabel = "Tickets"
 )
 

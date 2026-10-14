@@ -378,6 +378,12 @@ spacing = false
 # Selected ticket: "marker" (bold title with a left marker) or "bar" (reversed row).
 style = "marker"
 
+[list.new]
+# My Tasks tickets changed since you last viewed them carry a NEW badge.
+# List them first, under a New header; a ticket you open stays there until
+# you move away.
+section = false
+
 [reader]
 # Starting view for the reading pane; press v to switch. "cards": sections
 # and boxed comments. "markdown": the rendered ticket Markdown.

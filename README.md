@@ -267,6 +267,7 @@ key press.
 | `p` | switch project (recent first) |
 | `I` | open Activity: your actions and changes directly related to you |
 | `H` | ticket history: the last 10 tickets focused in the reader, most recent first; picking one selects it (keeping it in the Viewing section when the view doesn't show it) and focuses the reader |
+| `i` | select the next ticket with a `NEW` badge, wrapping around |
 | `L` | repo links: link, relink, or unlink each project's repo (starts on the viewed project), or give the selected ticket its own repo that overrides its projects' links without changing them |
 | `space`, `a` | run an action on the selected ticket |
 | `A` | create or edit action files (also available in Settings) |
@@ -343,7 +344,9 @@ you last viewed them, including tickets newly assigned to you. The `new` color
 role styles it; the selected row shows it reversed. Asana counts new comments, assignment, completion, and edits
 to the name, due date, description, or custom fields as changes; moving a
 ticket between projects is not. The mark clears once the ticket loads in the
-reader. The first My Tasks load marks nothing.
+reader. The first My Tasks load marks nothing. Press `i` to jump to the next
+marked ticket. Set `list.new.section = true` to list marked tickets first,
+under a **New** header; a ticket you open stays there until you move away.
 
 ## Filtering
 
@@ -556,6 +559,7 @@ once. Run `asanamate doctor` to check a change without starting the TUI.
 | `list.sort.direction` | `"asc"` | `asc` (earliest dates / A–Z) or `desc` (latest dates / Z–A); missing values always last |
 | `list.header.style` | `"rule"` | group headers: `rule` (`── Label (n) ───`) or `bar` (reversed bar) |
 | `list.header.spacing` | `false` | `true` adds a blank line above and below each group header; the `s` settings menu toggles it and the choice persists |
+| `list.new.section` | `false` | in My Tasks, list tickets with a `NEW` badge first, under a **New** header; a ticket you open stays there until you move away. See [Keys](#keys) |
 | `list.selection.style` | `"marker"` | selected ticket: `marker` (bold title with a left `▌`) or `bar` (reversed row; agent badges swap colors); press `s`, then `l` to toggle it and persist the choice |
 | `reader.view` | `"cards"` | reader's starting view: `cards` (details card, titled sections, one box per comment) or `markdown` (the rendered ticket Markdown); `v` switches and the choice persists |
 | `images.mode` | `"auto"` | kitty graphics: `auto`, `kitty` (force on), or `off` |

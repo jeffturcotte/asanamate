@@ -23,6 +23,8 @@ type listState struct {
 	groups      []string    // group label per visible task; nil when ungrouped
 	pinnedCount int         // leading visible rows in the Pinned section
 	viewingRow  bool        // visible[pinnedCount] is the temporary ticket, under Viewing
+	newCount    int         // rows after Pinned and Viewing in the New section
+	newHeld     string      // the New ticket being read, kept there until the cursor leaves
 	sortBy      config.Sort // ordering within groups; empty By keeps Asana order
 	groupBy     string      // list field the list is grouped by; "" for none
 	listW       int         // fitted list pane width; 0 for the default split
@@ -142,7 +144,15 @@ func (m *Model) listView(width, height int) string {
 		spacing = 1
 	}
 	header := func(i, start int) bool {
-		return m.groups != nil && (i == start || m.groups[i] != m.groups[i-1] || i == m.pinnedCount || m.viewingRow && i == m.pinnedCount+1)
+		if m.groups == nil {
+			return false
+		}
+		if i == start || m.groups[i] != m.groups[i-1] {
+			return true
+		}
+		label, _ := m.retainedSection(i)
+		prev, _ := m.retainedSection(i - 1)
+		return label != prev
 	}
 	above := func(i, start int) int {
 		if i == start {
@@ -194,8 +204,11 @@ func (m *Model) listView(width, height int) string {
 			}
 			if label, n := m.retainedSection(i); label != "" {
 				style := m.viewingStyle
-				if i < m.pinnedCount {
+				switch {
+				case i < m.pinnedCount:
 					style = m.pinnedStyle
+				case label == newLabel:
+					style = newHeaderStyle()
 				}
 				lines = append(lines, m.groupHeader(m.headingStyle(style, m.listFocused()), label, n, width))
 			} else {
