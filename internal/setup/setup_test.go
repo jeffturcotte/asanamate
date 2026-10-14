@@ -52,8 +52,16 @@ func TestRunWritesLoadableConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generated config does not load: %v", err)
 	}
-	if cfg.Workspace != "w2" || cfg.RepoSource.Root != root || cfg.RepoSource.Command != "" || len(cfg.Actions) != 1 {
+	if cfg.Workspace != "w2" || cfg.RepoSource.Root != root || cfg.RepoSource.Command != "" || len(cfg.Actions) != 0 {
 		t.Fatalf("cfg = %+v", cfg)
+	}
+	// The pager action is an example, so a fresh install needs no pager.
+	actions := config.ActionsDir(o.ConfigPath)
+	if err := os.Rename(filepath.Join(actions, "pager.toml.example"), filepath.Join(actions, "pager.toml")); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, err := config.Load(o.ConfigPath); err != nil || len(cfg.Actions) != 1 || cfg.Actions[0].Key != "v" {
+		t.Fatalf("enabled pager example: actions = %+v, err = %v", cfg.Actions, err)
 	}
 	info, _ := os.Stat(o.ConfigPath)
 	if info.Mode().Perm() != 0o600 {
@@ -66,7 +74,8 @@ func TestRunWritesLoadableConfig(t *testing.T) {
 	}
 }
 
-// Setup never overwrites action files, and the example works once renamed.
+// Setup never overwrites action files, skips the example of an enabled one,
+// and the example works once renamed.
 func TestRunKeepsActionsAndExampleLoads(t *testing.T) {
 	root := t.TempDir()
 	o, _ := options(t, "2\n"+root+"\n")
@@ -79,6 +88,9 @@ func TestRunKeepsActionsAndExampleLoads(t *testing.T) {
 	}
 	if data, _ := os.ReadFile(filepath.Join(dir, "pager.toml")); string(data) != mine {
 		t.Fatalf("action overwritten: %q", data)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "pager.toml.example")); err == nil {
+		t.Fatal("wrote pager.toml.example next to an enabled pager.toml")
 	}
 	if err := os.Rename(filepath.Join(dir, "claude-tmux.toml.example"), filepath.Join(dir, "claude-tmux.toml")); err != nil {
 		t.Fatal(err)
@@ -106,21 +118,6 @@ func TestRunSkipsRepoRoot(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "type a repo path when an action asks") {
 		t.Errorf("output does not explain the skipped repo picker:\n%s", out)
-	}
-}
-
-func TestWarnMissingPager(t *testing.T) {
-	var out strings.Builder
-	t.Setenv("PAGER", "no-such-pager-asanamate --flag")
-	warnMissingPager(&out)
-	if !strings.Contains(out.String(), `pager "no-such-pager-asanamate" not found`) {
-		t.Errorf("missing pager warning:\n%s", out.String())
-	}
-	out.Reset()
-	t.Setenv("PAGER", "sh -c")
-	warnMissingPager(&out)
-	if out.Len() != 0 {
-		t.Errorf("warned about an installed pager:\n%s", out.String())
 	}
 }
 
