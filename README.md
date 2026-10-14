@@ -16,11 +16,11 @@ and coding agents can do what you can. macOS and Linux only.
   [Layout](#layout).
 - **Edit** a ticket: comment (with images), move it to a section, assign or
   unassign it, set its due date or a custom field, add or remove projects, and
-  mark it complete or reopen it. React to a comment with an emoji. See
+  mark it complete or reopen it. Edit your comments or react with an emoji. See
   [Keys](#keys).
 - **Create** a ticket in a project or My Tasks, or a subtask. See
   [Keys](#keys).
-- **Script** every edit and create from the CLI: `asanamate comment`, `move`,
+- **Script** every edit and create from the CLI: `asanamate comment`, `edit-comment`, `move`,
   `field`, `assign`, `due`, `project`, `complete`, `react`, and `create`. See
   [Writing back to Asana](#writing-back-to-asana).
 - **Act** on a ticket: run your own commands with the ticket as context, such
@@ -1214,6 +1214,7 @@ steer the agent. Be careful combining this with auto-approved tools.
 
 ```sh
 asanamate comment [--yes] <gid> "Opened PR https://..."   # "-" reads stdin
+asanamate edit-comment [--yes] <comment-gid> "Updated text" # "-" reads stdin
 asanamate move    [--yes] [--project <gid>] <gid> "In Review"
 asanamate move    [--yes] --my-tasks <gid> "Later"          # a section of your My Tasks
 asanamate field   [--yes] [--project <gid>] <gid> "Branch Name" feature/fix-login
@@ -1228,6 +1229,22 @@ asanamate create  [--yes] [--project <gid> [--section "To Do"] | --parent <gid>]
 ```
 
 The TUI's edits run the same code, so each one is also a command here.
+
+To edit a comment in the TUI, select it in the reader, press `enter`, then
+`e` for **Edit**. If the comment preview is clipped, the first `enter` expands
+it; press `enter` again for the menu. Edit appears only when Asana allows you
+to edit that comment.
+The editor starts with the comment's Markdown; submit saves to the same
+comment, keeping its reactions. Failed saves keep your text. Edit drafts are
+saved separately for each comment and do not replace a new-comment draft.
+`asanamate edit-comment` replaces a comment's text by gid; `asanamate show
+--format json <gid>` lists comment gids under `comments`. Both entry points
+check Asana's current edit permission before writing and reject empty text.
+
+Existing mentions and inline images use `[name](asana:<gid>)` and
+`![](asana:<gid>)` in the edit box. Keep these links to preserve their Asana
+identity; remove them to remove the mention or inline image. Formatting,
+ordinary links, `@Full Name`, and local image uploads work like new comments.
 
 `asanamate create` prints only the new ticket's gid, so scripts can chain it
 (`gid=$(asanamate create --yes "Fix login")`). Without `--project` or

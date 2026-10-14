@@ -15,6 +15,7 @@ import (
 
 	"github.com/sadmachine/asanamate/internal/asana"
 	"github.com/sadmachine/asanamate/internal/dateinput"
+	"github.com/sadmachine/asanamate/internal/ticket"
 )
 
 const taskJSON = `{"data":{"gid":"1","name":"Fix login",
@@ -39,6 +40,8 @@ func fake(t *testing.T) (*asana.Client, *[]write) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/tasks/1":
 			io.WriteString(w, taskJSON)
+		case r.Method == http.MethodGet && r.URL.Path == "/stories/9":
+			io.WriteString(w, `{"data":{"gid":"9","type":"comment","is_editable":true,"text":"Original","created_by":{"gid":"7","name":"Amy"},"target":{"gid":"1"}}}`)
 		case r.Method == http.MethodGet && r.URL.Path == "/projects/p1/sections":
 			io.WriteString(w, `{"data":[{"gid":"s1","name":"To Do"},{"gid":"s2","name":"In Review"}]}`)
 		case r.Method == http.MethodGet && r.URL.Path == "/tasks/2":
@@ -104,6 +107,86 @@ func TestCommentPosts(t *testing.T) {
 	}
 	if len(*writes) != 1 || (*writes)[0].path != "/tasks/1/stories" || (*writes)[0].body["text"] != "PR: https://x" {
 		t.Fatalf("writes = %+v", *writes)
+	}
+}
+
+func TestEditCommentPreservesStoryAndRichContent(t *testing.T) {
+	c, writes := fake(t)
+	original := asana.Story{HTMLText: `<body><strong>Before</strong> <a data-asana-gid="7" data-asana-type="user" href="https://app.asana.com/0/7/list">Amy</a><img data-asana-gid="123" src="https://expired.test/image"/></body>`}
+	text := strings.Replace(ticket.CommentMarkdown(original), "Before", "After", 1)
+	var question string
+	svc := Service{Client: c, Confirm: func(p string) (bool, error) { question = p; return true, nil }}
+	if err := svc.EditComment(ctx, "9", "  "+text+"\n"); err != nil {
+		t.Fatal(err)
+	}
+	if len(*writes) != 1 {
+		t.Fatalf("writes = %+v", *writes)
+	}
+	w := (*writes)[0]
+	if w.method != http.MethodPut || w.path != "/stories/9" || len(w.body) != 1 {
+		t.Fatalf("edit must update only the existing story's text: %+v", w)
+	}
+	html, _ := w.body["html_text"].(string)
+	for _, want := range []string{"<strong>After</strong>", `<a data-asana-gid="7"/>`, `<img data-asana-gid="123"/>`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("html = %q, missing %q (Markdown %q)", html, want, text)
+		}
+	}
+	if !strings.Contains(question, "Amy") || !strings.Contains(question, "Original") || !strings.Contains(question, "After") {
+		t.Fatalf("confirmation = %q", question)
+	}
+}
+
+func TestEditCommentDeclineAndEmptyDoNotWrite(t *testing.T) {
+	c, writes := fake(t)
+	svc := Service{Client: c, Confirm: func(string) (bool, error) { return false, nil }}
+	if err := svc.EditComment(ctx, "9", "new"); !errors.Is(err, ErrDeclined) {
+		t.Fatalf("decline = %v", err)
+	}
+	if err := svc.EditComment(ctx, "9", " \n "); err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Fatalf("empty = %v", err)
+	}
+	if len(*writes) != 0 {
+		t.Fatalf("writes = %+v", *writes)
+	}
+}
+
+func TestEditCommentChecksCurrentPermission(t *testing.T) {
+	for _, story := range []string{
+		`{"type":"comment","is_editable":false}`,
+		`{"type":"system","is_editable":true}`,
+	} {
+		t.Run(story, func(t *testing.T) {
+			writes := 0
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet {
+					writes++
+				}
+				io.WriteString(w, `{"data":`+story+`}`)
+			}))
+			t.Cleanup(srv.Close)
+			c := asana.New("tok")
+			c.BaseURL = srv.URL
+			svc := Service{Client: c, Images: map[string][]byte{"shot.png": []byte("\x89PNG\r\n\x1a\nimage")}}
+			if err := svc.EditComment(ctx, "9", "![](shot.png)"); err == nil || !strings.Contains(err.Error(), "cannot be edited") || writes != 0 {
+				t.Fatalf("err = %v, writes = %d", err, writes)
+			}
+		})
+	}
+}
+
+func TestEditCommentUploadsImagesToItsTask(t *testing.T) {
+	c, writes := fake(t)
+	svc := Service{Client: c, Images: map[string][]byte{"shot.png": []byte("\x89PNG\r\n\x1a\nimage")}}
+	if err := svc.EditComment(ctx, "9", "![](asana:123) ![](shot.png)"); err != nil {
+		t.Fatal(err)
+	}
+	if len(*writes) != 3 || (*writes)[0].path != "/attachments" || (*writes)[0].body["parent"] != "1" || (*writes)[1].method != http.MethodPut || (*writes)[1].path != "/stories/9" || (*writes)[2].path != "/stories/st1" {
+		t.Fatalf("writes = %+v", *writes)
+	}
+	html := (*writes)[1].body["html_text"].(string)
+	if !strings.Contains(html, `data-asana-gid="123"`) || !strings.Contains(html, `data-asana-gid="a1"`) {
+		t.Fatalf("images = %q", html)
 	}
 }
 

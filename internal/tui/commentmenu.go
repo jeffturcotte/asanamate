@@ -12,7 +12,10 @@ import (
 
 type commentOp int
 
-const commentReact commentOp = iota
+const (
+	commentReact commentOp = iota
+	commentEdit
+)
 
 // quickReactions are the emoji the react picker offers on every comment.
 var quickReactions = []struct{ emoji, name string }{
@@ -22,16 +25,20 @@ var quickReactions = []struct{ emoji, name string }{
 
 // openCommentMenu lists what can be done to comment c of the ticket with gid.
 func (m *Model) openCommentMenu(gid string, c asana.Story) {
+	items := []pickItem{{Label: "React", Key: "r", Value: commentReact}}
+	if c.IsEditable {
+		items = append(items, pickItem{Label: "Edit", Key: "e", Value: commentEdit})
+	}
 	p := newPicker(pickValue(func(op commentOp) tea.Cmd {
 		m.modal = nil
 		switch op {
 		case commentReact:
 			m.openReactPicker(gid, c)
+		case commentEdit:
+			m.openCommentEditor(gid, c)
 		}
 		return nil
-	}), "Comment by "+ticket.Author(c), []pickItem{
-		{Label: "React", Key: "r", Value: commentReact},
-	})
+	}), "Comment by "+ticket.Author(c), items)
 	p.keySelect = true
 	m.modal = p
 }

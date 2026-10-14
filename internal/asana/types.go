@@ -220,6 +220,8 @@ type Story struct {
 	CreatedBy       *Ref        `json:"created_by,omitempty"`
 	Text            string      `json:"text"`
 	HTMLText        string      `json:"html_text"`
+	IsEditable      bool        `json:"is_editable"` // the authenticated user can edit this story
+	Target          *Ref        `json:"target,omitempty"`
 	Assignee        *Ref        `json:"assignee,omitempty"`
 	OldDates        *StoryDates `json:"old_dates,omitempty"`
 	NewDates        *StoryDates `json:"new_dates,omitempty"`

@@ -26,6 +26,10 @@ func TestCommentMarkdown(t *testing.T) {
 		{"[go](https://example.com/?a=1&b=2)", "<body><a href=\"https://example.com/?a=1&amp;b=2\">go</a></body>", 0},
 		{"[bad](javascript:alert(1))", "<body>bad</body>", 0},
 		{"[bad](https:relative)", "<body>bad</body>", 0},
+		{"[Amy](asana:7) ![](asana:123)", `<body><a data-asana-gid="7"/> <img data-asana-gid="123"/></body>`, 0},
+		{"[bad](asana:abc) ![bad](asana:abc)", "<body>bad bad</body>", 0},
+		{"[bad](asana:123/path)", "<body>bad</body>", 0},
+		{"`[Amy](asana:7)`", "<body><code>[Amy](asana:7)</code></body>", 0},
 		{"<https://example.com>", "<body><a href=\"https://example.com\">https://example.com</a></body>", 0},
 		{"<sam@example.com>", "<body><a href=\"mailto:sam@example.com\">sam@example.com</a></body>", 0},
 		{"# Header", "<body><strong>Header</strong></body>", 0},
@@ -93,7 +97,7 @@ func TestCommentMarkdownCodeMentions(t *testing.T) {
 }
 
 func TestLocalImages(t *testing.T) {
-	got := LocalImages("![a](shot.png) ![b](<~/My Shots/x.png>) ![c](https://example.com/c.png) ![d](shot.png) `![e](code.png)`")
+	got := LocalImages("![a](shot.png) ![b](<~/My Shots/x.png>) ![c](https://example.com/c.png) ![d](shot.png) `![e](code.png)` ![](asana:123)")
 	want := []string{"shot.png", "~/My Shots/x.png"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("LocalImages = %q; want %q", got, want)

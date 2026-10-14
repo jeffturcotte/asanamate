@@ -27,6 +27,8 @@ func editModel(t *testing.T) (*Model, *[]string) {
 		switch {
 		case r.URL.Path == "/users/me":
 			io.WriteString(w, `{"data":{"gid":"u1"}}`)
+		case r.URL.Path == "/stories/9" && r.Method == http.MethodGet:
+			io.WriteString(w, `{"data":{"gid":"9","type":"comment","is_editable":true,"target":{"gid":"1"}}}`)
 		case r.URL.Path == "/projects":
 			io.WriteString(w, `{"data":[{"gid":"p1","name":"Web","members":[{"gid":"u1"}]},{"gid":"p2","name":"API","members":[{"gid":"u1"}]}]}`)
 		case r.URL.Path == "/workspaces/w/users":
