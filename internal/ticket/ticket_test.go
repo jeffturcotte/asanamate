@@ -127,6 +127,14 @@ func TestHTMLToMarkdownCodeBlocks(t *testing.T) {
 	}
 }
 
+func TestHTMLToMarkdownKeepsNewlines(t *testing.T) {
+	html := "<body><strong>Q?</strong>\nAnswer.\n\nNext.\n\n<ul><li>a</li><li>b</li></ul>\nAfter.</body>"
+	want := "**Q?**  \nAnswer.\n\nNext.\n\n- a\n- b\n\nAfter."
+	if got := HTMLToMarkdown(html); got != want {
+		t.Fatalf("HTMLToMarkdown = %q, want %q", got, want)
+	}
+}
+
 func TestJSONFlattensTaskAndIncludesExtras(t *testing.T) {
 	b, err := json.Marshal(sample())
 	if err != nil {

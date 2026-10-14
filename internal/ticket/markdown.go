@@ -202,7 +202,33 @@ func newMarkdownConverter() *converter.Converter {
 	))
 	conv.Register.RendererFor("a", converter.TagTypeInline, renderLink, converter.PriorityEarly)
 	conv.Register.PreRenderer(normalizeCodeBlocks, converter.PriorityEarly)
+	conv.Register.PreRenderer(newlinesToBreaks, converter.PriorityStandard)
 	return conv
+}
+
+// Asana rich text marks line breaks with literal newlines, which HTML treats
+// as spaces. Turn them into br tags outside code blocks.
+func newlinesToBreaks(_ converter.Context, n *html.Node) {
+	if n.Type == html.ElementNode && n.Data == "pre" {
+		return
+	}
+	for child := n.FirstChild; child != nil; {
+		next := child.NextSibling
+		if child.Type == html.TextNode && strings.Contains(child.Data, "\n") {
+			for i, line := range strings.Split(child.Data, "\n") {
+				if i > 0 {
+					n.InsertBefore(&html.Node{Type: html.ElementNode, Data: "br", DataAtom: atom.Br}, child)
+				}
+				if line != "" {
+					n.InsertBefore(&html.Node{Type: html.TextNode, Data: line}, child)
+				}
+			}
+			n.RemoveChild(child)
+		} else {
+			newlinesToBreaks(nil, child)
+		}
+		child = next
+	}
 }
 
 // Asana also uses bare code tags for blocks. Promote them before whitespace
