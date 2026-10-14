@@ -58,6 +58,10 @@ When the user asks for a release, on local `main`:
 3. Create an annotated tag: `git tag -a vX.Y.Z -m vX.Y.Z`.
 4. Push `main`, then the tag: `git push origin main vX.Y.Z`. The tag push
    starts the release workflow.
+5. Tag the same version in the private `imarc/asanamate-hub` repository,
+   whose tags track asanamate's: on its up-to-date `main`, run the same
+   `git tag -a vX.Y.Z -m vX.Y.Z` and `git push origin vX.Y.Z`. If you can't
+   reach that repository, tell the user to tag it.
 
 ## Local config migration
 
