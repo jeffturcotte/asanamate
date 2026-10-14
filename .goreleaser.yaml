@@ -36,16 +36,6 @@ builds:
     goarch: [amd64, arm64]
     ldflags:
       - -s -w
-  # The Hub project links provider ships in the same archive.
-  - id: asanamate-hub
-    main: ./cmd/asanamate-hub
-    binary: asanamate-hub
-    env:
-      - CGO_ENABLED=0
-    goos: [darwin, linux]
-    goarch: [amd64, arm64]
-    ldflags:
-      - -s -w
 
 archives:
   - formats: [tar.gz]
@@ -78,11 +68,11 @@ homebrew_casks:
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     homepage: https://github.com/sadmachine/asanamate
     description: Terminal UI for Asana tickets with scriptable actions
-    binaries: [asanamate, asanamate-hrvst, asanamate-ccmux, asanamate-hub]
+    binaries: [asanamate, asanamate-hrvst, asanamate-ccmux]
     hooks:
       post:
         install: |
           system_command "/bin/sh", args: ["#{staged_path}/install-themes.sh"]
           if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/asanamate", "#{staged_path}/asanamate-hrvst", "#{staged_path}/asanamate-ccmux", "#{staged_path}/asanamate-hub"]
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/asanamate", "#{staged_path}/asanamate-hrvst", "#{staged_path}/asanamate-ccmux"]
           end

@@ -334,9 +334,9 @@ command = '~/bin/my-tracker.sh'
 ## Project links
 
 Set `project_links.command` to suggest where each Asana project lives in
-other systems: its git repository and its time tracking project. asanamate's
-Hub provider, `asanamate-hub` (`cmd/asanamate-hub`), is a separate binary that
-uses only this protocol, like any other provider. asanamate only reads links;
+other systems: its git repository and its time tracking project. imarc's
+Hub provider, `asanamate-hub`, lives in its own repository and uses only this
+protocol, like any other provider. asanamate only reads links;
 providers never receive anything to write.
 
 **When it runs.** Once per lookup, as a new process each time:

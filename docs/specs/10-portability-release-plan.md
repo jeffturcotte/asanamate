@@ -1,8 +1,8 @@
 # asanamate Portability Implementation Plan
 
 Date: 2026-10-05
-Updated: 2026-10-12
-Status: Core changes complete; documentation reconciled; five open tasks
+Updated: 2026-10-13
+Status: Tasks 1 to 4 done; candidate verification and Homebrew open
 
 ## Goal and scope
 
@@ -76,21 +76,21 @@ at Task 2 without inferring that the release gate has passed.
 
 ## Task 2 Make the default pager action opt in
 
-Priority: P0. Dependencies: Task 1.
+Priority: P0. Dependencies: Task 1. Status: done 2026-10-13.
 
 Primary files: `internal/setup/setup.go`, `README.md`; existing setup tests after
 permission. Review action loading and update behavior before editing.
 
-- [ ] Generate `pager.toml.example` for new installations instead of active
+- [x] Generate `pager.toml.example` for new installations instead of active
   `pager.toml`. Existing example-file loading rules already provide opt-in.
-- [ ] Explain installing/selecting a pager and renaming the example to activate it.
+- [x] Explain installing/selecting a pager and renaming the example to activate it.
   Keep the built-in ticket reader as the dependency-free default.
-- [ ] Remove setup messaging that treats the inactive example's missing pager as
+- [x] Remove setup messaging that treats the inactive example's missing pager as
   a setup problem. Preserve warnings for existing active pager actions where
   the diagnostics already support them.
-- [ ] Preserve existing `pager.toml`, customized actions, action shortcuts, and
+- [x] Preserve existing `pager.toml`, customized actions, action shortcuts, and
   rerun/setup update behavior. Do not silently disable users' active actions.
-- [ ] Update the optional-feature table and setup summary to match new defaults.
+- [x] Update the optional-feature table and setup summary to match new defaults.
 
 Proof: fresh setup without `less` produces valid config and no enabled pager
 action; the example loads after explicit activation; existing pager files remain
@@ -101,23 +101,23 @@ installation, a pager detector framework, or a new config key.
 
 ## Task 3 Make diagnostic claims precise
 
-Priority: P0. Dependencies: Task 2 for final pager wording.
+Priority: P0. Dependencies: Task 2 for final pager wording. Status: done 2026-10-13.
 
 Primary files: `README.md`, `docs/extensions.md` only where needed. Product code
 changes are unnecessary unless the wording exposes an actual reporting defect.
 
-- [ ] Replace claims that doctor verifies every optional feature with its actual
+- [x] Replace claims that doctor verifies every optional feature with its actual
   coverage: core authentication/config, executable presence, native repo discovery,
   and the configured agent source's read-only invocation.
-- [ ] State that time-tracking and project-link commands remain `unchecked` and
+- [x] State that time-tracking and project-link commands remain `unchecked` and
   that clipboard/graphics capabilities are not confirmed by doctor.
-- [ ] Give manual provider steps: `asanamate-hrvst check` for installed hrvst/local
+- [x] Give manual provider steps: `asanamate-hrvst check` for installed hrvst/local
   credentials and, for Hub users, `asanamate-hub check` for credential variables.
-- [ ] Explain that these provider checks do not prove remote authentication or
+- [x] Explain that these provider checks do not prove remote authentication or
   account permissions. Define a read-only live form/link lookup as separate proof.
-- [ ] Clarify that an `ok` opener/editor executable can still fail because of a
+- [x] Clarify that an `ok` opener/editor executable can still fail because of a
   desktop session, terminal policy, or command arguments.
-- [ ] Include relative dates in the dependency guide: GNU date is optional;
+- [x] Include relative dates in the dependency guide: GNU date is optional;
   exact `YYYY-MM-DD` works without it. Keep existing Linux/macOS paste instructions.
 
 Proof: every diagnostic promise maps to a current check. Disabled, unchecked,
@@ -126,36 +126,22 @@ No arbitrary shell parsing, provider auto-execution, or registry is added.
 
 ## Task 4 Resolve the general package scope for Hub
 
-Priority: P0 scope decision; small packaging change after approval.
-Dependencies: Task 1. Complete the decision before candidate verification.
+Priority: P0. Status: done 2026-10-13.
 
-Primary files: `.goreleaser.yaml`, `.github/workflows/ci.yml`, `README.md`,
-`internal/setup/setup.go`; `cmd/asanamate-hub` stays available from source.
+Decision: general release archives and the future cask ship `asanamate`,
+`asanamate-hrvst`, and `asanamate-ccmux`. `asanamate-hub` moved to the private
+`imarc/asanamate-hub` repository, which documents its install and linking.
+v0.1.0 archives held only `asanamate`, so no released asset is removed.
 
-Recommended decision: general release archives and the future general cask ship
-`asanamate`, `asanamate-hrvst`, and `asanamate-ccmux`. Hub remains an opt-in
-source-installed integration for imarc users.
-
-- [ ] Confirm package scope before removing a binary from distribution.
-  Check prior release assets and compatibility impact. If Hub stays bundled,
-  record the explicit organization-specific distribution exception instead.
-- [ ] On approval to separate Hub, exclude it from general build/archive/cask
-  content and update CI archive expectations and native smoke commands together.
-- [ ] Keep generic project links and existing `project_links.command` settings
-  unchanged. Preserve Hub source, credential environment names, and protocol.
-- [ ] Move Hub-specific activation instructions out of general setup defaults
-  into an explicitly labeled integration section. Provide the existing
-  `go install ./cmd/asanamate-hub` path and its Go build prerequisites.
-- [ ] Update extraction, quarantine, upgrade, uninstall, and cask instructions
-  to match agreed contents. Avoid claims that unpublished adapters are
-  present in v0.1.0 archives.
-
-Proof: general setup and install require no imarc account or credentials; archive
-contents and docs match the scope decision; source-installed Hub still works
-through the generic protocol; existing configurations are not rewritten.
-
-Do not delete the adapter, introduce a configurable endpoint, move repositories,
-or create a second release pipeline as part of this task.
+- [x] Remove Hub from builds, the cask, and CI archive and smoke checks.
+- [x] Remove `cmd/asanamate-hub`; the provider copies the small project-links
+  protocol types it used from `internal/projectlinks`.
+- [x] Keep generic project links and existing `project_links.command` settings
+  unchanged, along with Hub's credential environment names and protocol.
+- [x] Point imarc staff to the Hub repository from the README, the setup
+  template comment, and `docs/extensions.md`; drop Hub from install,
+  quarantine, and uninstall steps.
+- [ ] Create the `imarc/asanamate-hub` repository and push the provider.
 
 ## Task 5 Verify the final packaged candidate and onboarding
 
@@ -225,9 +211,9 @@ Fill against the final candidate; historical evidence above is not completion.
 
 | Gate | Required record | Current status |
 |---|---|---|
-| Package scope | Hub decision and agreed binary list | Decision pending |
-| Pager | Fresh inactive example; existing actions preserved | Implementation pending |
-| Diagnostic docs | Precise coverage and manual provider checks | Documentation pending |
+| Package scope | Hub decision and agreed binary list | Hub in `imarc/asanamate-hub`; archives ship three binaries |
+| Pager | Fresh inactive example; existing actions preserved | Done; setup tests cover both |
+| Diagnostic docs | Precise coverage and manual provider checks | Done |
 | Candidate | Commit, version, artifact checksum set | Pending |
 | Automated checks | Candidate CI URL; tests, vet, staticcheck, all builds | Older baseline only |
 | Native archives | macOS/Linux amd64/arm64 install and smoke results | Older baseline only |

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -81,7 +80,6 @@ func Run(ctx context.Context, o Options) error {
 		repos = "git repositories directly inside " + root + "."
 	}
 	fmt.Fprintf(o.Out, summary, o.ConfigPath, repos, actions, o.StatePath)
-	warnMissingPager(o.Out)
 	return nil
 }
 
@@ -142,17 +140,6 @@ func Pager() string {
 		return f[0]
 	}
 	return "less"
-}
-
-// warnMissingPager warns when the pager action's pager is not on PATH.
-func warnMissingPager(out io.Writer) {
-	pager := Pager()
-	if _, err := exec.LookPath(pager); err == nil {
-		return
-	}
-	Warn(out, "Warning: pager "+strconv.Quote(pager)+" not found",
-		"  The \"View ticket in pager\" action (v) needs it. Install less, or set\n"+
-			"  $PAGER to a pager you have.")
 }
 
 // warning highlights the heading of a setup warning. lipgloss.Fprintln drops
@@ -218,7 +205,7 @@ Defaults:
   - Repo picker: %s
     Set [repo_source] command to use sesh, zoxide, or anything else.
   - Writes to Asana ask for confirmation (confirm_writes = true).
-  - Actions: one file each in %s. Rename the .example file to enable it.
+  - Actions: one file each in %s. Rename a .example file to enable it.
   - Themes: "auto" follows the terminal background. Edit the installed presets
     in themes/, or copy the example to make your own.
   - Agent status and time tracking are off. See the Agents and Time tracking
@@ -469,8 +456,8 @@ commands = []
 
 # Optional: suggest each Asana project's git repository and time tracking
 # project from another system. The command reads a JSON request from stdin and
-# writes the project's links as JSON (docs/extensions.md). asanamate-hub reads
-# them from imarc's Hub; it needs HUB_CLIENT_ID and HUB_CLIENT_SECRET exported.
+# writes the project's links as JSON (docs/extensions.md). imarc staff can use
+# asanamate-hub for Hub; see github.com/imarc/asanamate-hub.
 [project_links]
 # command = "asanamate-hub"
 
@@ -485,9 +472,11 @@ root = %s
 `
 
 // actionFiles are written to the actions directory by setup. The .example
-// file stays inactive until renamed to .toml.
+// files stay inactive until renamed to .toml, so a fresh install needs no
+// pager or agent tools.
 var actionFiles = []struct{ name, body string }{
-	{"pager.toml", `# One action per file. Every *.toml file here is an action, in file name order.
+	{"pager.toml.example", `# Rename to pager.toml to enable. Needs $PAGER, else less.
+# One action per file. Every *.toml file here is an action, in file name order.
 # Commands run with /bin/sh -c. Ticket data arrives in ASANAMATE_* environment
 # variables and in the files $ASANAMATE_TICKET_JSON and $ASANAMATE_TICKET_MD.
 # Never paste ticket text into the command; always use the variables.
@@ -543,14 +532,21 @@ code = { fg = "#9ece6a", bg = "#24283b" }
 `},
 }
 
+// exists reports whether path exists.
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
 // writeFiles adds the default files to dir, keeping any that already exist.
+// A .example file is skipped once its enabled .toml exists.
 func writeFiles(dir string, files []struct{ name, body string }) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 	for _, f := range files {
 		path := filepath.Join(dir, f.name)
-		if _, err := os.Stat(path); err == nil {
+		if exists(path) || exists(strings.TrimSuffix(path, ".example")) {
 			continue
 		}
 		if err := writePrivate(path, []byte(f.body)); err != nil {

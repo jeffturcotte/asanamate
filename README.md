@@ -30,7 +30,7 @@ and coding agents can do what you can. macOS and Linux only.
 - **Track time** (optional): log time to Harvest from a ticket. See
   [Time tracking](#time-tracking-optional).
 - **Suggest links** (optional): preselect each project's repo and Harvest
-  project from imarc's Hub or another source. See
+  project from a command you configure, such as imarc's Hub. See
   [Project links](#project-links-optional).
 - **Follow a feed** at a glance: a panel under the list shows today's related
   Asana activity, agent state changes, unpushed git work on ticket branches,
@@ -79,16 +79,14 @@ sh ./install-themes.sh
 asanamate version
 ```
 
-The archive also holds three optional binaries: `asanamate-hrvst`, the Harvest
-provider for [Time tracking](#time-tracking-optional), `asanamate-ccmux`,
-the ccmux adapter for [Agents](#agents-optional), and `asanamate-hub`, the Hub
-provider for [Project links](#project-links-optional). Extract and move the
-ones you use the same way:
+The archive also holds two optional binaries: `asanamate-hrvst`, the Harvest
+provider for [Time tracking](#time-tracking-optional), and `asanamate-ccmux`,
+the ccmux adapter for [Agents](#agents-optional). Extract and move the ones
+you use the same way:
 
 ```sh
 tar -xzf "$archive" asanamate-hrvst && mv asanamate-hrvst ~/.local/bin/
 tar -xzf "$archive" asanamate-ccmux && mv asanamate-ccmux ~/.local/bin/
-tar -xzf "$archive" asanamate-hub && mv asanamate-hub ~/.local/bin/
 ```
 
 If `asanamate version` is not found, add `~/.local/bin` to your `PATH` in your
@@ -106,7 +104,6 @@ quarantine flag once:
 xattr -d com.apple.quarantine ~/.local/bin/asanamate
 xattr -d com.apple.quarantine ~/.local/bin/asanamate-hrvst   # if you use it
 xattr -d com.apple.quarantine ~/.local/bin/asanamate-ccmux   # if you use it
-xattr -d com.apple.quarantine ~/.local/bin/asanamate-hub     # if you use it
 ```
 
 ### From source
@@ -121,7 +118,6 @@ go install ./cmd/asanamate
 sh ./install-themes.sh
 go install ./cmd/asanamate-hrvst   # Harvest time tracking
 go install ./cmd/asanamate-ccmux   # ccmux agents
-go install ./cmd/asanamate-hub     # Hub project links
 ```
 
 This installs to `$(go env GOBIN)`, else `$(go env GOPATH)/bin` (usually
@@ -135,7 +131,7 @@ to add any new themes; existing theme files are never overwritten. Upgrades
 never touch your config, actions, or state.
 
 To uninstall, delete the binaries (`asanamate`, plus `asanamate-hrvst`,
-`asanamate-ccmux`, and `asanamate-hub` if you installed them). Your
+and `asanamate-ccmux` if you installed them). Your
 files stay until you delete them yourself: the config and actions in
 `~/.config/asanamate`, the state, ticket exports, and logs in
 `~/.local/state/asanamate`, and the Codex hook, if you added it, in
@@ -147,10 +143,10 @@ files stay until you delete them yourself: the config and actions in
    put it in `ASANA_ACCESS_TOKEN` (see [Token](#token)).
 2. Run `asanamate setup`. It checks the token, asks for your workspace and, optionally, the
    directory that holds your git repositories (`-` skips it), and writes
-   `~/.config/asanamate/config.toml` with every default explained, plus a
-   pager action and a Claude example in `~/.config/asanamate/actions/`. It
-   warns when the pager action's pager (`$PAGER`, else `less`) is not
-   installed.
+   `~/.config/asanamate/config.toml` with every default explained, plus
+   inactive pager and Claude example actions in
+   `~/.config/asanamate/actions/`. Rename one to `.toml` to enable it (see
+   [Actions](#actions)).
 3. Run `asanamate`. `asanamate doctor` checks the setup if something fails.
 
 ### Token
@@ -169,12 +165,13 @@ to a file or edits your shell files.
 
 ### Optional features
 
-Browsing needs none of these. Each one affects only its own feature, and
-`asanamate doctor` reports which are usable.
+Browsing needs none of these. Each one affects only its own feature.
+`asanamate doctor` reports what it can check, as the `doctor` row column
+shows; see [Troubleshooting](#troubleshooting) for what its results prove.
 
 | Feature | Needs | Turn on | Turn off | `doctor` row | Without it |
 |---|---|---|---|---|---|
-| Pager action (`v`) | `$PAGER`, else `less` (your package manager) | on by default | delete `actions/pager.toml` | `pager` | the action fails; setup and `doctor` warn |
+| Pager action (`v`) | `$PAGER`, else `less` (your package manager) | rename `actions/pager.toml.example` to `pager.toml` | delete `actions/pager.toml` | `pager` | read tickets in asanamate's own reader |
 | `asanamate config` | `$VISUAL` or `$EDITOR`, else `vi` | set `$EDITOR` | not needed | `editor` | edit `config.toml` directly |
 | Repo actions, agent branch matching | [git](https://git-scm.com/downloads) | install git | not needed | `git` | browsing works; repo actions report that git is missing |
 | Repo picker | a directory of clones | `repo_source.root` or `repo_source.command` | leave both empty | `repo_source` | type a repo path when an action asks |
@@ -183,14 +180,17 @@ Browsing needs none of these. Each one affects only its own feature, and
 | Paste image into comment (`alt+v`) | macOS `osascript` (built in); Linux `wl-clipboard` (Wayland) or `xclip` (X11). On macOS the terminal must send Option as Alt (kitty `macos_option_as_alt`, Ghostty `macos-option-as-alt`, iTerm2 "Esc+") | always on | not needed | not checked | the comment box shows why; type the image's Markdown yourself |
 | Paste into input (`Ctrl+V`) | macOS `pbpaste`; Linux `xclip` or `xsel` (X11) or `wl-clipboard` (Wayland) | always on | not needed | not checked | the input shows why, and your terminal's paste still works |
 | Agent status | an agents command, such as `asanamate-ccmux` for ccmux; see [Agents](#agents-optional) | `agents.command` | remove `[agents]` keys | `agents` | off |
-| Time tracking | `asanamate-hrvst` and [hrvst](https://github.com/kgajera/hrvst-cli) 3.x, or your own provider; see [Time tracking](#time-tracking-optional) | `[time_tracking]` | remove `[time_tracking]` keys | `time_tracking` | off |
-| Project link suggestions | a project links command, such as `asanamate-hub` for imarc's Hub; see [Project links](#project-links-optional) | `project_links.command` | remove `project_links.command` | `project_links` | no suggestions |
+| Time tracking | `asanamate-hrvst` and [hrvst](https://github.com/kgajera/hrvst-cli) 3.x, or your own provider; see [Time tracking](#time-tracking-optional) | `[time_tracking]` | remove `[time_tracking]` keys | `time_tracking` (unchecked) | off |
+| Project link suggestions | a project links command, such as imarc's `asanamate-hub`; see [Project links](#project-links-optional) | `project_links.command` | remove `project_links.command` | `project_links` (unchecked) | no suggestions |
+| Relative dates (`tomorrow`, `+1 day`) | GNU `date`; on macOS, `gdate` from `brew install coreutils` | install it | not needed | not checked | type dates as `YYYY-MM-DD` |
 | Inline images | a kitty-graphics terminal ([kitty](https://sw.kovidgoyal.net/kitty/), [Ghostty](https://ghostty.org)); in tmux, `set -g allow-passthrough on` | `images.mode = "auto"` (default) | `images.mode = "off"` | not checked | links shown instead |
 | Nerd Font symbols | a [Nerd Font](https://www.nerdfonts.com) | `symbols = "nerd"` | `symbols = "unicode"` or `"ascii"` | not checked | unicode or ascii symbols |
 | Follow OS reduced motion | macOS `defaults`; GNOME `gsettings` | leave `reduced_motion` unset | set `reduced_motion` | not checked | set `reduced_motion` yourself |
 
 Run `asanamate doctor` after turning a feature on: its row reads `ok` when the
-tools it needs are present, and the `warning` text names what is missing.
+tools it needs are on your `PATH`, and the `warning` text names what is
+missing. `ok` means the tool is present, not that it works: a browser opener
+can still fail without a desktop session, and an editor with bad arguments.
 
 Actions you write run your own commands; installing what they use is up to you.
 
@@ -566,6 +566,9 @@ Codex hooks that run `asanamate hook codex` keep working in v0.2.0, and
 `doctor` warns about them in its `codex_hook` row; v0.3.0 drops that command.
 Run `asanamate-ccmux setup` to replace the hook.
 
+New installs get the pager action as `actions/pager.toml.example`, inactive
+until renamed. An existing `actions/pager.toml` is left as it is.
+
 ## Configuration
 
 `~/.config/asanamate/config.toml` (or `$XDG_CONFIG_HOME/asanamate/config.toml`).
@@ -809,7 +812,9 @@ with asanamate (see [Install](#install)). It uses
 2. Run `hrvst login` and authorize your Harvest account. hrvst stores the
    credentials in `~/.hrvst/config.json`; `asanamate-hrvst` reads them from
    there to create entries with the Asana link, and never stores them itself.
-   `asanamate-hrvst check` confirms hrvst is installed and logged in.
+   `asanamate-hrvst check` confirms hrvst is installed and its saved login is
+   readable. It does not call Harvest; opening the time form (`t`) on a
+   ticket does, and shows any login or permission error.
 3. Find the numeric ID of the Harvest task you log time to. Run
    `hrvst users project-assignments me --output=json` and pick the `task.id`
    under `task_assignments`.
@@ -865,32 +870,17 @@ tracker project unless you chose another one before. asanamate only reads
 these links; it never writes them back. A lookup failure shows in the picker
 or status line, and the picker and form work without suggestions.
 
-imarc's [Hub](https://hub.imarc.net) support is a separate binary,
-`asanamate-hub`, shipped with asanamate (see [Install](#install)). Set it up:
-
-1. Install `asanamate-hub` on your `PATH`.
-2. Create a Hub service account at
-   `https://hub.imarc.net/admin/service-accounts`; a read-only one is enough.
-   Export its client ID and secret in your shell's startup file, so
-   asanamate's child processes see them. `asanamate-hub check` confirms both
-   are set.
-
-   ```sh
-   export HUB_CLIENT_ID=...
-   export HUB_CLIENT_SECRET=...
-   ```
-
-3. Add to the config:
+Set the command in the config:
 
 ```toml
 [project_links]
-command = "asanamate-hub"
+command = "your-provider"
 ```
 
-Hub projects whose `Asana Project` link equals the Asana project's GID supply
-their `Git Repository` links and `Harvest Project` links (the current
-contract's first), skipping links outside their dates; `asanamate-hrvst`
-preselects that Harvest project. `--url` points at another Hub.
+imarc staff can use `asanamate-hub`, a provider for imarc's
+[Hub](https://hub.imarc.net). It lives in the private
+[imarc/asanamate-hub](https://github.com/imarc/asanamate-hub) repository,
+whose README covers installing and linking it.
 
 Other systems can implement the same protocol: the command reads one JSON
 request on stdin and prints the project's links. See
@@ -924,8 +914,9 @@ characters requires acknowledging the text editor's whitespace conversion.
 
 Each action is its own file in `~/.config/asanamate/actions/`, next to
 `config.toml`. Every `*.toml` file there loads in file name order, so prefixes
-such as `10-` and `20-` set the menu order. Other files, such as
-`claude-tmux.toml.example`, are ignored until renamed. A file holds one action,
+such as `10-` and `20-` set the menu order. Other files, such as the
+`pager.toml.example` and `claude-tmux.toml.example` that setup writes, are
+ignored until renamed. Setup never overwrites an action file. A file holds one action,
 with its keys at the top level:
 
 ```toml
@@ -1340,14 +1331,26 @@ set -g allow-passthrough on
 
 ## Troubleshooting
 
-`asanamate doctor` checks everything browsing needs and every optional
-feature, without running actions or writing anything:
+`asanamate doctor` checks what browsing needs, without running actions or
+writing anything: the config and actions load, the token is accepted, and
+the workspace is reachable. For optional features it checks less:
 
 - `error` lines block browsing: an invalid config, a missing or rejected
   token, or an inaccessible workspace. `doctor` exits nonzero when any appear.
-- `warning` lines name a missing tool and the feature that needs it.
-- `off` features are not configured; `unchecked` ones run your own commands,
-  which `doctor` does not run.
+- `warning` lines name a missing tool and the feature that needs it. An `ok`
+  tool is on your `PATH`; `doctor` does not try it.
+- `repo_source` lists the repos in `repo_source.root`; a custom
+  `repo_source.command` is `unchecked`.
+- `agents` runs `agents.command`, and each `feed` row runs its feed command,
+  once. Both protocols are read-only.
+- `off` features are not configured. `unchecked` ones, time tracking and
+  project links, run your own commands, which `doctor` does not run. Check
+  them yourself: `asanamate-hrvst check` confirms hrvst and its saved login,
+  and a provider's own check, such as `asanamate-hub check`, confirms its
+  settings. Neither calls the remote service; opening the time form (`t`) or
+  the repo picker (`L`) on a ticket does, and shows any error.
+- Copy to clipboard, image paste, inline images, and Nerd Font symbols
+  depend on your terminal, which `doctor` cannot test.
 - An `agents` warning ending in `exit status 127` means the shell cannot
   find the agents command, such as `asanamate-ccmux`: install it on your
   `PATH` (see [Agents](#agents-optional)).

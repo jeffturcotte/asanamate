@@ -1,7 +1,7 @@
 # asanamate Portability and Release Readiness
 
 Date: 2026-10-05
-Updated: 2026-10-12
+Updated: 2026-10-13
 Status: Core portability implemented; remaining release work tracked in the plan
 
 ## Purpose
@@ -31,15 +31,15 @@ visibility, or creating release secrets.
   `find` command. Go lists the root's direct children in process; no shell,
   quoting, or external tools. `repo_source.command` remains for custom sources
   and takes precedence when set.
-- **Pager:** the current implementation enables the pager action and warns when
-  its executable is missing. The revised target is an inactive example for new
-  installations, satisfying the install-or-opt-in dependency rule. Existing
-  active pager files remain unchanged.
+- **Pager:** new installations get an inactive `pager.toml.example`, satisfying
+  the install-or-opt-in dependency rule. Existing active pager files remain
+  unchanged, and `doctor` still warns when an active pager action's pager is
+  missing.
 - **Adapters:** Harvest and ccmux are separate optional binaries,
-  `asanamate-hrvst` and `asanamate-ccmux`. `asanamate-hub` is also optional but
-  targets imarc's Hub and is currently bundled in every release archive. Separate
-  Hub distribution is recommended; changing package scope requires an explicit
-  decision during implementation.
+  `asanamate-hrvst` and `asanamate-ccmux`, shipped in the release archives.
+  The imarc Hub provider, `asanamate-hub`, moved to the private
+  `imarc/asanamate-hub` repository (decided 2026-10-13). It was never in a
+  released archive, so the move breaks no released contract.
 - **macOS Gatekeeper:** no paid signing or notarization. Document `curl`
   downloads, which are not quarantined, with an `xattr -d com.apple.quarantine`
   fallback for browser downloads. The Homebrew cask strips quarantine; recheck
@@ -56,7 +56,7 @@ visibility, or creating release secrets.
 - macOS and Linux, each on amd64 and arm64.
 - One core binary per target, with separately installed optional adapters. All
   shipped Go binaries use `CGO_ENABLED=0`; binary users need no Go toolchain.
-  Current archive configuration includes the core, three adapters, and theme files.
+  Current archive configuration includes the core, two adapters, and theme files.
 - A terminal suitable for the TUI, an Asana account and personal access token,
   network access, and working HTTPS certificate trust are core prerequisites.
 - Supported operating system versions and Linux environments must be stated
@@ -267,16 +267,12 @@ Core setup, browsing, default actions, and general install instructions must
 require no imarc account, Hub credentials, or organization-specific filesystem
 layout. Keep the generic project-links protocol independent of any provider.
 
-The recommended remaining change is to exclude `asanamate-hub` from general
-archives and the future general Homebrew cask, while retaining a documented
-source-install path for users who opt into Hub. Confirm package scope before
-implementation, and preserve existing `project_links.command` settings and Hub
-source code. Do not create a configurable Hub URL, a second release pipeline,
-or a new credential system just to make this adapter appear generic.
-
-If the user elects to keep Hub bundled, record that decision as an explicit
-distribution exception. Core remains provider-independent, but the package must
-then be described as including an optional imarc integration.
+Decision (2026-10-13): `asanamate-hub` lives in the private
+`imarc/asanamate-hub` repository, with its own install and linking
+instructions, and is not part of general archives or the future cask. The
+generic project-links protocol and existing `project_links.command` settings
+are unchanged. Do not create a configurable Hub URL, a second release pipeline
+in this repository, or a new credential system for it.
 
 ## Release acceptance
 
@@ -290,8 +286,7 @@ The release is ready only when all of the following are satisfied:
    actionable messages when a dependency or capability is missing.
 4. General executable defaults, templates, and install instructions embed no
    author usernames, real workspace/task IDs, repo paths, or required organization
-   settings. Organization adapters are separated or explicitly covered by the
-   recorded distribution exception.
+   settings. Organization adapters are separated.
 5. Alternate home/XDG paths and supported unusual path characters work. Stale
    links and relocated hooks recover without losing unrelated settings.
 6. All four target archives contain runnable binaries and valid checksums.
