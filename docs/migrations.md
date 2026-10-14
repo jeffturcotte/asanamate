@@ -2,7 +2,16 @@
 
 Steps to upgrade from the previous release, newest first. The release
 workflow copies a version's section to the top of its GitHub release notes,
-so links here are absolute.
+so links here are absolute. Steps for changes not yet released wait under
+`## Unreleased`, which becomes the version's heading when it is tagged.
+
+## Unreleased
+
+New default keys: `i` jumps to the next NEW ticket in the list, and `ctrl+d`
+saves a comment draft and closes the box. If your `[keys]` already binds `i`
+in `keys.main` or `ctrl+d` in `keys.input` to another binding, asanamate
+names the clash and stops; move that binding to a free key, or rebind
+`keys.main.next_new` or `keys.input.save_draft`.
 
 ## v0.2.0
 
