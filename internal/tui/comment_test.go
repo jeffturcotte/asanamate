@@ -219,6 +219,10 @@ func TestCommentImagesSurviveMissingOriginalAndPost(t *testing.T) {
 			uploaded = string(data) == string(png)
 			io.WriteString(w, `{"data":{"gid":"9"}}`)
 		case "/tasks/1/stories":
+			if r.Method != http.MethodPost {
+				io.WriteString(w, `{"data":[]}`)
+				return
+			}
 			var body struct{ Data map[string]string }
 			json.NewDecoder(r.Body).Decode(&body)
 			posted = strings.Contains(body.Data["html_text"], `data-asana-gid="9"`)
