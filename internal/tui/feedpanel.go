@@ -633,7 +633,7 @@ func (m *Model) feedLines(width, height int) string {
 			if i > 0 {
 				label, n = "Earlier", len(items)-upcoming
 			}
-			rows = append(rows, row{m.groupHeader(m.headingStyle(m.headerStyle, m.focusFeed), label, n, width), -1})
+			rows = append(rows, row{m.groupHeader(m.headingStyle(m.headerStyle, m.focusFeed), label, n, width, ""), -1})
 		}
 		rows = append(rows, row{m.feedLine(it, i == cursor && m.focusFeed, width, timeWidth), i})
 	}

@@ -188,6 +188,54 @@ func TestListViewGroups(t *testing.T) {
 	}
 }
 
+func TestSharedColumnValuesMoveToHeaders(t *testing.T) {
+	sec := func(name string) *asana.Ref { return &asana.Ref{Name: name} }
+	tasks := []asana.Task{
+		{GID: "1", Name: "A", AssigneeSection: sec("Inbox"), DueOn: strp("2026-09-28")},
+		{GID: "2", Name: "B", AssigneeSection: sec("Inbox"), DueOn: strp("2026-10-01")},
+		{GID: "3", Name: "C", AssigneeSection: sec("Later"), DueOn: strp("2026-10-20")},
+	}
+	fields := []string{"section", "due"}
+	t.Run("grouped by the column", func(t *testing.T) {
+		m, _ := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle, Fields: fields, GroupBy: "section", Header: config.Header{Style: config.StyleRule}}})
+		m.Update(tasksMsg{tasks: tasks})
+		got := strings.Join(listLines(m, 40, 6), "\n")
+		if strings.Count(got, "Inbox") != 1 || !strings.Contains(got, "── Inbox (2) ──") || !strings.Contains(got, "today") {
+			t.Fatalf("grouped column must leave the rows, header unchanged:\n%s", got)
+		}
+	})
+	t.Run("one value per group", func(t *testing.T) {
+		m, _ := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle, Fields: fields, GroupBy: "due", Header: config.Header{Style: config.StyleRule}}})
+		m.Update(tasksMsg{tasks: append(slices.Clone(tasks[:2]), asana.Task{GID: "4", Name: "D", AssigneeSection: sec("Inbox"), DueOn: strp("2026-09-30")})})
+		got := strings.Join(listLines(m, 40, 6), "\n")
+		row := slices.IndexFunc(strings.Split(got, "\n"), func(l string) bool { return strings.Contains(l, "□  D") })
+		if !strings.Contains(got, "Next 7 days (2) · Inbox") || row < 0 || strings.Contains(strings.Split(got, "\n")[row], "Inbox") {
+			t.Fatalf("shared section must move to the group header:\n%s", got)
+		}
+	})
+	t.Run("mixed values stay", func(t *testing.T) {
+		m, _ := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle, Fields: fields}})
+		m.Update(tasksMsg{tasks: tasks})
+		if got := strings.Join(listLines(m, 40, 4), "\n"); strings.Count(got, "Inbox") != 2 || !strings.Contains(got, "Later") {
+			t.Fatalf("mixed column must stay:\n%s", got)
+		}
+	})
+	t.Run("ungrouped list", func(t *testing.T) {
+		m, _ := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle, Fields: fields}})
+		m.Update(tasksMsg{tasks: tasks[:2]})
+		if _, count := m.listTitle(); !strings.Contains(count, "Inbox") || strings.Contains(strings.Join(listLines(m, 40, 3), "\n"), "Inbox") {
+			t.Fatalf("shared value must move to the list title, count = %q", count)
+		}
+	})
+	t.Run("one ticket per group", func(t *testing.T) {
+		m, _ := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle, Fields: fields, GroupBy: "due"}})
+		m.Update(tasksMsg{tasks: []asana.Task{tasks[0], tasks[2]}})
+		if got := strings.Join(listLines(m, 40, 4), "\n"); strings.Count(got, "Inbox") != 1 || !strings.Contains(got, "Later") {
+			t.Fatalf("single-ticket groups keep their columns:\n%s", got)
+		}
+	})
+}
+
 func TestGroupPicker(t *testing.T) {
 	m, _ := testModel(t, config.Config{List: config.List{Fields: []string{"Section", "Status"}, GroupBy: "section"}})
 	m.Update(tasksMsg{tasks: []asana.Task{
@@ -287,7 +335,7 @@ func TestViewingHeaderColor(t *testing.T) {
 					if len(lines) < 2 {
 						t.Fatalf("missing header %q", header.label)
 					}
-					want := m.groupHeader(lipStyle(config.Style{FG: header.color, Bold: &bold}), header.label, 1, 50)
+					want := m.groupHeader(lipStyle(config.Style{FG: header.color, Bold: &bold}), header.label, 1, 50, "")
 					if lines[0] != want {
 						t.Fatalf("%s header = %q, want %q", header.label, lines[0], want)
 					}
