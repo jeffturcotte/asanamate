@@ -30,15 +30,20 @@ and coding agents can do what you can. macOS and Linux only.
 - **Track time** (optional): log time to Harvest from a ticket. See
   [Time tracking](#time-tracking-optional).
 - **Suggest links** (optional): preselect each project's repo and Harvest
-  project from imarc's Hub or another source. See
+  project from a command you configure, such as imarc's Hub. See
   [Project links](#project-links-optional).
+- **Follow a feed** at a glance: a panel under the list shows today's related
+  Asana activity, agent state changes, unpushed git work on ticket branches,
+  and lines from any feed command, such as Harvest time entries. See
+  [Feed panel](#feed-panel).
 
-**Extending asanamate.** External commands plug in at five points:
+**Extending asanamate.** External commands plug in at six points:
 [actions](docs/extensions.md#actions),
 [agent sources](docs/extensions.md#agent-sources),
 [time tracking providers](docs/extensions.md#time-tracking),
-[repo sources](docs/extensions.md#repo-sources), and
-[project links](docs/extensions.md#project-links).
+[repo sources](docs/extensions.md#repo-sources),
+[project links](docs/extensions.md#project-links), and
+[feeds](docs/extensions.md#feeds).
 [docs/extensions.md](docs/extensions.md) documents each protocol.
 
 **Left to Asana.** asanamate does not rename or delete tickets, change a
@@ -68,21 +73,20 @@ archive=asanamate_${os}_${arch}.tar.gz
 base=https://github.com/sadmachine/asanamate/releases/download/$version
 curl -fL -O "$base/$archive" -O "$base/checksums.txt"
 grep " $archive\$" checksums.txt | sha256sum -c   # macOS: shasum -a 256 -c
-tar -xzf "$archive" asanamate
+tar -xzf "$archive" asanamate themes install-themes.sh
 mkdir -p ~/.local/bin && mv asanamate ~/.local/bin/
+sh ./install-themes.sh
 asanamate version
 ```
 
-The archive also holds three optional binaries: `asanamate-hrvst`, the Harvest
-provider for [Time tracking](#time-tracking-optional), `asanamate-ccmux`,
-the ccmux adapter for [Agents](#agents-optional), and `asanamate-hub`, the Hub
-provider for [Project links](#project-links-optional). Extract and move the
-ones you use the same way:
+The archive also holds two optional binaries: `asanamate-hrvst`, the Harvest
+provider for [Time tracking](#time-tracking-optional), and `asanamate-ccmux`,
+the ccmux adapter for [Agents](#agents-optional). Extract and move the ones
+you use the same way:
 
 ```sh
 tar -xzf "$archive" asanamate-hrvst && mv asanamate-hrvst ~/.local/bin/
 tar -xzf "$archive" asanamate-ccmux && mv asanamate-ccmux ~/.local/bin/
-tar -xzf "$archive" asanamate-hub && mv asanamate-hub ~/.local/bin/
 ```
 
 If `asanamate version` is not found, add `~/.local/bin` to your `PATH` in your
@@ -100,18 +104,20 @@ quarantine flag once:
 xattr -d com.apple.quarantine ~/.local/bin/asanamate
 xattr -d com.apple.quarantine ~/.local/bin/asanamate-hrvst   # if you use it
 xattr -d com.apple.quarantine ~/.local/bin/asanamate-ccmux   # if you use it
-xattr -d com.apple.quarantine ~/.local/bin/asanamate-hub     # if you use it
 ```
 
 ### From source
 
-Needs Go 1.26 or later.
+Needs Go 1.26 or later. Install from a checkout so the standard theme files
+are available alongside the binaries:
 
 ```sh
-go install github.com/sadmachine/asanamate/cmd/asanamate@latest
-go install github.com/sadmachine/asanamate/cmd/asanamate-hrvst@latest   # Harvest time tracking
-go install github.com/sadmachine/asanamate/cmd/asanamate-ccmux@latest   # ccmux agents
-go install github.com/sadmachine/asanamate/cmd/asanamate-hub@latest     # Hub project links
+git clone https://github.com/sadmachine/asanamate.git
+cd asanamate
+go install ./cmd/asanamate
+sh ./install-themes.sh
+go install ./cmd/asanamate-hrvst   # Harvest time tracking
+go install ./cmd/asanamate-ccmux   # ccmux agents
 ```
 
 This installs to `$(go env GOBIN)`, else `$(go env GOPATH)/bin` (usually
@@ -120,11 +126,13 @@ This installs to `$(go env GOBIN)`, else `$(go env GOPATH)/bin` (usually
 ### Upgrade and uninstall
 
 Upgrade the way you installed: replace the binary with a newer archive, or
-rerun `go install`. Upgrades never touch
-your config, actions, or state.
+rerun `go install` from an updated checkout. Run `sh ./install-themes.sh`
+to add any new themes; existing theme files are never overwritten. Upgrades
+never touch your config, actions, or state. See [Upgrading](#upgrading) for each
+release's steps.
 
 To uninstall, delete the binaries (`asanamate`, plus `asanamate-hrvst`,
-`asanamate-ccmux`, and `asanamate-hub` if you installed them). Your
+and `asanamate-ccmux` if you installed them). Your
 files stay until you delete them yourself: the config and actions in
 `~/.config/asanamate`, the state, ticket exports, and logs in
 `~/.local/state/asanamate`, and the Codex hook, if you added it, in
@@ -136,10 +144,10 @@ files stay until you delete them yourself: the config and actions in
    put it in `ASANA_ACCESS_TOKEN` (see [Token](#token)).
 2. Run `asanamate setup`. It checks the token, asks for your workspace and, optionally, the
    directory that holds your git repositories (`-` skips it), and writes
-   `~/.config/asanamate/config.toml` with every default explained, plus a
-   pager action and a Claude example in `~/.config/asanamate/actions/`. It
-   warns when the pager action's pager (`$PAGER`, else `less`) is not
-   installed.
+   `~/.config/asanamate/config.toml` with every default explained, plus
+   inactive pager and Claude example actions in
+   `~/.config/asanamate/actions/`. Rename one to `.toml` to enable it (see
+   [Actions](#actions)).
 3. Run `asanamate`. `asanamate doctor` checks the setup if something fails.
 
 ### Token
@@ -158,12 +166,13 @@ to a file or edits your shell files.
 
 ### Optional features
 
-Browsing needs none of these. Each one affects only its own feature, and
-`asanamate doctor` reports which are usable.
+Browsing needs none of these. Each one affects only its own feature.
+`asanamate doctor` reports what it can check, as the `doctor` row column
+shows; see [Troubleshooting](#troubleshooting) for what its results prove.
 
 | Feature | Needs | Turn on | Turn off | `doctor` row | Without it |
 |---|---|---|---|---|---|
-| Pager action (`v`) | `$PAGER`, else `less` (your package manager) | on by default | delete `actions/pager.toml` | `pager` | the action fails; setup and `doctor` warn |
+| Pager action (`v`) | `$PAGER`, else `less` (your package manager) | rename `actions/pager.toml.example` to `pager.toml` | delete `actions/pager.toml` | `pager` | read tickets in asanamate's own reader |
 | `asanamate config` | `$VISUAL` or `$EDITOR`, else `vi` | set `$EDITOR` | not needed | `editor` | edit `config.toml` directly |
 | Repo actions, agent branch matching | [git](https://git-scm.com/downloads) | install git | not needed | `git` | browsing works; repo actions report that git is missing |
 | Repo picker | a directory of clones | `repo_source.root` or `repo_source.command` | leave both empty | `repo_source` | type a repo path when an action asks |
@@ -172,14 +181,17 @@ Browsing needs none of these. Each one affects only its own feature, and
 | Paste image into comment (`alt+v`) | macOS `osascript` (built in); Linux `wl-clipboard` (Wayland) or `xclip` (X11). On macOS the terminal must send Option as Alt (kitty `macos_option_as_alt`, Ghostty `macos-option-as-alt`, iTerm2 "Esc+") | always on | not needed | not checked | the comment box shows why; type the image's Markdown yourself |
 | Paste into input (`Ctrl+V`) | macOS `pbpaste`; Linux `xclip` or `xsel` (X11) or `wl-clipboard` (Wayland) | always on | not needed | not checked | the input shows why, and your terminal's paste still works |
 | Agent status | an agents command, such as `asanamate-ccmux` for ccmux; see [Agents](#agents-optional) | `agents.command` | remove `[agents]` keys | `agents` | off |
-| Time tracking | `asanamate-hrvst` and [hrvst](https://github.com/kgajera/hrvst-cli) 3.x, or your own provider; see [Time tracking](#time-tracking-optional) | `[time_tracking]` | remove `[time_tracking]` keys | `time_tracking` | off |
-| Project link suggestions | a project links command, such as `asanamate-hub` for imarc's Hub; see [Project links](#project-links-optional) | `project_links.command` | remove `project_links.command` | `project_links` | no suggestions |
+| Time tracking | `asanamate-hrvst` and [hrvst](https://github.com/kgajera/hrvst-cli) 3.x, or your own provider; see [Time tracking](#time-tracking-optional) | `[time_tracking]` | remove `[time_tracking]` keys | `time_tracking` (unchecked) | off |
+| Project link suggestions | a project links command, such as imarc's `asanamate-hub`; see [Project links](#project-links-optional) | `project_links.command` | remove `project_links.command` | `project_links` (unchecked) | no suggestions |
+| Relative dates (`tomorrow`, `+1 day`) | GNU `date`; on macOS, `gdate` from `brew install coreutils` | install it | not needed | not checked | type dates as `YYYY-MM-DD` |
 | Inline images | a kitty-graphics terminal ([kitty](https://sw.kovidgoyal.net/kitty/), [Ghostty](https://ghostty.org)); in tmux, `set -g allow-passthrough on` | `images.mode = "auto"` (default) | `images.mode = "off"` | not checked | links shown instead |
 | Nerd Font symbols | a [Nerd Font](https://www.nerdfonts.com) | `symbols = "nerd"` | `symbols = "unicode"` or `"ascii"` | not checked | unicode or ascii symbols |
 | Follow OS reduced motion | macOS `defaults`; GNOME `gsettings` | leave `reduced_motion` unset | set `reduced_motion` | not checked | set `reduced_motion` yourself |
 
 Run `asanamate doctor` after turning a feature on: its row reads `ok` when the
-tools it needs are present, and the `warning` text names what is missing.
+tools it needs are on your `PATH`, and the `warning` text names what is
+missing. `ok` means the tool is present, not that it works: a browser opener
+can still fail without a desktop session, and an editor with bad arguments.
 
 Actions you write run your own commands; installing what they use is up to you.
 
@@ -216,18 +228,29 @@ Fit asanamate to its spot with the `[layout]` table in `config.toml`:
   the reader the rest of the width. `=` and the automatic fitting leave it
   alone. When fewer than 30 columns would be left for the reader beside the
   list and the views panel, the reader hides, as in narrow terminals.
+- `focus.resize = false` keeps the list one width. By default, the list fits
+  full titles while it, the views panel, or the Feed panel has focus, and
+  shrinks to 40-column titles while the reader has focus, giving the reader
+  the rest.
+- `focus.dim = false` keeps every pane at full color. By default, panes
+  without focus draw faint; `s`, then `d` toggles it, and the change persists. The focused pane's title is always a filled tab,
+  and only that pane shows its headings in color and its selection as a bar.
 
 ```toml
 [layout]
 reader = true
 list_width = 60
+
+[layout.focus]
+dim = true
+resize = true
 ```
 
 Select `+ Add project` below the ticket's project rows and press `enter` to
 add it to another project. The picker excludes projects already on the ticket.
 
-The bottom bar shows the mode (`NORMAL`, `READ`, `EDIT`, `FILTER`, or
-`VIEWS`), the view, filter, grouping, sorting, ticket count, and agents, with the keys
+The bottom bar shows the mode (`NORMAL`, `READ`, `EDIT`, `FILTER`, `VIEWS`,
+or `FEED`), the view, filter, grouping, sorting, ticket count, and agents, with the keys
 for what has focus on the right. Messages take the keys' place until the next
 key press.
 
@@ -241,13 +264,15 @@ key press.
 | `ctrl+d`/`ctrl+u` | half page down/up in the list, or scroll the reader half a page |
 | `ctrl+f`/`ctrl+b` (or pgdown/pgup) | page down/up in the list, or scroll the reader a page |
 | `tab`/`shift+tab`, `l`/`h` | focus the next/previous pane: the views panel (wide screens), the list, and the reader; in the cards view, entering the reader selects its first editable row |
-| `enter` | in the list, open the ticket in the reader; in the reader, edit the selected row (Add comment opens the comment editor), or open the selected comment's menu: `r` reacts with an emoji (`1`-`9` pick one; picking one you reacted with removes it) |
+| `enter` | in the list, open the ticket in the reader; in the reader, edit the selected row (Add comment opens the comment editor; Show all comments lists the older ones, since the cards view shows the newest `reader.comments.latest`), show a comment cut to its preview in full, or open the selected comment's menu: `r` reacts with an emoji (`1`-`9` pick one; picking one you reacted with removes it) |
 | `esc` | return focus to the list |
-| `0` / `1` / `2` | focus the views panel (wide screens) / the list / the reader |
+| `0` / `1` / `2` / `3` | focus the views panel (wide screens) / the list / the reader / the Feed panel (expanding it) |
+| `F` | expand or collapse the Feed panel until the view changes |
 | `/` | edit the filter (available fields appear while editing; `ctrl+/` opens the filter guide; `enter` keeps the filter, `esc` restores the previous one) |
 | `p` | switch project (recent first) |
 | `I` | open Activity: your actions and changes directly related to you |
 | `H` | ticket history: the last 10 tickets focused in the reader, most recent first; picking one selects it (keeping it in the Viewing section when the view doesn't show it) and focuses the reader |
+| `i` | select the next ticket with a `NEW` badge, wrapping around |
 | `L` | repo links: link, relink, or unlink each project's repo (starts on the viewed project), or give the selected ticket its own repo that overrides its projects' links without changing them |
 | `space`, `a` | run an action on the selected ticket |
 | `A` | create or edit action files (also available in Settings) |
@@ -261,6 +286,7 @@ key press.
 | `.` | run the last picked action again on the selected ticket |
 | `t` | log completed time for the selected ticket (only when time tracking is configured) |
 | `f` | attachments: view images inline (`j`/`k` step between them) or open in the browser |
+| `u` | links in the selected ticket's description and comments, in order, by label and URL (the ticket's own link and user mentions are left out); search matches either, `enter` opens the link in the browser, and `y` (`ctrl+y` while searching) copies it (requires terminal OSC 52 support) |
 | `b` | group the list by a field (built-ins, `list.fields`, or a custom field on the loaded tickets) |
 | `B` | sort by field and direction, or restore Asana order |
 | `=` | fit the list pane to its content (also on project, grouping, sorting, and filter changes); does nothing while `layout.list_width` is set |
@@ -270,11 +296,11 @@ key press.
 | `V` | recall or manage saved views |
 | `]` / `[` | apply the next/previous saved view, in name order |
 | `ctrl+s` | save the current filter, grouping, and sorting under a name |
-| `s` | settings: separators, header spacing, reader view, auto-update interval, and project list columns; changes persist between sessions |
+| `s` | settings: separators, header spacing, reader view, auto-update interval, selection style, dim unfocused panes, and project list columns; changes persist between sessions |
 | `o` | open the ticket in the browser |
 | `y` | copy the selected ticket's link to the clipboard (requires terminal OSC 52 support) |
 | `Y` | copy the targeted comment as Markdown in the cards reader (requires terminal OSC 52 support); does nothing on other targets |
-| `r` | reload tickets and clear the inline image cache (including failed loads) |
+| `r` | reload tickets, rerun the Feed panel's feeds and git check, and clear the inline image cache (including failed loads) |
 | `R` | set the automatic reload interval (persists between sessions) |
 | `?` | show every key |
 | `q` | quit |
@@ -343,7 +369,9 @@ you last viewed them, including tickets newly assigned to you. The `new` color
 role styles it; the selected row shows it reversed. Asana counts new comments, assignment, completion, and edits
 to the name, due date, description, or custom fields as changes; moving a
 ticket between projects is not. The mark clears once the ticket loads in the
-reader. The first My Tasks load marks nothing.
+reader. The first My Tasks load marks nothing. Press `i` to jump to the next
+marked ticket. Set `list.new.section = true` to list marked tickets first,
+under a **New** header; a ticket you open stays there until you move away.
 
 ## Filtering
 
@@ -414,6 +442,9 @@ then scans when you open it.
 - `/` searches ticket names, actors, and activity text. Words combine;
   Activity search is separate from the saved ticket filter.
 - `j` / `k` selects an event. `Tab` or `2` focuses its reader to scroll it.
+- Events in a row on the same ticket share one entry, its newest event, with
+  a `+N more` badge (styled by `colors.more`). `Space` shows the earlier
+  events indented under it, where each can be selected, and hides them again.
 - `Enter` opens the existing ticket reader, where the usual edit and action
   keys work; `Esc` returns to Activity. On narrow screens, the first `Enter`
   shows the event, and the next opens the ticket. In list-only mode, opening
@@ -431,6 +462,48 @@ event list. Search indexing
 can lag behind changes, and Asana consolidates stories, so this is not a
 complete audit log. Current ownership and description mentions are labelled
 as current context, not proof of who owned a task when an older event occurred.
+
+### Feed panel
+
+A `[3] Feed` panel sits under the ticket list whenever the list has a
+bordered panel. Collapsed, it is one border line with each source's summary,
+such as `3h 10m logged · 4 new · 2 unpushed`, each led by an icon when
+`symbols` draws one (`nerd` draws them all). Expanded, it lists:
+
+- **Upcoming** items from feeds, such as meetings, soonest first under a
+  `Next` header, shown as `in 25m`.
+- **Asana:** today's related Activity events (not your own actions or
+  reminders); the summary counts new ones, as the Views panel does.
+- **Agents:** each running agent once, from when it entered its state, such
+  as `mocpa · completed`. Agents linked to no loaded ticket show as
+  `no ticket`, so agents on other branches are visible somewhere. Agents
+  already running when asanamate starts show no time.
+- **Git:** uncommitted files and unpushed commits in the worktree checked out
+  on each loaded ticket's branch, in the ticket's linked repos. A branch with
+  no upstream shows `not pushed`.
+- **Feeds:** lines from each `feed.commands` command; see
+  [Feeds](docs/extensions.md#feeds). For Harvest time entries, add
+  `asanamate-hrvst`.
+
+Items linked to a ticket show its title. With `feed.expand = "auto"`, the
+panel opens when the list leaves `feed.height` empty rows; it decides when a
+view loads or the terminal resizes, never on a background refresh, so the
+list does not jump. `F` expands or collapses it until the view changes. `3`
+focuses it: `j`/`k` select an item, `enter` opens its ticket in the reader
+(or its link), `space` selects its ticket in the list, and `esc` returns to
+the list. While it has focus, a tab row lists `All` and each source with its
+item count; `]` and `[` step through them to show one source only, and the
+tab row stays while one is picked. A feed that fails shows a red row with its
+error, and the items it keeps from its last answer turn muted. Feeds and the
+git check run at start, every `feed.refresh_interval`, and on reload (`r`).
+
+```toml
+[feed]
+expand = "auto"
+height = 12
+refresh_interval = "1m"
+commands = ["asanamate-hrvst"]
+```
 
 ## List-only mode and scripting
 
@@ -472,56 +545,13 @@ Pick a ticket with fzf:
 asanamate list | fzf --delimiter '\t' --with-nth 2,4 --preview 'asanamate show {1}' | cut -f1
 ```
 
-## Upgrading to v0.2.0
+## Upgrading
 
-v0.2.0 moves the color settings. The updater also migrates the earlier
-`display`, `list.filter`, and `repo` settings. Run `asanamate config update` to rewrite
-your config; it keeps your values and saves the old file as a timestamped
-`config.toml.<time>.bak`. Until then, asanamate names the first moved key and stops.
-
-| v0.1.0 | v0.2.0 |
-|---|---|
-| `theme` | `theme.name` |
-| `accent_color` | `colors.accent` |
-| `list.header.color` | `colors.header` |
-| `list.pinned.color` | `colors.pinned` |
-| `list.viewing.color` | `colors.viewing` |
-| `list.selection.color` | `colors.selection` |
-| `display.symbols` | `symbols` |
-| `display.reduced_motion` | `reduced_motion` |
-| `list.filter` | `default_filter` |
-| `repo.root` | `repo_source.root` |
-| `repo.command` | `repo_source.command` |
-| `repo.branch_field` | `branch_field` |
-
-The Harvest time tracking provider moved out of asanamate into its own
-binary, `asanamate-hrvst`, in the same release archive (see [Install](#install)).
-Install it, then run `asanamate config update`: it rewrites
-`time_tracking.command = "asanamate time-provider hrvst --task-id <id>"` to
-`"asanamate-hrvst --task-id <id>"`, keeping the flags. Until then, asanamate
-names the old command and stops. `asanamate doctor` no longer checks hrvst;
-run `asanamate-hrvst check` instead.
-
-Default keys changed too: `enter` in the list opens the reader; `c` adds a
-comment (was `C`); `y` copies the link (was `c`); `Y` copies the targeted
-comment (was `y`); `@` assigns (was `A`); `A` opens the action builder (was
-`ctrl+a`); `ctrl+/` opens the filter guide (was `?`), and `esc` in the filter
-restores the previous filter. Pickers start in browse mode; press `/` to
-search, or set `picker.type_first = true`.
-
-The ccmux agent source moved out of asanamate into the `asanamate-ccmux`
-adapter, which ships in the same archive. Install it next to `asanamate` (see
-[Agents](#agents-optional)); `asanamate config update` rewrites the preset:
-
-| v0.1.0 | v0.2.0 |
-|---|---|
-| `agents.preset = "ccmux"` | `agents.command = "asanamate-ccmux"` |
-| `asanamate setup hooks` | `asanamate-ccmux setup` |
-| `asanamate hook codex` (Codex hook) | `asanamate-ccmux hook codex` |
-
-Codex hooks that run `asanamate hook codex` keep working in v0.2.0, and
-`doctor` warns about them in its `codex_hook` row; v0.3.0 drops that command.
-Run `asanamate-ccmux setup` to replace the hook.
+Upgrade steps for each release, such as moved settings and new adapter
+binaries, are in [docs/migrations.md](docs/migrations.md) and at the top of
+each [release's notes](https://github.com/sadmachine/asanamate/releases).
+Run `asanamate config update` after upgrading; it moves renamed settings and
+keeps your values.
 
 ## Configuration
 
@@ -533,16 +563,18 @@ once. Run `asanamate doctor` to check a change without starting the TUI.
 | Key | Default | Meaning |
 |---|---|---|
 | `workspace` | set by setup | Asana workspace gid |
-| `theme.name` | `"auto"` | color theme: `auto` (follow the terminal background), `dark`, `light`, or a file in `themes/`; see [Themes](#themes) |
+| `theme.name` | `"auto"` | color theme: `auto` (follow the terminal background), a built-in preset, or a file in `themes/`; see [Themes](#themes) |
 | `theme.dark` / `theme.light` | `"dark"` / `"light"` | themes `auto` uses on dark and light backgrounds |
 | `colors.*` | the theme's | per-role overrides on top of the theme: a color (`0`–`255`, `#rgb`, or `#rrggbb`) or a style table `{ fg, bg, bold, italic, underline, faint, reverse }`; see [Themes](#themes) |
 | `default_filter` | `"is:open"` | filter applied at startup |
 | `confirm_writes` | `true` | write-back subcommands ask before writing |
 | `layout.reader` | `true` | start with the reader beside the list; `z` shows or hides it for the session; `--hide-preview` starts with it hidden. See [Layout](#layout) |
 | `layout.list_width` | `0` | fix the list pane at this many columns (at least 30), borders included, and give the reader the rest; the reader hides when fewer than 30 columns remain for it; `0` sizes the list automatically. See [Layout](#layout) |
+| `layout.focus.dim` | `true` | draw every pane but the focused one faint; the `s` settings menu overrides it and the override persists. See [Layout](#layout) |
+| `layout.focus.resize` | `true` | give the focused pane the room: the list fits its titles while it (or the views or Feed panel) has focus, and shrinks to short titles while the reader has it; does nothing while `layout.list_width` is set. See [Layout](#layout) |
 | `list.layout` | `"single"` | `single` (one line per ticket) or `multi` (title, then fields on a second line) |
 | `list.refresh_interval` | `"30s"` | automatic list reload interval, at least `1s`; durations such as `"15s"` or `"1m"`; `R` or the `s` settings menu overrides it and the override persists, `ctrl+s` applies it; the statusline shows the interval, and an automatic reload marks the list border yellow instead of opening the loading modal |
-| `list.fields` | `["section", "due"]` | default values shown with the title, in aligned columns (`single` layout); `s`, then `c` overrides columns per project; due dates show relative to today and are colored by urgency |
+| `list.fields` | `["section", "due"]` | default values shown with the title, in aligned columns (`single` layout); `s`, then `c` overrides columns per project; due dates show relative to today and are colored by urgency; a column with one value in each group (such as the grouped field) leaves the rows and shows that value once in the group header, or after the count when the list is ungrouped |
 | `branch_field` | `""` | custom field holding the ticket's git branch (`$ASANAMATE_BRANCH`); empty uses the ticket's ID field, else the title slug |
 | `agents.command` | unset (off) | opt-in agent tracking, such as `"asanamate-ccmux"`; see [Agents](#agents-optional) |
 | `symbols` | `unicode` on UTF-8, else `ascii` | `unicode`, `nerd`, or `ascii` for ticket markers and agent states |
@@ -553,18 +585,26 @@ once. Run `asanamate doctor` to check a change without starting the TUI.
 | `list.sort.direction` | `"asc"` | `asc` (earliest dates / A–Z) or `desc` (latest dates / Z–A); missing values always last |
 | `list.header.style` | `"rule"` | group headers: `rule` (`── Label (n) ───`) or `bar` (reversed bar) |
 | `list.header.spacing` | `false` | `true` adds a blank line above and below each group header; the `s` settings menu toggles it and the choice persists |
-| `list.selection.style` | `"marker"` | selected ticket: `marker` (bold title with a left `▌`) or `bar` (reversed row; agent badges swap colors) |
+| `list.new.section` | `false` | in My Tasks, list tickets with a `NEW` badge first, under a **New** header; a ticket you open stays there until you move away. See [Keys](#keys) |
+| `list.selection.style` | `"marker"` | selected ticket: `marker` (bold title with a left `▌`) or `bar` (reversed row; agent badges swap colors); press `s`, then `l` to toggle it and persist the choice |
 | `reader.view` | `"cards"` | reader's starting view: `cards` (details card, titled sections, one box per comment) or `markdown` (the rendered ticket Markdown); `v` switches and the choice persists |
 | `images.mode` | `"auto"` | kitty graphics: `auto`, `kitty` (force on), or `off` |
 | `images.inline` | `false` | cards view: draw images in descriptions and comments in place of their links (needs `images.mode` on and a terminal with kitty Unicode placeholders, such as kitty or Ghostty) |
 | `activity.refresh_interval` | `"2m"` | background Activity scan interval, at least `1s`; `"0"` turns background scans off, and Activity then scans when opened. See [Activity](#activity) |
+| `feed.expand` | `"auto"` | Feed panel under the list: `auto` (expanded when the list leaves `feed.height` empty rows), `collapsed`, or `expanded`; `F` toggles it. See [Feed panel](#feed-panel) |
+| `feed.height` | `12` | Feed panel rows when expanded, borders included; at least `3` |
+| `feed.refresh_interval` | `"1m"` | how often feeds and the git check run, at least `1s`; `"0"` runs them only at start and on reload (`r`) |
+| `feed.commands` | `[]` | commands that answer the [feed protocol](docs/extensions.md#feeds), such as `["asanamate-hrvst"]` for today's Harvest time entries |
 | `picker.type_first` | `false` | open pickers in search mode, so typing filters at once; `esc` leaves search for browse mode |
 | `keys.<scope>.<name>` | see the template | key bindings: a list of keys per binding, such as `[keys.main] quit = ["q", "ctrl+q"]`; `[]` unbinds. Scopes: `main`, `activity`, `views`, `filter`, `picker`, `form`, `form_field`, `input`, `builder`, `notice`. Keys are a character (`"j"`, `"?"`) or a key name with modifiers (`"ctrl+d"`, `"shift+tab"`, `"enter"`, `"space"`, `"pgdown"`); a letter with `ctrl` or `alt` is lower case, plus `shift` for the capital (`"ctrl+shift+q"`, not `"ctrl+Q"`); `ctrl+c` is reserved for quitting and protects unsent comments. `asanamate setup` and `asanamate config update` write every binding, commented, with its default |
 | `keys.input.save_draft` | `["ctrl+d"]` | save a comment draft and close; other text inputs keep their editing controls |
 | `reader.max_text_width` | `0` | cards view: wrap description and comment text at this many columns (words are kept whole); `0` wraps at the pane width |
+| `reader.comments.latest` | `3` | cards view: list only this many of the newest comments, under a Show all comments row; `0` lists them all |
+| `reader.comments.preview_lines` | `2` | cards view: cut each listed comment but the newest to this many lines of text, ending in `see more …` (`enter` shows it in full); `0` shows comments in full |
 | `repo_source.root` | your setup directory, or empty | directory whose direct children with a `.git` entry (clones and worktrees) fill the repo picker; absolute or starting with `~`; empty: type a path |
 | `repo_source.command` | unset | prints one repo path per line; replaces `repo_source.root` when set; see [Repo sources](docs/extensions.md#repo-sources) |
 | `time_tracking.id` / `time_tracking.command` | unset (off) | provider ID for saved choices and command implementing the [time tracking JSON protocol](docs/extensions.md#time-tracking) |
+| `time_tracking.prompt_after` | `[]` | TUI edits that open the log time form once they succeed: `"assign"` (to someone else) and `"complete"`; `esc` skips it. See [Time tracking](#time-tracking-optional) |
 | `project_links.command` | unset (off) | command implementing the [project links JSON protocol](docs/extensions.md#project-links); its links preselect the repo picker and time form |
 
 The title is always shown. `list.fields` picks the other columns and their
@@ -631,13 +671,57 @@ command = "sesh list -z"
 
 ### Themes
 
-`[theme] name` picks a built-in theme (`dark`, `light`), a theme file, or
+`[theme] name` picks a built-in theme, a theme file, or
 `auto`, which asks the terminal for its background color and uses
-`theme.dark` or `theme.light`. Built-in themes use ANSI color numbers, so they
-follow your terminal's color scheme.
+`theme.dark` or `theme.light`. The defaults `dark` and `light` use ANSI color
+numbers, so they follow your terminal's color scheme. These 20 additional
+presets ship as separate TOML files in release archives and the source
+checkout. The installation steps run `install-themes.sh`, which copies them
+to `themes/<name>.toml` next to `config.toml`. It respects `XDG_CONFIG_HOME`
+and keeps existing files, including any edits you made:
+
+| Dark presets | Light presets |
+|---|---|
+| `one-dark` | `one-light` |
+| `monokai` | `tokyo-day` |
+| `tokyo-night` | `gruvbox-light` |
+| `sonokai` | `catppuccin-latte` |
+| `dracula` | `solarized-light` |
+| `nord` | |
+| `gruvbox-dark` | |
+| `catppuccin-mocha` | |
+| `solarized-dark` | |
+| `rose-pine` | |
+| `sonokai-andromeda` | |
+| `sonokai-atlantis` | |
+| `sonokai-maia` | |
+| `sonokai-shusia` | |
+| `sonokai-espresso` | |
+
+`sonokai` uses Sonokai's default style. The five `sonokai-*` files use the
+corresponding [upstream Sonokai styles](https://github.com/sainnhe/sonokai).
+For example, set `name = "sonokai-espresso"` in `[theme]` for Espresso.
+Sonokai's MIT license ships alongside the theme files as `LICENSE.sonokai`.
+
+For a fixed preset, set `name = "tokyo-night"` in `[theme]`. To switch with
+the terminal background:
+
+```toml
+[theme]
+name = "auto"
+dark = "one-dark"
+light = "one-light"
+```
+
+Presets adapt their palettes to the UI roles and reading pane Markdown.
+They do not change your terminal's background; use a matching terminal
+theme for the closest appearance. Palette references live in each standard
+theme file under the repository's `themes/` directory. Standard themes are
+not embedded in the binary; selecting one requires its installed file.
 
 A theme file is `themes/<name>.toml` next to `config.toml`; the names `dark`,
-`light`, and `auto` are reserved. Setup and `asanamate config update` write
+`light`, and `auto` are reserved. Edit a standard file directly or copy it
+under another name. Setup and `asanamate config update` write
 `themes/example.toml.example` to start from:
 
 ```toml
@@ -660,19 +744,48 @@ Colors layer in order: the built-in base, the theme file, then `[colors]` in
 `mode.normal` use `accent`; unset `mode.filter` uses `warn`. A mode pill
 without a background is drawn reversed.
 
+Project markers in the sidebar, ticket header, and Details, and enum custom
+field values use `colors.asana` hue families. Asana dark and light shades
+share the same family. Unset red, orange, yellow, green, teal, blue, purple,
+pink, and gray use the foreground of `error`, `pinned`, `warn`, `ok`,
+`working`, `accent`, `viewing`, `viewing`, and `muted`, respectively. Unknown
+or unset Asana colors have no marker.
+
+Leading bracket tags such as `[MOCPA]` use a stable color from `title_tags`
+(case-insensitive), which defaults to `authors`. Set `title_tags = []` to
+disable tag colors. Branch custom fields use `branch`, defaulting to the
+`viewing` foreground. Existing themes need no new keys. Selected bars retain
+their selection colors.
+
+For example, in either a theme file or `config.toml`:
+
+```toml
+[colors]
+branch = "#baa0f8"
+title_tags = ["#78cee9", "#baa0f8", "#e3d367"]
+
+[colors.asana]
+orange = "#f3a96a"
+pink = "#f76c7c"
+```
+
 | Role | Used for |
 |---|---|
 | `accent` | reader headings, focused panel border, NORMAL and VIEWS pills |
 | `border` | unfocused panel and card borders |
-| `muted` | secondary text such as distant due dates |
+| `muted` | secondary text: distant due dates, list fields, and tickets in the Later and No due date groups |
 | `highlight` | bar selection and the views panel cursor |
-| `ok`, `warn`, `error` | status messages and due-date urgency |
+| `ok`, `warn`, `error` | status messages, due-date urgency, Today and Overdue group headers, positive time logged today (`ok`), and applied filter text (`warn`) |
 | `working` | working coding agents |
 | `header`, `selection` | group headers, selection marker |
 | `pinned`, `viewing` | Pinned and Viewing section headers |
 | `reacted` | comment reactions you made, drawn as pills |
 | `new` | `NEW` badge on My Tasks tickets changed since you last viewed them |
-| `authors` | comment author names, cycled |
+| `more` | `+N more` badge on Activity events in a row on one ticket |
+| `branch` | branch column, ticket header chip, and Details branch field |
+| `title_tags` | stable colors for leading bracket tags in ticket titles; defaults to `authors` |
+| `asana.red`, `.orange`, `.yellow`, `.green`, `.teal`, `.blue`, `.purple`, `.pink`, `.gray` | Asana project markers and enum option colors |
+| `authors` | comment authors' dots and gutters and `initials` badges, cycled |
 | `mode.normal`, `mode.filter`, `mode.read`, `mode.edit` | statusline mode pills |
 | `markdown.text`, `.heading`, `.h1`, `.link`, `.code`, `.code_block`, `.quote`, `.rule` | reading pane Markdown, on top of glamour's dark or light style |
 
@@ -687,7 +800,9 @@ with asanamate (see [Install](#install)). It uses
 2. Run `hrvst login` and authorize your Harvest account. hrvst stores the
    credentials in `~/.hrvst/config.json`; `asanamate-hrvst` reads them from
    there to create entries with the Asana link, and never stores them itself.
-   `asanamate-hrvst check` confirms hrvst is installed and logged in.
+   `asanamate-hrvst check` confirms hrvst is installed and its saved login is
+   readable. It does not call Harvest; opening the time form (`t`) on a
+   ticket does, and shows any login or permission error.
 3. Find the numeric ID of the Harvest task you log time to. Run
    `hrvst users project-assignments me --output=json` and pick the `task.id`
    under `task_assignments`.
@@ -701,18 +816,29 @@ command = "asanamate-hrvst --task-id YOUR_TASK_ID"
 
 To turn time tracking off, remove the `[time_tracking]` keys.
 
+To be asked for time when you hand a ticket off, add
+`prompt_after = ["assign", "complete"]`. Assigning a ticket to someone else or
+completing it then opens the log time form; `esc` skips it. Unassigning,
+assigning to yourself, and reopening never ask.
+
 Press `t` on a ticket. If ticket belongs to several Asana projects, choose one.
 The form shows the Harvest projects where your task is active, the task under
-its real name, and decimal hours; an error naming the task ID means it is not
-active on any of your projects. Press
+its real name, decimal hours, and the date; an error naming the task ID means
+it is not active on any of your projects. Press
 Enter to edit a field, Tab to move, and Ctrl+S to log. Project and task choices
-are remembered per Asana project after a successful log; hours starts empty.
+are remembered per Asana project after a successful log; hours starts empty,
+and the date starts as today. Type the date as `YYYY-MM-DD` or `date -d` text
+such as `yesterday` (relative dates need GNU date; see the CLI notes in
+[Writing back to Asana](#writing-back-to-asana)).
 Harvest notes contain ticket title; external reference links to Asana ticket
 and chosen Asana project.
 
-The ticket's header shows **Time tracked** with a clock icon below the local
-repo information; the Markdown reader shows an equivalent summary. This is
-all-time, unrounded time from stopped entries linked to that exact ticket,
+The ticket's header shows the time tracked after a clock icon, below the
+local repo information; the Markdown reader shows it as **Time tracked**. It
+shows total time first, then today's time: **3h 45m · 1h 15m today**. Today uses your
+local calendar date and the entry's logged date, so backdated entries count
+only toward the total. Providers without daily totals show only the total.
+Both values use unrounded time from stopped entries linked to that exact ticket,
 across projects and visible to your authenticated
 account. Harvest permissions may limit this to your own entries. Running timers
 and older entries without the ticket's external reference are excluded. The
@@ -737,32 +863,17 @@ tracker project unless you chose another one before. asanamate only reads
 these links; it never writes them back. A lookup failure shows in the picker
 or status line, and the picker and form work without suggestions.
 
-imarc's [Hub](https://hub.imarc.net) support is a separate binary,
-`asanamate-hub`, shipped with asanamate (see [Install](#install)). Set it up:
-
-1. Install `asanamate-hub` on your `PATH`.
-2. Create a Hub service account at
-   `https://hub.imarc.net/admin/service-accounts`; a read-only one is enough.
-   Export its client ID and secret in your shell's startup file, so
-   asanamate's child processes see them. `asanamate-hub check` confirms both
-   are set.
-
-   ```sh
-   export HUB_CLIENT_ID=...
-   export HUB_CLIENT_SECRET=...
-   ```
-
-3. Add to the config:
+Set the command in the config:
 
 ```toml
 [project_links]
-command = "asanamate-hub"
+command = "your-provider"
 ```
 
-Hub projects whose `Asana Project` link equals the Asana project's GID supply
-their `Git Repository` links and `Harvest Project` links (the current
-contract's first), skipping links outside their dates; `asanamate-hrvst`
-preselects that Harvest project. `--url` points at another Hub.
+imarc staff can use `asanamate-hub`, a provider for imarc's
+[Hub](https://hub.imarc.net). It lives in the private
+[imarc/asanamate-hub](https://github.com/imarc/asanamate-hub) repository,
+whose README covers installing and linking it.
 
 Other systems can implement the same protocol: the command reads one JSON
 request on stdin and prints the project's links. See
@@ -796,8 +907,9 @@ characters requires acknowledging the text editor's whitespace conversion.
 
 Each action is its own file in `~/.config/asanamate/actions/`, next to
 `config.toml`. Every `*.toml` file there loads in file name order, so prefixes
-such as `10-` and `20-` set the menu order. Other files, such as
-`claude-tmux.toml.example`, are ignored until renamed. A file holds one action,
+such as `10-` and `20-` set the menu order. Other files, such as the
+`pager.toml.example` and `claude-tmux.toml.example` that setup writes, are
+ignored until renamed. Setup never overwrites an action file. A file holds one action,
 with its keys at the top level:
 
 ```toml
@@ -844,8 +956,9 @@ asanamate comment "$ASANAMATE_GID" -'''
 
 Input: set `input` to a title, and asanamate asks for free-form text right
 before running the action. Enter adds a newline, ctrl+s runs, and esc cancels.
-Leaving it empty is fine. Each ticket has one input file, so an action that
-starts on the same ticket overwrites the text from the one before. For example, to put notes above the ticket in
+Leaving it empty is fine. Each action run has its own input file and ticket
+snapshot, so another run on the same ticket cannot overwrite its context.
+For example, to put notes above the ticket in
 Claude's first prompt:
 
 ```toml
@@ -868,19 +981,50 @@ the command through `ASANAMATE_PARAM_<ID>`:
 # actions/deploy.toml
 name = "Deploy"
 key = "D"
-command = 'deploy --target "$ASANAMATE_PARAM_TARGET"'
+command = '''deploy --target "$ASANAMATE_PARAM_TARGET" --replicas "$ASANAMATE_PARAM_REPLICAS" \
+  --dry-run="$ASANAMATE_PARAM_DRY_RUN" --note "$ASANAMATE_PARAM_NOTE"'''
 [[form.fields]]
 id = "target"
 label = "Target"
 type = "select"
 remember = true
+default = "stage"
 [[form.fields.options]]
 id = "stage"
 name = "Staging"
 [[form.fields.options]]
 id = "prod"
 name = "Production"
+[[form.fields]]
+id = "replicas"
+label = "Replicas"
+type = "number"
+default = "2"
+[[form.fields]]
+id = "dry_run"
+label = "Dry run"
+type = "bool"
+default = "true"
+[[form.fields]]
+id = "note"
+label = "Note"
+type = "string"
 ```
+
+Each field has an `id`, a `label`, a `type`, and an optional `default`:
+
+| Type | Value passed to the command | `default` |
+|---|---|---|
+| `select` | the chosen option's `id`; needs `options` | an option `id` |
+| `bool` | `true` or `false`; enter toggles it | `"true"` or `"false"`; `"false"` when omitted |
+| `number` | any decimal, such as `-1` or `2.5` | a decimal |
+| `string` | any single-line text; may be empty | any text |
+| `hours` | positive decimal hours | not allowed |
+| `date` | `YYYY-MM-DD`; typed as a date or `date -d` text such as `+1 day` | a `YYYY-MM-DD` date; today when omitted |
+
+Write `default` as a TOML string, even for `bool`, `number`, and `date`
+(`default = "true"`). Every field except `string` needs a value before the
+form submits. Only `select` takes `options` and `remember`.
 
 Remembered action choices use the chosen Asana project and action key. They
 are saved when the form is submitted. Existing `input` actions keep their text
@@ -1093,19 +1237,22 @@ name or `me` like `asanamate assign`, and `--notes` takes the description in
 Markdown like a comment (`-` reads stdin), without image uploads.
 
 `asanamate assign` takes a workspace user's full name (case-insensitive), or
-`me` for yourself, and refuses a name two users share. `asanamate due` takes
-`YYYY-MM-DD` only. `asanamate move --my-tasks` works only on tickets assigned
-to you, since Asana shows a ticket's My Tasks section only to its assignee.
-Wherever a command takes a name (a section, field, option, or user), a gid
-works too.
+`me` for yourself, and refuses a name two users share. Dates, in `asanamate
+due`, `create --due`, `field`, and the TUI, take `YYYY-MM-DD` or anything
+`date -d` accepts, such as `tomorrow` or `+1 day`, and are saved as
+`YYYY-MM-DD`. Relative dates need GNU date; on macOS, `brew install coreutils`
+provides `gdate`, which asanamate uses when installed. `asanamate move
+--my-tasks` works only on tickets assigned to you, since Asana shows a
+ticket's My Tasks section only to its assignee. Wherever a command takes a
+name (a section, field, option, or user), a gid works too.
 
 `asanamate react` takes a comment's gid, which `asanamate show --format json
 <gid>` lists under `comments`. Asana does not document writing reactions, so
 asanamate reads the comment back after each one and fails if the reaction did
 not change.
 
-`asanamate field` takes the value as typed for text fields, a number, a date
-as `YYYY-MM-DD`, or an option name (case-insensitive). Multi-select and people
+`asanamate field` takes the value as typed for text fields, a number, a date,
+or an option name (case-insensitive). Multi-select and people
 fields take a comma-separated list of option names or users' full names, such
 as `"Frontend, Backend"`; the list replaces the field's current value. `""`
 clears any field.
@@ -1177,14 +1324,26 @@ set -g allow-passthrough on
 
 ## Troubleshooting
 
-`asanamate doctor` checks everything browsing needs and every optional
-feature, without running actions or writing anything:
+`asanamate doctor` checks what browsing needs, without running actions or
+writing anything: the config and actions load, the token is accepted, and
+the workspace is reachable. For optional features it checks less:
 
 - `error` lines block browsing: an invalid config, a missing or rejected
   token, or an inaccessible workspace. `doctor` exits nonzero when any appear.
-- `warning` lines name a missing tool and the feature that needs it.
-- `off` features are not configured; `unchecked` ones run your own commands,
-  which `doctor` does not run.
+- `warning` lines name a missing tool and the feature that needs it. An `ok`
+  tool is on your `PATH`; `doctor` does not try it.
+- `repo_source` lists the repos in `repo_source.root`; a custom
+  `repo_source.command` is `unchecked`.
+- `agents` runs `agents.command`, and each `feed` row runs its feed command,
+  once. Both protocols are read-only.
+- `off` features are not configured. `unchecked` ones, time tracking and
+  project links, run your own commands, which `doctor` does not run. Check
+  them yourself: `asanamate-hrvst check` confirms hrvst and its saved login,
+  and a provider's own check, such as `asanamate-hub check`, confirms its
+  settings. Neither calls the remote service; opening the time form (`t`) or
+  the repo picker (`L`) on a ticket does, and shows any error.
+- Copy to clipboard, image paste, inline images, and Nerd Font symbols
+  depend on your terminal, which `doctor` cannot test.
 - An `agents` warning ending in `exit status 127` means the shell cannot
   find the agents command, such as `asanamate-ccmux`: install it on your
   `PATH` (see [Agents](#agents-optional)).

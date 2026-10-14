@@ -59,10 +59,10 @@ func TestProviderFixture(t *testing.T) {
 	asana := Asana{TaskGID: "42", ProjectGID: "7", Title: "Fix login", URL: "https://app.asana.com/0/7/42"}
 
 	spec, err := provider.Form(ctx, asana, []projectlinks.Link{{Type: projectlinks.HarvestProject, Value: "123"}})
-	if err != nil || len(spec.Fields) != 2 || spec.Fields[0].Options[0].ID != "123" {
+	if err != nil || len(spec.Fields) != 3 || spec.Fields[0].Options[0].ID != "123" {
 		t.Fatalf("form = %+v, err = %v", spec, err)
 	}
-	if err := provider.Log(ctx, spec, map[string]string{"project_id": "123", "hours": "1.5"}, asana); err != nil {
+	if err := provider.Log(ctx, spec, map[string]string{"project_id": "123", "hours": "1.5", "spent_date": "2026-10-05"}, asana); err != nil {
 		t.Fatal(err)
 	}
 	summary, err := provider.Summary(ctx, Asana{TaskGID: asana.TaskGID, URL: asana.URL})
@@ -76,7 +76,7 @@ func TestProviderFixture(t *testing.T) {
 	}
 	want := []string{
 		`{"version":1,"operation":"form","asana":{"task_gid":"42","project_gid":"7","title":"Fix login","url":"https://app.asana.com/0/7/42"},"links":[{"type":"harvest_project","value":"123"}]}`,
-		`{"version":1,"operation":"log","values":{"hours":"1.5","project_id":"123"},"asana":{"task_gid":"42","project_gid":"7","title":"Fix login","url":"https://app.asana.com/0/7/42"}}`,
+		`{"version":1,"operation":"log","values":{"hours":"1.5","project_id":"123","spent_date":"2026-10-05"},"asana":{"task_gid":"42","project_gid":"7","title":"Fix login","url":"https://app.asana.com/0/7/42"}}`,
 		`{"version":1,"operation":"summary","asana":{"task_gid":"42","project_gid":"","title":"","url":"https://app.asana.com/0/7/42"}}`,
 	}
 	got := strings.Split(strings.TrimSpace(string(data)), "\n")
@@ -136,5 +136,38 @@ func TestSummaryRejectsInvalidResponses(t *testing.T) {
 	provider.Command = "echo unknown operation >&2; exit 1"
 	if _, err := provider.Summary(context.Background(), Asana{TaskGID: "42"}); err == nil {
 		t.Fatal("legacy provider failure treated as zero")
+	}
+}
+
+func TestSummaryTodayIsOptionalAndValidated(t *testing.T) {
+	for _, tc := range []struct {
+		response string
+		today    *int64
+	}{
+		{`{"total_seconds":13500}`, nil},
+		{`{"total_seconds":13500,"today_seconds":null}`, nil},
+		{`{"total_seconds":13500,"today_seconds":4500}`, new(int64(4500))},
+		{`{"total_seconds":13500,"today_seconds":0}`, new(int64(0))},
+	} {
+		provider := Provider{Command: "printf '%s' '" + tc.response + "'"}
+		summary, err := provider.Summary(context.Background(), Asana{TaskGID: "42"})
+		if err != nil || summary.TotalSeconds != 13500 || (summary.TodaySeconds == nil) != (tc.today == nil) {
+			t.Fatalf("response %s: summary = %+v, err = %v", tc.response, summary, err)
+		}
+		if tc.today != nil && *summary.TodaySeconds != *tc.today {
+			t.Fatalf("today = %d, want %d", *summary.TodaySeconds, *tc.today)
+		}
+	}
+	for _, response := range []string{
+		`{"total_seconds":60,"today_seconds":-1}`,
+		`{"total_seconds":60,"today_seconds":61}`,
+		`{"total_seconds":60,"today_seconds":1.5}`,
+		`{"total_seconds":60,"today_seconds":"1"}`,
+		`{"total_seconds":60,"today_seconds":9223372036854775808}`,
+	} {
+		provider := Provider{Command: "printf '%s' '" + response + "'"}
+		if _, err := provider.Summary(context.Background(), Asana{TaskGID: "42"}); err == nil {
+			t.Fatalf("invalid today accepted: %s", response)
+		}
 	}
 }

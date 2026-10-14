@@ -325,3 +325,26 @@ func TestColumnPickerControlsFitNarrowModal(t *testing.T) {
 		}
 	}
 }
+
+// A link picker opens on choose and copies on y, or ctrl+y while searching;
+// search matches the URL behind a label.
+func TestLinkPickerCopies(t *testing.T) {
+	p := newPicker(nil, "Links", []pickItem{
+		{Label: "Spec", Hint: "https://a.test/spec", Search: "https://a.test/spec", Value: "https://a.test/spec"},
+		{Label: "https://b.test", Value: "https://b.test"},
+	})
+	p.links = true
+	if res, _ := p.update(key("y")); !res.done || !res.copy || res.item.Value != "https://a.test/spec" {
+		t.Fatalf("y = %+v, want copy of the first link", res)
+	}
+	search(p, "a.test")
+	if len(p.matches) != 1 {
+		t.Fatalf("search by URL matched %d items, want 1", len(p.matches))
+	}
+	if res, _ := p.update(key("ctrl+y")); !res.copy {
+		t.Fatalf("ctrl+y while searching = %+v, want copy", res)
+	}
+	if res, _ := p.update(key("enter")); !res.done || res.copy {
+		t.Fatalf("enter = %+v, want open", res)
+	}
+}

@@ -90,32 +90,38 @@ func fieldBranch(t asana.Task, branchField string, preferred map[string]bool) st
 	return f.Value()
 }
 
-// WriteFiles exports the ticket to <stateDir>/tickets/<gid>/ticket.{json,md}.
-// The paths are stable so detached actions can read them later.
+// WriteFiles exports the ticket to a private run directory under
+// <stateDir>/tickets/<gid>. Detached actions retain their own snapshot even
+// when another action runs on the same ticket.
 func WriteFiles(stateDir string, t ticket.Ticket) (Files, error) {
 	if !asana.ValidGID(t.GID) {
 		return Files{}, fmt.Errorf("invalid task gid %q", t.GID)
-	}
-	dir := filepath.Join(stateDir, "tickets", t.GID)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return Files{}, err
 	}
 	data, err := json.MarshalIndent(t, "", "  ")
 	if err != nil {
 		return Files{}, err
 	}
+	parent := filepath.Join(stateDir, "tickets", t.GID)
+	if err := os.MkdirAll(parent, 0o700); err != nil {
+		return Files{}, err
+	}
+	dir, err := os.MkdirTemp(parent, "run-")
+	if err != nil {
+		return Files{}, err
+	}
 	f := Files{JSON: filepath.Join(dir, "ticket.json"), Markdown: filepath.Join(dir, "ticket.md")}
 	if err := os.WriteFile(f.JSON, data, 0o600); err != nil {
+		os.RemoveAll(dir)
 		return Files{}, err
 	}
 	if err := os.WriteFile(f.Markdown, []byte(t.Markdown()), 0o600); err != nil {
+		os.RemoveAll(dir)
 		return Files{}, err
 	}
 	return f, nil
 }
 
-// WriteInput saves text typed for the action next to the ticket files. The
-// path is per ticket, so the next input action on the ticket overwrites it.
+// WriteInput saves text typed for the action next to its ticket snapshot.
 func (f *Files) WriteInput(text string) error {
 	f.Input = filepath.Join(filepath.Dir(f.Markdown), "input.md")
 	return os.WriteFile(f.Input, []byte(ticket.Clean(text)), 0o600)

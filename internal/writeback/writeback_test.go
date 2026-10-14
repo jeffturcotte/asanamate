@@ -11,8 +11,10 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sadmachine/asanamate/internal/asana"
+	"github.com/sadmachine/asanamate/internal/dateinput"
 )
 
 const taskJSON = `{"data":{"gid":"1","name":"Fix login",
@@ -238,13 +240,34 @@ func TestSetDue(t *testing.T) {
 
 func TestSetDueRejectsBadDates(t *testing.T) {
 	c, writes := fake(t)
-	for _, date := range []string{"tomorrow", "2026-02-30", "10/01/2026", "2026-1-1", "2026-10-01T10:00:00Z"} {
-		if err := (Service{Client: c}).SetDue(ctx, "1", date); err == nil || !strings.Contains(err.Error(), "YYYY-MM-DD") {
-			t.Errorf("SetDue(%q) = %v, want YYYY-MM-DD error", date, err)
+	for _, date := range []string{"nonsense", "2026-02-30"} {
+		if err := (Service{Client: c}).SetDue(ctx, "1", date); err == nil || !strings.Contains(err.Error(), "due date") {
+			t.Errorf("SetDue(%q) = %v, want due date error", date, err)
 		}
 	}
 	if len(*writes) != 0 {
 		t.Fatalf("writes = %+v", *writes)
+	}
+}
+
+func TestDateWritesResolveRelativeDates(t *testing.T) {
+	if _, err := dateinput.Resolve(ctx, "today"); err != nil {
+		t.Skipf("no GNU date: %v", err)
+	}
+	tomorrow := time.Now().AddDate(0, 0, 1).Format(time.DateOnly)
+	c, writes := fake(t)
+	if err := (Service{Client: c}).SetDue(ctx, "1", "+1 day"); err != nil {
+		t.Fatal(err)
+	}
+	if err := (Service{Client: c}).SetField(ctx, "1", "When", "+1 day", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (Service{Client: c}).Create(ctx, NewTicket{Name: "New", Parent: "1", Due: "+1 day"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(*writes) != 3 || (*writes)[0].body["due_on"] != tomorrow || (*writes)[2].body["due_on"] != tomorrow ||
+		!reflect.DeepEqual((*writes)[1].body["custom_fields"], map[string]any{"f4": map[string]any{"date": tomorrow}}) {
+		t.Fatalf("writes = %+v, want %s", *writes, tomorrow)
 	}
 }
 
@@ -385,7 +408,7 @@ func TestSetFieldRejectsUnknownOrAmbiguousPeople(t *testing.T) {
 func TestSetFieldRejectsBadInput(t *testing.T) {
 	c, writes := fake(t)
 	svc := Service{Client: c}
-	for _, args := range [][2]string{{"Points", "many"}, {"Stage", "Shipped"}, {"When", "tomorrow"}, {"Nope", "x"}} {
+	for _, args := range [][2]string{{"Points", "many"}, {"Stage", "Shipped"}, {"When", "nonsense"}, {"Nope", "x"}} {
 		if err := svc.SetField(ctx, "1", args[0], args[1], ""); err == nil {
 			t.Errorf("SetField(%q, %q) succeeded", args[0], args[1])
 		}
@@ -567,7 +590,7 @@ func TestCreateRejects(t *testing.T) {
 		{NewTicket{Name: "New", Section: "To Do"}, "needs a project"},
 		{NewTicket{Name: " "}, "title is empty"},
 		{NewTicket{Name: "a\nb"}, "one line"},
-		{NewTicket{Name: "New", Due: "soon"}, "YYYY-MM-DD"},
+		{NewTicket{Name: "New", Due: "soon"}, "due date"},
 	}
 	for _, tc := range cases {
 		c, writes := fake(t)

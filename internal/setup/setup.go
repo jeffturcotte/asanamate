@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -81,7 +80,6 @@ func Run(ctx context.Context, o Options) error {
 		repos = "git repositories directly inside " + root + "."
 	}
 	fmt.Fprintf(o.Out, summary, o.ConfigPath, repos, actions, o.StatePath)
-	warnMissingPager(o.Out)
 	return nil
 }
 
@@ -142,17 +140,6 @@ func Pager() string {
 		return f[0]
 	}
 	return "less"
-}
-
-// warnMissingPager warns when the pager action's pager is not on PATH.
-func warnMissingPager(out io.Writer) {
-	pager := Pager()
-	if _, err := exec.LookPath(pager); err == nil {
-		return
-	}
-	Warn(out, "Warning: pager "+strconv.Quote(pager)+" not found",
-		"  The \"View ticket in pager\" action (v) needs it. Install less, or set\n"+
-			"  $PAGER to a pager you have.")
 }
 
 // warning highlights the heading of a setup warning. lipgloss.Fprintln drops
@@ -218,9 +205,9 @@ Defaults:
   - Repo picker: %s
     Set [repo_source] command to use sesh, zoxide, or anything else.
   - Writes to Asana ask for confirmation (confirm_writes = true).
-  - Actions: one file each in %s. Rename the .example file to enable it.
-  - Themes: "auto" follows the terminal background. Copy the example in
-    themes/ to make your own.
+  - Actions: one file each in %s. Rename a .example file to enable it.
+  - Themes: "auto" follows the terminal background. Edit the installed presets
+    in themes/, or copy the example to make your own.
   - Agent status and time tracking are off. See the Agents and Time tracking
     sections of the README to turn them on.
   - Repo links and recent projects are stored in %s.
@@ -255,6 +242,12 @@ branch_field = ""
 
 [theme]
 # "auto", "dark", "light", or the name of a file in themes/ (without .toml).
+# Standard files: one-dark, one-light, monokai, tokyo-night, tokyo-day,
+# sonokai, dracula, nord, gruvbox-dark, gruvbox-light, catppuccin-mocha,
+# catppuccin-latte, solarized-dark, solarized-light, rose-pine.
+# Sonokai variants: sonokai-andromeda, sonokai-atlantis, sonokai-maia,
+# sonokai-shusia, sonokai-espresso.
+# Install standard files with install-themes.sh; edit them in themes/.
 # Copy themes/example.toml.example to start your own.
 name = "auto"
 # Themes "auto" uses on dark and light terminal backgrounds.
@@ -272,11 +265,14 @@ light = "light"
 # accent = { fg = "4", bold = true }
 # Unfocused panel and card borders.
 # border = "8"
-# Secondary text such as distant due dates.
+# Secondary text: distant due dates, list fields, and tickets in the Later
+# and No due date groups.
 # muted = { faint = true }
 # Bar selection and the views panel cursor.
 # highlight = { reverse = true }
-# Status messages and due-date urgency (today: warn, overdue: error).
+# Status messages and due-date urgency (today: warn, overdue: error), also
+# on the Today and Overdue group headers.
+# Positive time logged today uses ok; applied filter text uses warn.
 # ok = "2"
 # warn = "3"
 # error = "1"
@@ -291,9 +287,28 @@ light = "light"
 # Comment reactions you made, drawn as pills.
 # reacted = { bg = "236" }
 # NEW badge on My Tasks tickets changed since you last viewed them.
-# new = { fg = "15", bg = "1", bold = true }
-# Comment authors cycle through these.
+# new = { fg = "15", bg = "4", bold = true }
+# +N more badge on Activity events in a row on one ticket.
+# more = { fg = "0", bg = "6", bold = true }
+# Comment authors, their dots and gutters, cycle through these.
 # authors = ["4", "5", "6", "2", "3", "1"]
+# Git branch names; unset uses viewing foreground.
+# branch = "5"
+# Leading [TAG] in ticket titles; unset uses authors. [] disables tag colors.
+# title_tags = ["4", "5", "6", "2", "3", "1"]
+
+[colors.asana]
+# Project markers and enum options use these hue families. Unset values
+# use error, pinned, warn, ok, working, accent, viewing, viewing, and muted.
+# red = "1"
+# orange = "208"
+# yellow = "3"
+# green = "2"
+# teal = "14"
+# blue = "4"
+# purple = "5"
+# pink = "5"
+# gray = "8"
 
 [colors.mode]
 # Statusline mode pills. A pill without bg is drawn reversed.
@@ -304,12 +319,13 @@ light = "light"
 # edit = "5"
 
 [colors.markdown]
-# Reading pane Markdown, on top of the theme's glamour style. Unset by default.
+# Reading pane Markdown, on top of the theme's glamour style. Unset by default,
+# except code.
 # text = ""
 # heading = ""
 # h1 = { fg = "228", bg = "63", bold = true }
 # link = ""
-# code = ""
+# code = "2"
 # code_block = ""
 # quote = ""
 # rule = ""
@@ -322,6 +338,13 @@ reader = true
 # reader the rest; the reader hides when that leaves it too little room.
 # 0 sizes the list automatically (= fits it to its content).
 list_width = 0
+
+[layout.focus]
+# Draw every pane but the focused one faint, so focus stands out.
+dim = true
+# Give the focused pane the room: the list fits its titles while it has
+# focus, and shrinks to short titles while the reader has it.
+resize = true
 
 [list]
 # Automatically reload the list at this interval (at least 1s).
@@ -358,6 +381,12 @@ spacing = false
 # Selected ticket: "marker" (bold title with a left marker) or "bar" (reversed row).
 style = "marker"
 
+[list.new]
+# My Tasks tickets changed since you last viewed them carry a NEW badge.
+# List them first, under a New header; a ticket you open stays there until
+# you move away.
+section = false
+
 [reader]
 # Starting view for the reading pane; press v to switch. "cards": sections
 # and boxed comments. "markdown": the rendered ticket Markdown.
@@ -365,6 +394,14 @@ view = "cards"
 # Wrap description and comment text in the cards view at this many columns;
 # 0 wraps at the pane width.
 max_text_width = 0
+
+[reader.comments]
+# How many of the newest comments the cards view lists; Show all comments
+# lists the rest. 0 lists them all.
+latest = 3
+# Lines of text kept of each listed comment but the newest, ending in
+# "see more"; enter shows one in full. 0 shows every comment in full.
+preview_lines = 2
 
 [images]
 # Kitty graphics: "auto" detects kitty-protocol terminals, "kitty" forces on,
@@ -383,6 +420,20 @@ type_first = false
 # opens ready and the views panel counts new related events. "0" turns
 # background scans off; Activity then scans when you open it.
 refresh_interval = "2m"
+
+[feed]
+# The Feed panel under the ticket list: Asana activity, agents, unpushed
+# git work, and feed commands. "auto" expands it when the list leaves room,
+# "collapsed" keeps it to its border, "expanded" keeps it open. F toggles it.
+expand = "auto"
+# Rows when expanded, borders included; at least 3.
+height = 12
+# Run feeds and the git check at this interval (at least 1s); "0" runs them
+# only at start and on reload (r).
+refresh_interval = "1m"
+# Feed commands (see docs/extensions.md#feeds); for today's Harvest time
+# entries, add "asanamate-hrvst".
+commands = []
 
 # Optional: show running coding agents next to their tickets. Off unless
 # command is set. A ticket matches agents on its branch (see branch_field) in
@@ -411,11 +462,14 @@ refresh_interval = "2m"
 [time_tracking]
 # id = "hrvst"
 # command = "asanamate-hrvst --task-id YOUR_TASK_ID"
+# Open the log time form after these edits succeed in the TUI: "assign" (to
+# someone else) and "complete". esc skips it.
+# prompt_after = ["assign", "complete"]
 
 # Optional: suggest each Asana project's git repository and time tracking
 # project from another system. The command reads a JSON request from stdin and
-# writes the project's links as JSON (docs/extensions.md). asanamate-hub reads
-# them from imarc's Hub; it needs HUB_CLIENT_ID and HUB_CLIENT_SECRET exported.
+# writes the project's links as JSON (docs/extensions.md). imarc staff can use
+# asanamate-hub for Hub; see github.com/imarc/asanamate-hub.
 [project_links]
 # command = "asanamate-hub"
 
@@ -430,13 +484,16 @@ root = %s
 `
 
 // actionFiles are written to the actions directory by setup. The .example
-// file stays inactive until renamed to .toml.
+// files stay inactive until renamed to .toml, so a fresh install needs no
+// pager or agent tools.
 var actionFiles = []struct{ name, body string }{
-	{"pager.toml", `# One action per file. Every *.toml file here is an action, in file name order.
+	{"pager.toml.example", `# Rename to pager.toml to enable. Needs $PAGER, else less.
+# One action per file. Every *.toml file here is an action, in file name order.
 # Commands run with /bin/sh -c. Ticket data arrives in ASANAMATE_* environment
 # variables and in the files $ASANAMATE_TICKET_JSON and $ASANAMATE_TICKET_MD.
 # Never paste ticket text into the command; always use the variables.
-# Optional [form] fields provide select or hours controls. Values reach the
+# Optional [form] fields provide select, bool, number, string, hours, or date
+# controls, each with an optional default. Values reach the
 # command as $ASANAMATE_PARAM_<ID>. See README for an example.
 # mode: "foreground" (suspend the TUI), "background" (detached, logged), or
 # "exit" (quit asanamate, then run). repo = true resolves the ticket's repo first.
@@ -487,14 +544,21 @@ code = { fg = "#9ece6a", bg = "#24283b" }
 `},
 }
 
+// exists reports whether path exists.
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
 // writeFiles adds the default files to dir, keeping any that already exist.
+// A .example file is skipped once its enabled .toml exists.
 func writeFiles(dir string, files []struct{ name, body string }) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 	for _, f := range files {
 		path := filepath.Join(dir, f.name)
-		if _, err := os.Stat(path); err == nil {
+		if exists(path) || exists(strings.TrimSuffix(path, ".example")) {
 			continue
 		}
 		if err := writePrivate(path, []byte(f.body)); err != nil {

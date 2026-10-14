@@ -21,7 +21,9 @@ The config is TOML, decoded into the structs in `internal/config/config.go`.
   changing them, and make a breaking change only with the user's approval.
 - **Approved breaking changes:** teach `Merge` to move the old key to the new
   one, mark the commit breaking (`feat!:` plus a `BREAKING CHANGE:` footer
-  naming the old and new keys), and tell the user the next release tag needs a
+  naming the old and new keys), add the upgrade steps under the next
+  version's `## vX.Y.Z` heading in `docs/migrations.md` (the release workflow
+  puts that section atop the release notes; use absolute links), and tell the user the next release tag needs a
   breaking version bump. Releases come only from `v*` tags; there is no version
   file. Under semver that means the minor version while on `v0`, the major from
   `v1` on. A `v2` or later tag also requires the module path in `go.mod` to end

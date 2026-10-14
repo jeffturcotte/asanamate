@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"hash/fnv"
 	"image/color"
 	"path/filepath"
 	"slices"
@@ -22,23 +21,23 @@ import (
 // beside the details card instead of below it.
 const sideBySideW = 90
 
-// renderCards renders t as the reading pane's cards view: the name, a
-// summary line, local repo and time lines, a details card with the agents and
+// renderCards renders t as the reading pane's cards view: the name, the
+// local branch, repo, and time lines, a details card with the agents and
 // subtasks beside it (or below, when narrow), titled sections, and the comments
 // as a timeline, all
 // width columns wide. It records the line of each editable row in
 // m.fieldLines, and the last line of each multi-line one in m.fieldEnds.
 func (m *Model) renderCards(t ticket.Ticket, width int) string {
-	head := lipgloss.NewStyle().Bold(true).Width(width).Render(ticket.Clean(t.Name))
-	if chips := m.summaryLine(t.Task, width); chips != "" {
-		head += "\n" + chips
+	head := lipgloss.NewStyle().Width(width).Render(tagTitle(ticket.Clean(t.Name), titleStyle))
+	if line := m.branchLine(t.Task, width); line != "" {
+		head += "\n" + line
 	}
 	if line := m.repoLine(t.Task, width); line != "" {
 		head += "\n" + line
 	}
-	if value := m.timeSummaryValue(t.GID); value != "" {
-		line := m.sym.icon(iconClock) + "Time tracked · " + value
-		head += "\n" + dimStyle.Render(ansi.Truncate(line, width, "…"))
+	if value := m.timeSummaryStyled(t.GID); value != "" {
+		line := dimStyle.Render(m.sym.icon(iconClock)) + value
+		head += "\n" + ansi.Truncate(line, width, "…")
 	}
 	m.fieldLines, m.fieldEnds = map[string]int{}, map[string]int{}
 	fields := m.fieldTargets(t)
@@ -59,15 +58,12 @@ func (m *Model) renderCards(t ticket.Ticket, width int) string {
 		agentLines = append(agentLines, style.Render("+ Show "+otherAgents(hidden)))
 	}
 	// markOthers records the Show agents row, the Agents body's last line, for
-	// a body that starts on line and wraps at width.
-	markOthers := func(line, width int) {
+	// a body that starts on line. Each agent row takes one line.
+	markOthers := func(line int) {
 		if hidden == 0 {
 			return
 		}
-		if above := agentLines[:len(agentLines)-1]; len(above) > 0 {
-			line += lipgloss.Height(wrap(strings.Join(above, "\n"), width))
-		}
-		m.fieldLines[otherAgentsKey] = line
+		m.fieldLines[otherAgentsKey] = line + len(agentLines) - 1
 		m.cardTargets = append(m.cardTargets, otherAgentsKey)
 	}
 	subtaskTitle, subtasks := m.subtasks(t)
@@ -77,7 +73,7 @@ func (m *Model) renderCards(t ticket.Ticket, width int) string {
 	var blocks []string
 	add := func(key, title, body string) {
 		if body != "" {
-			block := m.rule(title, width, m.fieldKey == key) + "\n" + body
+			block := m.rule(title, width, m.fieldKey == key, m.focusReader) + "\n" + body
 			m.fieldLines[key] = lipgloss.Height(strings.Join(blocks, "\n\n")) + 1
 			m.fieldEnds[key] = m.fieldLines[key] + lipgloss.Height(block) - 1
 			m.cardTargets = append(m.cardTargets, key)
@@ -93,10 +89,10 @@ func (m *Model) renderCards(t ticket.Ticket, width int) string {
 			key := "section:agents"
 			m.fieldLines[key] = sideLine
 			m.cardTargets = append(m.cardTargets, key)
-			card := m.card(m.sym.robot+"   Agents", wrap(strings.Join(agentLines, "\n"), rightW-4), rightW, m.fieldKey == key)
+			card := m.card(m.sym.robot+"   Agents", cutLines(agentLines, rightW-4), rightW, m.fieldKey == key)
 			side = append(side, card)
 			m.fieldEnds[key] = sideLine + lipgloss.Height(card) - 1
-			markOthers(sideLine+1, rightW-4)
+			markOthers(sideLine + 1)
 			sideLine += lipgloss.Height(card) + 1
 		}
 		if subtasks != "" {
@@ -112,8 +108,8 @@ func (m *Model) renderCards(t ticket.Ticket, width int) string {
 		add("section:description", "Description", m.renderRich(t.HTMLNotes, width))
 	} else {
 		blocks = []string{head, m.card("Details", m.detailsBody(t, width-4, top), width, false)}
-		add("section:agents", "Agents", wrap(strings.Join(agentLines, "\n"), width))
-		markOthers(m.fieldLines["section:agents"]+1, width)
+		add("section:agents", "Agents", cutLines(agentLines, width))
+		markOthers(m.fieldLines["section:agents"] + 1)
 		add("section:description", "Description", m.renderRich(t.HTMLNotes, width))
 		add("section:subtasks", subtaskTitle, wrap(subtasks, width))
 	}
@@ -122,56 +118,61 @@ func (m *Model) renderCards(t ticket.Ticket, width int) string {
 
 	var attachments []string
 	for i, a := range t.Attachments {
-		attachments = append(attachments, fmt.Sprintf("%d. %s%s\n   %s", i+1, m.sym.icon(iconClip), ticket.OneLine(a.Name),
-			dimStyle.Render(ansi.Truncate(ticket.OneLine(ticket.AttachmentURL(a)), width-3, "…"))))
+		attachments = append(attachments, ansi.Truncate(fmt.Sprintf("%d. %s%s", i+1, m.sym.icon(iconClip), ticket.OneLine(a.Name)), width, "…"))
 	}
 	add("section:attachments", fmt.Sprintf("Attachments %d", len(t.Attachments)), strings.Join(attachments, "\n"))
 
 	// The add row stays visible above the comment timeline.
 	m.fieldLines[commentKey] = lipgloss.Height(strings.Join(blocks, "\n\n")) + 2
 	m.cardTargets = append(m.cardTargets, commentKey)
+	m.clipped = map[string]bool{}
 	comments := []string{dimStyle.Render("none")}
 	if len(t.Comments) > 0 {
-		comments = make([]string, len(t.Comments))
+		comments = nil
 		line := m.fieldLines[commentKey] + 2
-		for i, c := range t.Comments {
+		first := 0
+		opts := m.deps.Config.Reader.Comments
+		if latest := opts.Latest; !m.showComments && latest > 0 && len(t.Comments) > latest {
+			first = len(t.Comments) - latest
+			m.fieldLines[allCommentsKey] = line
+			m.cardTargets = append(m.cardTargets, allCommentsKey)
+			style := dimStyle.Italic(true)
+			if m.fieldKey == allCommentsKey {
+				style = m.fieldStyle()
+			}
+			comments = append(comments, style.Render(fmt.Sprintf("+ Show all %d comments", len(t.Comments))))
+			line += 2
+		}
+		for i := first; i < len(t.Comments); i++ {
+			c := t.Comments[i]
 			key := commentTarget(c, i)
 			m.fieldLines[key] = line
 			m.cardTargets = append(m.cardTargets, key)
-			comments[i] = m.comment(c, width, m.fieldKey == key)
-			m.fieldEnds[key] = line + lipgloss.Height(comments[i]) - 1
-			line += lipgloss.Height(comments[i]) + 1
+			preview := 0
+			if i < len(t.Comments)-1 && !m.openComments[key] {
+				preview = opts.PreviewLines
+			}
+			block, clipped := m.comment(c, width, m.fieldKey == key, preview)
+			m.clipped[key] = clipped
+			m.fieldEnds[key] = line + lipgloss.Height(block) - 1
+			line += lipgloss.Height(block) + 1
+			comments = append(comments, block)
 		}
 	}
-	heading := m.rule(fmt.Sprintf("Comments %d", len(t.Comments)), width, false)
+	heading := m.rule(fmt.Sprintf("Comments %d", len(t.Comments)), width, false, m.focusReader)
 	addComment := m.addRow(commentKey, "+ Add comment")
 	blocks = append(blocks, heading+"\n"+addComment+"\n\n"+strings.Join(comments, "\n\n"))
 	return strings.Join(blocks, "\n\n")
 }
 
-// summaryLine is the faint line under the ticket's name: its project and
-// section, due date, and branch, cut to width.
-func (m *Model) summaryLine(t asana.Task, width int) string {
-	var chips []string
-	rc := m.rowContext()
-	for _, ms := range t.Memberships {
-		if rc.projectGID == "" || ms.Project.GID == rc.projectGID {
-			chip := m.sym.icon(iconFolder) + ticket.OneLine(ms.Project.Name)
-			if ms.Section != nil {
-				chip += " › " + ticket.OneLine(ms.Section.Name)
-			}
-			chips = append(chips, dimStyle.Render(chip))
-			break
-		}
+// branchLine is the faint line under the ticket's name naming the branch its
+// actions use, cut to width; "" when that is only the name's slug.
+func (m *Model) branchLine(t asana.Task, width int) string {
+	branch := action.Branch(t, m.deps.State.TaskBranches[t.GID], m.deps.Config.BranchField, m.rowContext().preferred)
+	if branch == action.Slug(t.Name) {
+		return ""
 	}
-	if rel, style := dueLabel(t.DueOn, m.now()); rel != "" {
-		due, _, _ := asana.DueDays(t.DueOn, m.now())
-		chips = append(chips, style.Render(m.sym.icon(iconDue)+shortDate(due, m.now())+" · "+rel))
-	}
-	if branch := action.Branch(t, m.deps.State.TaskBranches[t.GID], m.deps.Config.BranchField, rc.preferred); branch != action.Slug(t.Name) {
-		chips = append(chips, dimStyle.Render(m.sym.icon(iconBranch)+ticket.OneLine(branch)))
-	}
-	return ansi.Truncate(strings.Join(chips, "   "), width, "…")
+	return ansi.Truncate(branchStyle.Render(m.sym.icon(iconBranch)+ticket.OneLine(branch)), width, "…")
 }
 
 // repoLine is the faint line under the summary naming the local repo a
@@ -233,8 +234,10 @@ func (m *Model) progress(done, total int) string {
 }
 
 // comment renders one comment of the timeline: a colored dot, the author, and
-// the day, over the body behind a faint gutter.
-func (m *Model) comment(c asana.Story, width int, selected bool) string {
+// the day, over the body behind a gutter in the author's color. A preview
+// above 0 keeps only that many lines of the body's text, ending in see more,
+// and reports whether it cut any.
+func (m *Model) comment(c asana.Story, width int, selected bool, preview int) (string, bool) {
 	author := ticket.Author(c)
 	day, err := time.Parse(time.DateOnly, ticket.Day(c.CreatedAt))
 	when := ticket.Day(c.CreatedAt)
@@ -246,19 +249,50 @@ func (m *Model) comment(c asana.Story, width int, selected bool) string {
 		head = m.fieldStyle().Render(ansi.Strip(head))
 	}
 	body := m.renderRich(c.HTMLText, width-2)
-	gutterStyle := lipgloss.NewStyle().Foreground(borderColor)
+	gutterStyle := authorStyle(author)
 	if selected {
 		gutterStyle = m.markerStyle
 	}
 	gutter := gutterStyle.Render("│") + " "
 	lines := strings.Split(body, "\n")
+	clipped := false
+	if preview > 0 {
+		lines, clipped = previewText(lines, preview, width-2)
+	}
 	if r := m.reactions(c.Reactions); r != "" {
 		lines = append(lines, ansi.Truncate(r, width-2, "…"))
 	}
 	for i, l := range lines {
 		lines[i] = gutter + l
 	}
-	return head + "\n" + strings.Join(lines, "\n")
+	return head + "\n" + strings.Join(lines, "\n"), clipped
+}
+
+// previewText keeps the first n lines of text in lines, skipping blank ones,
+// and ends the last kept line with see more, within width. It returns lines
+// unchanged when they hold no more text than that.
+func previewText(lines []string, n, width int) ([]string, bool) {
+	var kept []string
+	for i, l := range lines {
+		if strings.TrimSpace(ansi.Strip(l)) == "" {
+			continue
+		}
+		if len(kept) == n {
+			more := dimStyle.Italic(true).Render(" see more …")
+			last := kept[len(kept)-1]
+			// Rendered lines are padded to width; cut the padding, not the text.
+			text, room := ansi.StringWidth(strings.TrimRight(ansi.Strip(last), " ")), width-ansi.StringWidth(more)
+			if text > room {
+				last = ansi.Truncate(last, room, "…")
+			} else {
+				last = ansi.Truncate(last, text, "")
+			}
+			kept[len(kept)-1] = last + more
+			return kept, true
+		}
+		kept = append(kept, lines[i])
+	}
+	return lines, false
 }
 
 // reactions renders a comment's reactions as each emoji with its count, the
@@ -292,11 +326,7 @@ func (m *Model) reactions(rs []asana.Reaction) string {
 }
 
 // authorStyle colors an author the same way every time, from colors.authors.
-func authorStyle(name string) lipgloss.Style {
-	h := fnv.New32a()
-	h.Write([]byte(name))
-	return authorStyles[h.Sum32()%uint32(len(authorStyles))]
-}
+func authorStyle(name string) lipgloss.Style { return hashStyle(authorStyles, name) }
 
 // shortDate shows a date as "Sep 26", with the year when it is not this year's.
 func shortDate(d, today time.Time) string {
@@ -306,9 +336,12 @@ func shortDate(d, today time.Time) string {
 	return d.Format("Jan 2 2006")
 }
 
-// detailMeta inserts the Add project row after the ticket's projects.
+// detailMeta inserts the Add project row after the ticket's projects. It
+// leaves out the URL, which o and y cover, and the Status of an open ticket.
 func detailMeta(t ticket.Ticket) []ticket.Field {
-	rows := t.Meta()
+	rows := slices.DeleteFunc(t.Meta(), func(f ticket.Field) bool {
+		return f.Key == "" && (f.Label == "URL" || f.Label == "Status" && !t.Completed)
+	})
 	index := -1
 	for i, f := range rows {
 		if strings.HasPrefix(f.Key, ticket.KeyProject+":") {
@@ -357,6 +390,34 @@ func (m *Model) detailsBody(t ticket.Ticket, width, top int) string {
 			switch {
 			case f.Label == "Status" && f.Key == "":
 				value = m.statusBadge(t.Completed)
+			case strings.HasPrefix(f.Key, ticket.KeyProject+":"):
+				gid := strings.TrimPrefix(f.Key, ticket.KeyProject+":")
+				for _, membership := range t.Memberships {
+					if membership.Project.GID == gid {
+						var section string
+						if membership.Section != nil {
+							section = " / " + ticket.Clean(membership.Section.Name)
+						}
+						// Cut the project name so its section stays on the row,
+						// unless that leaves too little of the name to read.
+						value = m.projectLabel(membership.Project, lipgloss.NewStyle())
+						if room := width - labelW - 2 - ansi.StringWidth(section); room >= 12 {
+							value = ansi.Truncate(value, room, "…")
+						}
+						value += section
+						break
+					}
+				}
+			case strings.HasPrefix(f.Key, ticket.KeyField+":"):
+				for _, field := range t.CustomFields {
+					if f.Key == ticket.FieldKey(field.GID) && m.deps.Config.BranchField != "" && asana.SameFieldName(field.Name, m.deps.Config.BranchField) {
+						value = branchStyle.Render(value)
+						break
+					}
+				}
+				if style, ok := fieldEnumStyle(t, f.Key); ok {
+					value = style.Render("● " + value)
+				}
 			case f.Key == ticket.KeyDue:
 				if due, _, ok := asana.DueDays(t.DueOn, m.now()); ok {
 					rel, style := dueLabel(t.DueOn, m.now())
@@ -397,6 +458,17 @@ func (m *Model) detailsBody(t ticket.Ticket, width, top int) string {
 	return strings.Join(lines, "\n")
 }
 
+// fieldEnumStyle is the enum color style of t's custom field with key, and
+// whether it has one.
+func fieldEnumStyle(t ticket.Ticket, key string) (lipgloss.Style, bool) {
+	for _, f := range t.CustomFields {
+		if ticket.FieldKey(f.GID) == key {
+			return enumStyle(f)
+		}
+	}
+	return lipgloss.Style{}, false
+}
+
 func (m *Model) statusBadge(completed bool) string {
 	if completed {
 		return okStyle.Render(m.sym.done + " done")
@@ -412,18 +484,27 @@ func (m *Model) addRow(key, label string) string {
 	if m.fieldKey == key {
 		return m.fieldStyle().Render(label)
 	}
-	return m.accentStyle.Render(label)
+	return m.headingStyle(m.accentStyle, m.focusReader).Render(label)
+}
+
+// headingStyle is style for a heading in a focused pane, or the muted style in
+// an unfocused one, so only the focused pane shows color.
+func (m *Model) headingStyle(style lipgloss.Style, focused bool) lipgloss.Style {
+	if focused {
+		return style
+	}
+	return dimStyle
 }
 
 // rule is a section heading drawn as a full-width line with the title in it,
-// marked when it is the tabbed-to row.
-func (m *Model) rule(title string, width int, selected bool) string {
+// marked when it is the tabbed-to row, and muted when its pane lacks focus.
+func (m *Model) rule(title string, width int, selected, focused bool) string {
 	line := m.sym.border.Top
 	lead := line + line + " "
 	title = ansi.Truncate(title, max(width-ansi.StringWidth(lead)-2, 1), "…")
 	fill := max(width-ansi.StringWidth(lead)-ansi.StringWidth(title)-1, 0)
 	ruleStyle := lipgloss.NewStyle().Foreground(borderColor)
-	headStyle := m.accentStyle
+	headStyle := m.headingStyle(m.accentStyle, focused)
 	if selected {
 		headStyle = m.fieldStyle()
 	}
@@ -444,20 +525,51 @@ func (m *Model) card(title, body string, width int, selected bool) string {
 }
 
 // panel boxes a pane's body, width by height cells in all, with title and
-// right set into the top edge. A highlighted panel's edge and title are in the
-// highlight color; nil draws the plain border. body must already fit width-2
-// by height-2 cells.
-func (m *Model) panel(title, right, body string, width, height int, highlight color.Color) string {
+// right set into the top edge. A focused panel's edge is in the accent color
+// and its title is a filled tab; alert, if not nil, colors the edge and title
+// instead, such as while the pane loads. With layout.focus.dim, an
+// unfocused panel's body is faint. body must already fit width-2 by height-2
+// cells.
+func (m *Model) panel(title, right, body string, width, height int, focused bool, alert color.Color) string {
 	edge, head := lipgloss.NewStyle().Foreground(borderColor), dimStyle
-	if highlight != nil {
-		edge, head = lipgloss.NewStyle().Foreground(highlight), lipgloss.NewStyle().Bold(true).Foreground(highlight)
+	if focused {
+		edge = lipgloss.NewStyle().Foreground(m.accentStyle.GetForeground())
+	}
+	if alert != nil {
+		edge = lipgloss.NewStyle().Foreground(alert)
+	}
+	switch {
+	case focused:
+		head = lipgloss.NewStyle().Bold(true).Reverse(true).Foreground(edge.GetForeground())
+	case alert != nil:
+		head = lipgloss.NewStyle().Bold(true).Foreground(alert)
+	case m.focusDim:
+		body = faint(body)
 	}
 	box := lipgloss.NewStyle().Border(m.sym.border).BorderTop(false).BorderForeground(edge.GetForeground()).
 		Width(width).Height(height - 1).MaxHeight(height - 1).Render(body)
 	if right != "" {
 		right = dimStyle.Render(right)
 	}
-	return m.topEdge(head.Render(title), right, width, edge) + "\n" + box
+	top := m.topEdge(head.Render(title), right, width, edge)
+	if height <= 2 {
+		// No room for a body: the top edge over the bottom edge.
+		b := m.sym.border
+		return top + "\n" + edge.Render(b.BottomLeft+strings.Repeat(b.Bottom, max(width-2, 0))+b.BottomRight)
+	}
+	return top + "\n" + box
+}
+
+// faint draws s in the terminal's faint intensity over its own colors,
+// renewing it after every reset.
+func faint(s string) string {
+	const on, reset = "\x1b[2m", "\x1b[m"
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		line = strings.ReplaceAll(line, "\x1b[0m", reset)
+		lines[i] = on + strings.ReplaceAll(line, reset, reset+on) + reset
+	}
+	return strings.Join(lines, "\n")
 }
 
 // topEdge is a box's top border, width columns wide, with the styled title
@@ -504,6 +616,15 @@ func wrap(s string, width int) string {
 		return ""
 	}
 	return lipgloss.NewStyle().Width(width).Render(s)
+}
+
+// cutLines joins lines, each cut to width with an ellipsis.
+func cutLines(lines []string, width int) string {
+	out := make([]string, len(lines))
+	for i, l := range lines {
+		out[i] = ansi.Truncate(l, width, "…")
+	}
+	return strings.Join(out, "\n")
 }
 
 func refLines(refs []asana.Ref) string {

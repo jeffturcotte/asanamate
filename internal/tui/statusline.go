@@ -35,13 +35,22 @@ func (m *Model) mode() (name string, pill lipgloss.Style, hints [][2]string) {
 	case m.focusReader:
 		if m.readerView != config.ViewMarkdown {
 			hints := [][2]string{targets}
-			if t, ok := m.selectedDetail(); ok && m.selectedComment(t) != nil {
-				hints = append(hints, [2]string{keyLabel("main", "open"), "comment menu"})
+			open := keyLabel("main", "open")
+			if m.fieldKey == allCommentsKey {
+				hints = append(hints, [2]string{open, "show all comments"})
+			} else if t, ok := m.selectedDetail(); ok && m.selectedComment(t) != nil {
+				hint := "comment menu"
+				if m.clipped[m.fieldKey] {
+					hint = "see more"
+				}
+				hints = append(hints, [2]string{open, hint})
 				hints = append(hints, m.keyHints("copy_comment")...)
 			}
 			return "READ", readPill, append(hints, scroll, pane, list)
 		}
 		return "READ", readPill, [][2]string{{keyLabel("main", "down", "up"), "scroll"}, pane, list}
+	case m.focusFeed:
+		return "FEED", normalPill, [][2]string{{keyLabel("views", "down", "up"), "move"}, {keyLabel("views", "open"), "open"}, {keyLabel("feed", "prev_source", "next_source"), "source"}, list, {keyLabel("main", "toggle_feed"), "collapse"}}
 	case m.focusNav:
 		return "VIEWS", normalPill, [][2]string{{keyLabel("views", "down", "up"), "move"}, {keyLabel("views", "open"), "open"}, list, {keyLabel("main", "help"), "keys"}}
 	}
@@ -95,7 +104,7 @@ func (m *Model) listSegs() []string {
 	if m.filtering {
 		segs = append(segs, m.filterInput.View())
 	} else if f := m.filterInput.Value(); f != "" {
-		segs = append(segs, m.sym.icon(iconFilter)+f)
+		segs = append(segs, warnStyle.Render(m.sym.icon(iconFilter)+f))
 	}
 	if m.groupBy != "" {
 		segs = append(segs, m.sym.icon(iconGroup)+m.groupBy)
@@ -103,7 +112,7 @@ func (m *Model) listSegs() []string {
 	if m.sortBy.By != "" {
 		segs = append(segs, "sort: "+sortLabel(m.sortBy))
 	}
-	segs = append(segs, fmt.Sprintf("%d/%d", len(m.visible), len(m.tasks)), m.refreshLabel())
+	segs = append(segs, fmt.Sprintf("%d/%d", len(m.visible), len(m.tasks)), dimStyle.Render(m.refreshLabel()))
 	if s := m.sym.summary(m.linkedAgents(), m.frame); s != "" {
 		segs = append(segs, s)
 	}

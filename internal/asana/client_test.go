@@ -316,3 +316,20 @@ func TestProjectFieldsReturnsNamesWithoutTaskValues(t *testing.T) {
 		})
 	}
 }
+
+func TestTaskGIDFromURL(t *testing.T) {
+	for raw, want := range map[string]string{
+		"https://app.asana.com/0/7/42":                                   "42",
+		"https://app.asana.com/0/7/42/f":                                 "42",
+		"https://app.asana.com/1/652/project/1205/task/1218987517194396": "1218987517194396",
+		"https://app.asana.com/1/652/task/99?focus=true":                 "99",
+		"https://app.asana.com/0/my-apps":                                "",
+		"https://example.com/0/7/42":                                     "",
+		"https://app.asana.com/1/652/project/1205":                       "",
+		"not a url": "",
+	} {
+		if got := TaskGIDFromURL(raw); got != want {
+			t.Errorf("TaskGIDFromURL(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}

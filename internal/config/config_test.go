@@ -193,6 +193,16 @@ func TestListConfig(t *testing.T) {
 	if !reflect.DeepEqual(cfg.Colors, Colors{}) || cfg.List.Header != (Header{Style: StyleRule}) || cfg.List.Selection != (Selection{Style: StyleMarker}) {
 		t.Fatalf("style defaults: %+v", cfg.List)
 	}
+	if !reflect.DeepEqual(cfg.Feed, Feed{Expand: ExpandAuto, Height: 12, RefreshInterval: "1m", Commands: []string{}}) {
+		t.Fatalf("feed defaults: %+v", cfg.Feed)
+	}
+	if cfg.Reader.Comments != (Comments{Latest: 3, PreviewLines: 2}) {
+		t.Fatalf("comment defaults: %+v", cfg.Reader.Comments)
+	}
+	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[reader.comments]\nlatest = 0\npreview_lines = 5\n"))
+	if err != nil || cfg.Reader.Comments != (Comments{Latest: 0, PreviewLines: 5}) {
+		t.Fatalf("comments: %+v, err = %v", cfg.Reader.Comments, err)
+	}
 	for _, color := range []string{"0", "255", "#abc", "#A1b2C3"} {
 		cfg, err := Load(writeFile(t, "workspace = \"1\"\n[colors]\nviewing = \""+color+"\"\n"))
 		if err != nil || cfg.Colors.Viewing.FG != color {
@@ -205,6 +215,13 @@ func TestListConfig(t *testing.T) {
 			t.Errorf("colors.viewing %q: expected error naming colors.viewing, got %v", color, err)
 		}
 	}
+	if cfg.List.New.Section {
+		t.Fatal("list.new.section must default to false")
+	}
+	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[list.new]\nsection = true\n"))
+	if err != nil || !cfg.List.New.Section {
+		t.Fatalf("list.new.section: %+v, err = %v", cfg.List.New, err)
+	}
 	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[list]\nlayout = \"multi\"\nfields = [\"status\", \"Branch Name\", \"due\"]\n"))
 	if err != nil || cfg.List.Layout != LayoutMulti || len(cfg.List.Fields) != 3 {
 		t.Fatalf("custom: %+v, err = %v", cfg.List, err)
@@ -213,13 +230,17 @@ func TestListConfig(t *testing.T) {
 		"bad layout":    "[list]\nlayout = \"grid\"\n",
 		"bad view":      "[reader]\nview = \"grid\"\n",
 		"neg width":     "[reader]\nmax_text_width = -1\n",
+		"neg latest":    "[reader.comments]\nlatest = -1\n",
+		"neg preview":   "[reader.comments]\npreview_lines = -1\n",
 		"title field":   "[list]\nfields = [\"Title\"]\n",
 		"empty field":   "[list]\nfields = [\" \"]\n",
 		"title group":   "[list]\ngroup_by = \"title\"\n",
 		"bad header":    "[list.header]\nstyle = \"box\"\n",
 		"int spacing":   "[list.header]\nspacing = 1\n",
+		"int new":       "[list.new]\nsection = 1\n",
 		"bad selection": "[list.selection]\nstyle = \"rule\"\n",
 		"bad accent":    "[colors]\naccent = \"blue\"\n",
+		"bad more":      "[colors]\nmore = { bg = \"cyan\" }\n",
 	} {
 		if _, err := Load(writeFile(t, "workspace = \"1\"\n"+body)); err == nil {
 			t.Errorf("%s: expected an error", name)
@@ -292,6 +313,13 @@ func TestTimeTrackingConfig(t *testing.T) {
 	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[time_tracking]\nid = \"hrvst\"\ncommand = \"asanamate-hrvst --task-id 456\"\n"))
 	if err != nil || !cfg.TimeTrackingEnabled() {
 		t.Fatalf("configured time tracking = %+v, err = %v", cfg.TimeTracking, err)
+	}
+	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[time_tracking]\nid = \"hrvst\"\ncommand = \"p\"\nprompt_after = [\"assign\", \"complete\"]\n"))
+	if err != nil || !cfg.TimeTracking.PromptsAfter(PromptAssign) || !cfg.TimeTracking.PromptsAfter(PromptComplete) {
+		t.Fatalf("prompt_after = %+v, err = %v", cfg.TimeTracking, err)
+	}
+	if _, err := Load(writeFile(t, "workspace = \"1\"\n[time_tracking]\nid = \"hrvst\"\ncommand = \"p\"\nprompt_after = [\"move\"]\n")); err == nil || !strings.Contains(err.Error(), "time_tracking.prompt_after") {
+		t.Fatalf("bad prompt_after: err = %v", err)
 	}
 	for _, body := range []string{"id = \"hrvst\"", "command = \"provider\"", "id = \"hrvst\"\ncommand = \"  \""} {
 		if _, err := Load(writeFile(t, "workspace = \"1\"\n[time_tracking]\n"+body+"\n")); err == nil || !strings.Contains(err.Error(), "time_tracking") {
@@ -568,11 +596,11 @@ func TestKeysConfig(t *testing.T) {
 		t.Fatalf("draft key override = %v, %v", cfg.Keymap, err)
 	}
 
-	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[keys.main]\nactivity = [\"i\"]\n[keys.activity]\nautomated = [\"A\"]\n"))
+	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[keys.main]\nactivity = [\"w\"]\n[keys.activity]\nautomated = [\"A\"]\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Keymap.Name("main", "i") != "activity" || cfg.Keymap.Name("activity", "A") != "automated" || cfg.Keymap.Name("activity", "!") != "" {
+	if cfg.Keymap.Name("main", "w") != "activity" || cfg.Keymap.Name("activity", "A") != "automated" || cfg.Keymap.Name("activity", "!") != "" {
 		t.Fatalf("activity keymap = %v", cfg.Keymap)
 	}
 	_, err = Load(writeFile(t, "workspace = \"1\"\n[keys.main]\ndwon = [\"j\"]\n"))
@@ -594,15 +622,35 @@ func TestPickerConfig(t *testing.T) {
 
 func TestLayoutConfig(t *testing.T) {
 	cfg, err := Load(writeFile(t, "workspace = \"1\"\n"))
-	if err != nil || cfg.Layout != (Layout{Reader: true}) {
+	if err != nil || cfg.Layout != (Layout{Reader: true, Focus: Focus{Dim: true, Resize: true}}) {
 		t.Fatalf("default: %+v, err = %v", cfg.Layout, err)
 	}
-	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[layout]\nreader = false\nlist_width = 60\n"))
+	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[layout]\nreader = false\nlist_width = 60\n[layout.focus]\ndim = false\nresize = false\n"))
 	if err != nil || cfg.Layout != (Layout{ListWidth: 60}) {
 		t.Fatalf("set: %+v, err = %v", cfg.Layout, err)
 	}
 	_, err = Load(writeFile(t, "workspace = \"1\"\n[layout]\nlist_width = -1\n"))
 	if err == nil || !strings.Contains(err.Error(), "layout.list_width") {
 		t.Fatalf("negative list_width: err = %v", err)
+	}
+}
+
+func TestFeedConfig(t *testing.T) {
+	cfg, err := Load(writeFile(t, "workspace = \"1\"\n[feed]\nexpand = \"collapsed\"\nheight = 5\nrefresh_interval = \"0\"\ncommands = [\"asanamate-hrvst\"]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d, _ := cfg.Feed.Interval(); cfg.Feed.Expand != ExpandCollapsed || cfg.Feed.Height != 5 || d != 0 || !slices.Equal(cfg.Feed.Commands, []string{"asanamate-hrvst"}) {
+		t.Fatalf("feed = %+v", cfg.Feed)
+	}
+	for body, key := range map[string]string{
+		"[feed]\nexpand = \"open\"\n":           "feed.expand",
+		"[feed]\nheight = 2\n":                  "feed.height",
+		"[feed]\nrefresh_interval = \"10ms\"\n": "feed.refresh_interval",
+		"[feed]\ncommands = [\" \"]\n":          "feed.commands",
+	} {
+		if _, err := Load(writeFile(t, "workspace = \"1\"\n"+body)); err == nil || !strings.Contains(err.Error(), key) {
+			t.Errorf("%q: error %v, want one naming %s", body, err, key)
+		}
 	}
 }

@@ -28,6 +28,7 @@ import (
 	"github.com/sadmachine/asanamate/internal/browser"
 	"github.com/sadmachine/asanamate/internal/ccmux"
 	"github.com/sadmachine/asanamate/internal/config"
+	"github.com/sadmachine/asanamate/internal/feed"
 	"github.com/sadmachine/asanamate/internal/filter"
 	"github.com/sadmachine/asanamate/internal/kitty"
 	"github.com/sadmachine/asanamate/internal/listing"
@@ -59,8 +60,9 @@ const usage = `usage:
                                                    and people; "" clears it)
   asanamate assign  [--yes] <gid> <name | me | "">
                                                    assign a task ("" unassigns it)
-  asanamate due     [--yes] <gid> <YYYY-MM-DD | "">
-                                                   set a task's due date ("" clears it)
+  asanamate due     [--yes] <gid> <date | "">
+                                                   set a task's due date: YYYY-MM-DD or date -d
+                                                   text, such as "+1 day" ("" clears it)
   asanamate project add|remove [--yes] <gid> <project-gid>
                                                    add a task to a project or remove it
   asanamate complete [--yes] [--reopen] <gid>        mark a task complete (--reopen reopens it)
@@ -68,7 +70,7 @@ const usage = `usage:
                                                    react to a comment (--remove takes it back;
                                                    comment gids are in show --format json)
   asanamate create  [--yes] [--project <gid> [--section <name>] | --parent <gid>]
-                    [--assignee <name | me>] [--due <YYYY-MM-DD>] [--notes <markdown | ->] <title>
+                    [--assignee <name | me>] [--due <date>] [--notes <markdown | ->] <title>
                                                    create a ticket (default: in My Tasks, assigned
                                                    to you) or a subtask; prints its gid
   asanamate doctor [<gid>]                         check setup and optional tools; for a ticket, why agents link (or not)
@@ -270,7 +272,7 @@ func runCreate(args []string, stdin io.Reader, stdout io.Writer, writer func(yes
 	fs.StringVar(&nt.Section, "section", "", "section of --project, by name or gid")
 	fs.StringVar(&nt.Parent, "parent", "", "parent task gid; makes a subtask")
 	fs.StringVar(&nt.Assignee, "assignee", "", `full name or gid of the assignee, or "me"`)
-	fs.StringVar(&nt.Due, "due", "", "due date as YYYY-MM-DD")
+	fs.StringVar(&nt.Due, "due", "", "due date as YYYY-MM-DD or date -d text, such as +1 day")
 	fs.StringVar(&nt.Notes, "notes", "", `description in Markdown ("-" reads stdin)`)
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -563,6 +565,7 @@ func runDoctor(args []string) error {
 		row(w, "branch_field", strconv.Quote(cfg.BranchField))
 	}
 	checkLegacyCodexHook(w)
+	checkFeeds(ctx, w, cfg.Feed.Commands)
 	var list []agents.Agent
 	if !cfg.AgentsEnabled() {
 		row(w, "agents", "off: set agents.command")
@@ -684,6 +687,26 @@ func checkFeatures(w io.Writer, cfg config.Config) {
 		row(w, "project_links", "off")
 	} else {
 		row(w, "project_links", "unchecked: command "+strconv.Quote(cfg.ProjectLinks.Command)+" (not run)")
+	}
+}
+
+// checkFeeds runs each feed command once and reports what it answered.
+func checkFeeds(ctx context.Context, w io.Writer, feeds []string) {
+	if len(feeds) == 0 {
+		row(w, "feeds", "none: set feed.commands")
+	}
+	for _, command := range feeds {
+		source := "command " + strconv.Quote(command)
+		reply, err := feed.Fetch(ctx, command, time.Now())
+		if err != nil {
+			row(w, "feed", fmt.Sprintf("warning: %s failed: %v", source, err))
+			continue
+		}
+		items := fmt.Sprintf("%d items", len(reply.Items))
+		if len(reply.Items) == 1 {
+			items = "1 item"
+		}
+		row(w, "feed", fmt.Sprintf("ok: %s: %s, %s today%s", source, reply.Source, items, strings.TrimSuffix(", "+reply.Summary, ", ")))
 	}
 }
 

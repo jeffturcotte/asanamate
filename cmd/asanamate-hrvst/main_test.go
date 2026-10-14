@@ -12,7 +12,9 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/sadmachine/asanamate/internal/feed"
 	"github.com/sadmachine/asanamate/internal/projectlinks"
 	"github.com/sadmachine/asanamate/internal/timetracking"
 )
@@ -46,14 +48,18 @@ func TestProviderProtocol(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			var payload harvestEntryRequest
-			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.ProjectID != "123" || payload.TaskID != "456" || payload.Hours != 1.25 || payload.ExternalReference.ID != "42" {
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.ProjectID != "123" || payload.TaskID != "456" || payload.SpentDate != "2026-10-05" || payload.Hours != 1.25 || payload.ExternalReference.ID != "42" {
 				t.Errorf("Harvest payload = %+v, err = %v", payload, err)
 			}
 			logged.Store(true)
 			fmt.Fprint(w, `{"id":987,"external_reference":{"id":"42","permalink":"https://app.asana.com/0/7/42"}}`)
 			return
 		}
-		fmt.Fprint(w, `{"time_entries":[{"hours":3.75,"is_running":false,"external_reference":{"id":"42"}}],"next_page":null}`)
+		if r.URL.Path == "/users/me" {
+			fmt.Fprint(w, `{"id":555}`)
+			return
+		}
+		fmt.Fprintf(w, `{"time_entries":[{"hours":3.75,"spent_date":%q,"is_running":false,"created_at":"2026-10-12T18:05:00Z","project":{"name":"Web"},"external_reference":{"id":"42"}}],"next_page":null}`, time.Now().Format(time.DateOnly))
 	}))
 	defer server.Close()
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
@@ -68,15 +74,20 @@ func TestProviderProtocol(t *testing.T) {
 	asana := timetracking.Asana{TaskGID: "42", ProjectGID: "7", Title: "Fix login", URL: "https://app.asana.com/0/7/42"}
 
 	spec, err := provider.Form(ctx, asana, []projectlinks.Link{{Type: projectlinks.HarvestProject, Value: "123"}})
-	if err != nil || len(spec.Fields) != 3 || spec.Fields[0].Options[0].ID != "123" || spec.Fields[0].Default != "123" {
+	if err != nil || len(spec.Fields) != 4 || spec.Fields[0].Options[0].ID != "123" || spec.Fields[0].Default != "123" {
 		t.Fatalf("form = %+v, err = %v", spec, err)
 	}
-	if err := provider.Log(ctx, spec, map[string]string{"project_id": "123", "task_id": "456", "hours": "1.25"}, asana); err != nil || !logged.Load() {
+	if err := provider.Log(ctx, spec, map[string]string{"project_id": "123", "task_id": "456", "hours": "1.25", "spent_date": "2026-10-05"}, asana); err != nil || !logged.Load() {
 		t.Fatalf("log err = %v, logged = %v", err, logged.Load())
 	}
 	summary, err := provider.Summary(ctx, asana)
-	if err != nil || summary.TotalSeconds != 13500 {
+	if err != nil || summary.TotalSeconds != 13500 || summary.TodaySeconds == nil || *summary.TodaySeconds != 13500 {
 		t.Fatalf("summary = %+v, err = %v", summary, err)
+	}
+	// The same command answers the feed protocol.
+	reply, err := feed.Fetch(ctx, provider.Command, time.Now())
+	if err != nil || reply.Source != "hrvst" || reply.Summary != "3h 45m logged" || len(reply.Items) != 1 || reply.Items[0].TicketGID != "42" {
+		t.Fatalf("feed = %+v, err = %v", reply, err)
 	}
 }
 

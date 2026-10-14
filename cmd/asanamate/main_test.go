@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -56,5 +58,22 @@ func TestCreateRejectsBadArguments(t *testing.T) {
 		if err := runCreate(args, strings.NewReader(""), &out, fakeWriter(t, &bodies)); err == nil || out.Len() > 0 || len(bodies) > 0 {
 			t.Errorf("%q: err = %v, out = %q, bodies = %v", args, err, out.String(), bodies)
 		}
+	}
+}
+
+func TestCheckFeedsRunsEachFeed(t *testing.T) {
+	var out bytes.Buffer
+	checkFeeds(context.Background(), &out, []string{
+		`printf '%s' '{"source":"ci","summary":"1 failed","items":[{"time":"2026-10-12T09:00:00Z","text":"build"}]}'`,
+		"exit 3",
+	})
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 2 || !strings.Contains(lines[0], "ok: ") || !strings.HasSuffix(lines[0], "ci, 1 item today, 1 failed") || !strings.Contains(lines[1], "warning: ") {
+		t.Fatalf("doctor feeds:\n%s", out.String())
+	}
+	out.Reset()
+	checkFeeds(context.Background(), &out, nil)
+	if !strings.Contains(out.String(), "none: set feed.commands") {
+		t.Fatalf("no feeds = %q", out.String())
 	}
 }

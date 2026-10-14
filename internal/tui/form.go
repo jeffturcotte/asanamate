@@ -1,14 +1,18 @@
 package tui
 
 import (
+	"context"
 	"maps"
+	"strconv"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/sadmachine/asanamate/internal/dateinput"
 	"github.com/sadmachine/asanamate/internal/form"
 	"github.com/sadmachine/asanamate/internal/ticket"
 )
@@ -32,17 +36,19 @@ func newFormModal(title string, spec form.Spec, defaults map[string]string, onSu
 	f.input.Prompt = "> "
 	firstMissing := -1
 	for i, field := range spec.Fields {
-		if field.Type == form.Select {
-			if field.HasOption(defaults[field.ID]) {
-				f.values[field.ID] = defaults[field.ID]
-			} else if field.Default != "" {
-				f.values[field.ID] = field.Default
-			} else if len(field.Options) == 1 {
-				f.values[field.ID] = field.Options[0].ID
-			} else if firstMissing < 0 {
-				firstMissing = i
-			}
-		} else if firstMissing < 0 {
+		switch {
+		case field.Type == form.Select && field.HasOption(defaults[field.ID]):
+			f.values[field.ID] = defaults[field.ID]
+		case field.Default != "":
+			f.values[field.ID] = field.Default
+		case field.Type == form.Select && len(field.Options) == 1:
+			f.values[field.ID] = field.Options[0].ID
+		case field.Type == form.Bool:
+			f.values[field.ID] = "false"
+		case field.Type == form.Date:
+			f.values[field.ID] = time.Now().Format(time.DateOnly)
+		case field.Type == form.String:
+		case firstMissing < 0:
 			firstMissing = i
 		}
 	}
@@ -72,7 +78,7 @@ func (f *formModal) update(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	if f.editing {
 		scope = "form_field"
 	}
-	if bound(scope, msg, f.editing) == "external_editor" && field.Type != form.Select {
+	if bound(scope, msg, f.editing) == "external_editor" && field.Type != form.Select && field.Type != form.Bool {
 		value := f.values[field.ID]
 		if f.editing {
 			value = f.input.Value()
@@ -94,7 +100,17 @@ func (f *formModal) update(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 			f.editing = false
 			return false, nil
 		case "done", "next":
-			f.values[field.ID] = strings.TrimSpace(f.input.Value())
+			value := strings.TrimSpace(f.input.Value())
+			if field.Type == form.Date {
+				// date -d answers in milliseconds, so it runs inline.
+				date, err := dateinput.Resolve(context.Background(), value)
+				if err != nil {
+					f.err = err.Error()
+					return false, nil
+				}
+				value = date
+			}
+			f.values[field.ID] = value
 			f.editing = false
 			f.err = ""
 			if name == "next" {
@@ -114,13 +130,16 @@ func (f *formModal) update(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	case "next":
 		f.cursor = (f.cursor + 1) % len(f.spec.Fields)
 	case "edit":
-		if field.Type == form.Select {
+		switch field.Type {
+		case form.Select:
 			items := make([]pickItem, len(field.Options))
 			for i, option := range field.Options {
 				items[i] = pickItem{Label: ticket.OneLine(option.Name), Hint: option.ID, Value: option.ID}
 			}
 			f.picker = newPicker(nil, ticket.OneLine(field.Label), items)
-		} else {
+		case form.Bool:
+			f.values[field.ID] = strconv.FormatBool(f.values[field.ID] != "true")
+		default:
 			f.input.SetValue(f.values[field.ID])
 			f.input.Focus()
 			f.editing = true
@@ -146,7 +165,9 @@ func (f *formModal) view(width, height int, accent lipgloss.Style) string {
 		if field.Type == form.Select {
 			value = field.LabelFor(value)
 		}
-		if value == "" {
+		if value == "" && field.Type == form.String {
+			value = "(empty)"
+		} else if value == "" {
 			value = "(choose)"
 		}
 		line := ticket.OneLine(field.Label) + ": " + ticket.OneLine(value)

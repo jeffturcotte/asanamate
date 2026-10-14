@@ -48,7 +48,7 @@ type commentDoneMsg struct {
 	cleanup  error // a successful post whose draft could not be removed
 }
 
-func (m *Model) openComment(t asana.Task) {
+func (m *Model) openCommentComposer(t asana.Task) {
 	b := newInputBox("Comment on "+ticket.Clean(t.Name), "comment text")
 	b.area.DynamicHeight = true
 	b.area.MinHeight = 10

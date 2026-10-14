@@ -1,0 +1,35 @@
+# Gruvbox Dark palette adapted to asanamate's themed roles.
+# Palette reference: https://github.com/morhetz/gruvbox
+base = "dark"
+
+[colors]
+accent = { fg = "#83a598", bold = true }
+border = "#7c6f64"
+muted = { fg = "#a89984", faint = false }
+highlight = { fg = "#ebdbb2", bg = "#504945", reverse = false }
+ok = "#b8bb26"
+warn = "#fabd2f"
+error = "#fb4934"
+working = "#8ec07c"
+pinned = { fg = "#fe8019", bold = true }
+viewing = { fg = "#d3869b", bold = true }
+reacted = { fg = "#ebdbb2", bg = "#504945" }
+new = { fg = "#282828", bg = "#83a598", bold = true }
+more = { fg = "#282828", bg = "#8ec07c", bold = true }
+authors = ["#83a598", "#d3869b", "#8ec07c", "#b8bb26", "#fabd2f", "#fb4934"]
+
+[colors.mode]
+normal = { fg = "#282828", bg = "#83a598", bold = true }
+filter = { fg = "#282828", bg = "#fabd2f", bold = true }
+read = { fg = "#282828", bg = "#8ec07c", bold = true }
+edit = { fg = "#282828", bg = "#d3869b", bold = true }
+
+[colors.markdown]
+text = "#ebdbb2"
+heading = { fg = "#83a598", bold = true }
+h1 = { fg = "#282828", bg = "#83a598", bold = true }
+link = { fg = "#8ec07c", underline = true }
+code = { fg = "#b8bb26", bg = "#3c3836" }
+code_block = { fg = "#ebdbb2", bg = "#3c3836" }
+quote = { fg = "#a89984", italic = true }
+rule = "#7c6f64"

@@ -1,0 +1,35 @@
+# Rosé Pine palette adapted to asanamate's themed roles.
+# Palette reference: https://rosepinetheme.com/palette/ingredients/
+base = "dark"
+
+[colors]
+accent = { fg = "#c4a7e7", bold = true }
+border = "#524f67"
+muted = { fg = "#908caa", faint = false }
+highlight = { fg = "#e0def4", bg = "#403d52", reverse = false }
+ok = "#9ccfd8"
+warn = "#f6c177"
+error = "#eb6f92"
+working = "#9ccfd8"
+pinned = { fg = "#ebbcba", bold = true }
+viewing = { fg = "#c4a7e7", bold = true }
+reacted = { fg = "#e0def4", bg = "#403d52" }
+new = { fg = "#191724", bg = "#c4a7e7", bold = true }
+more = { fg = "#191724", bg = "#9ccfd8", bold = true }
+authors = ["#c4a7e7", "#c4a7e7", "#9ccfd8", "#9ccfd8", "#f6c177", "#eb6f92"]
+
+[colors.mode]
+normal = { fg = "#191724", bg = "#c4a7e7", bold = true }
+filter = { fg = "#191724", bg = "#f6c177", bold = true }
+read = { fg = "#191724", bg = "#9ccfd8", bold = true }
+edit = { fg = "#191724", bg = "#c4a7e7", bold = true }
+
+[colors.markdown]
+text = "#e0def4"
+heading = { fg = "#c4a7e7", bold = true }
+h1 = { fg = "#191724", bg = "#c4a7e7", bold = true }
+link = { fg = "#9ccfd8", underline = true }
+code = { fg = "#9ccfd8", bg = "#1f1d2e" }
+code_block = { fg = "#e0def4", bg = "#1f1d2e" }
+quote = { fg = "#908caa", italic = true }
+rule = "#524f67"

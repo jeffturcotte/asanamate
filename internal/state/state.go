@@ -78,8 +78,10 @@ type State struct {
 type Display struct {
 	Separator       *bool  `toml:"separator,omitempty"`
 	HeaderSpacing   *bool  `toml:"header_spacing,omitempty"`
+	SelectionStyle  string `toml:"selection_style,omitempty"`
 	ReaderView      string `toml:"reader_view,omitempty"`
 	RefreshInterval string `toml:"refresh_interval,omitempty"`
+	FocusDim        *bool  `toml:"focus_dim,omitempty"`
 }
 
 // View is a list grouping, sort, and filter; "" GroupBy is ungrouped.

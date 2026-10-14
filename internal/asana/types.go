@@ -1,7 +1,9 @@
 package asana
 
 import (
+	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -22,8 +24,9 @@ func DueDays(dueOn *string, today time.Time) (due time.Time, days int, ok bool) 
 
 // Ref is a compact Asana object: a gid and a display name.
 type Ref struct {
-	GID  string `json:"gid"`
-	Name string `json:"name"`
+	GID   string `json:"gid"`
+	Name  string `json:"name"`
+	Color string `json:"color,omitempty"` // project color, when requested
 }
 
 // Membership places a task in a project section.
@@ -32,8 +35,14 @@ type Membership struct {
 	Section *Ref `json:"section,omitempty"`
 }
 
-// EnumOption is one choice of an enum custom field.
-type EnumOption = Ref
+// EnumOption is one choice of an enum custom field. Color is Asana's name for
+// its color, such as "red" or "cool-gray", and "none" when it has none; list
+// and detail requests fill it only for a field's chosen option.
+type EnumOption struct {
+	GID   string `json:"gid"`
+	Name  string `json:"name"`
+	Color string `json:"color,omitempty"`
+}
 
 // Custom field types (resource_subtype values).
 const (
@@ -55,6 +64,7 @@ type CustomField struct {
 	IsValueReadOnly    bool         `json:"is_value_read_only,omitempty"`
 	IsFormulaField     bool         `json:"is_formula_field,omitempty"`
 	EnumOptions        []EnumOption `json:"enum_options,omitempty"`
+	EnumValue          *EnumOption  `json:"enum_value,omitempty"`
 	MultiEnumValues    []EnumOption `json:"multi_enum_values,omitempty"`
 	PeopleValue        []Ref        `json:"people_value,omitempty"`
 	DateValue          *DateValue   `json:"date_value,omitempty"`
@@ -183,6 +193,15 @@ func (f CustomField) Value() string {
 	return *f.DisplayValue
 }
 
+// Color returns the Asana color of an enum field's chosen option, or "" when
+// it has none.
+func (f CustomField) Color() string {
+	if f.EnumValue == nil || f.EnumValue.Color == "none" {
+		return ""
+	}
+	return f.EnumValue.Color
+}
+
 // Names returns the refs' names, in order.
 func Names(refs []Ref) []string {
 	names := make([]string, len(refs))
@@ -244,5 +263,30 @@ type User struct {
 type Project struct {
 	GID     string `json:"gid"`
 	Name    string `json:"name"`
+	Color   string `json:"color,omitempty"` // Asana's name for it, such as "dark-green"; "none" for none
 	Members []Ref  `json:"members"`
+}
+
+// TaskGIDFromURL returns the task GID in an Asana task URL, in either the
+// /0/<project>/<task> or the /1/<workspace>/.../task/<task> form, or "" when
+// rawURL is not one.
+func TaskGIDFromURL(rawURL string) string {
+	u, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || u.Host != "app.asana.com" {
+		return ""
+	}
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	gid := ""
+	switch {
+	case len(parts) >= 3 && parts[0] == "0":
+		gid = parts[2]
+	default:
+		if i := slices.Index(parts, "task"); i > 0 && i+1 < len(parts) {
+			gid = parts[i+1]
+		}
+	}
+	if gid == "" || strings.Trim(gid, "0123456789") != "" {
+		return ""
+	}
+	return gid
 }

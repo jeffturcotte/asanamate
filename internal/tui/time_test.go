@@ -135,7 +135,7 @@ func TestTimeSummaryStatesAndReaderViews(t *testing.T) {
 			task := m.details["42"].Task
 			task.HTMLNotes = "<body>" + strings.Repeat("<p>line</p>", 40) + "</body>"
 			m.details["42"] = ticket.Ticket{Task: task}
-			m.deps.Config.TimeTracking.Command = "printf '%s' '{\"total_seconds\":13500}'"
+			m.deps.Config.TimeTracking.Command = "printf '%s' '{\"total_seconds\":13500,\"today_seconds\":4500}'"
 			cmd := m.loadTimeSummary(task)
 			m.renderDetail(false)
 			if !strings.Contains(ansi.Strip(m.reader.GetContent()), "loading") {
@@ -143,7 +143,7 @@ func TestTimeSummaryStatesAndReaderViews(t *testing.T) {
 			}
 			m.Update(cmd())
 			content := ansi.Strip(m.reader.GetContent())
-			if !strings.Contains(content, "Time tracked") || !strings.Contains(content, "3h 45m") || !strings.Contains(content, "visible entries") {
+			if !strings.Contains(content, "3h 45m · 1h 15m today") || strings.Contains(content, "visible entries") || strings.Contains(content, "hrvst") {
 				t.Fatalf("summary missing: %s", content)
 			}
 			m.reader.SetYOffset(8)
@@ -163,10 +163,28 @@ func TestTimeSummaryStatesAndReaderViews(t *testing.T) {
 			}
 			m.deps.Config.TimeTracking = config.TimeTracking{}
 			m.renderDetail(true)
-			if strings.Contains(ansi.Strip(m.reader.GetContent()), "Time tracked") || m.loadTimeSummary(task) != nil {
+			if strings.Contains(ansi.Strip(m.reader.GetContent()), "unsupported") || m.loadTimeSummary(task) != nil {
 				t.Fatal("disabled tracker shown or called")
 			}
 		})
+	}
+}
+
+func TestTimeSummaryTodayFormatting(t *testing.T) {
+	m, _ := timeModel(t)
+	for _, tc := range []struct {
+		summary timetracking.Summary
+		want    string
+	}{
+		{timetracking.Summary{TotalSeconds: 13500}, "3h 45m"},
+		{timetracking.Summary{TotalSeconds: 13500, TodaySeconds: new(int64(0))}, "3h 45m · 0m today"},
+		{timetracking.Summary{TotalSeconds: 3661, TodaySeconds: new(int64(61))}, "1h 1m 1s · 1m 1s today"},
+		{timetracking.Summary{TodaySeconds: new(int64(0))}, "0m · 0m today"},
+	} {
+		m.timeSummaries = map[string]timeSummaryState{"42": {summary: tc.summary}}
+		if got := m.timeSummaryValue("42"); got != tc.want {
+			t.Errorf("summary = %q, want %q", got, tc.want)
+		}
 	}
 }
 
@@ -219,8 +237,8 @@ func TestTimeSummaryLivesInHeaderWithClock(t *testing.T) {
 			tk := m.details["42"]
 			for _, width := range []int{40, 120} {
 				content := ansi.Strip(m.renderCards(tk, width))
-				timeAt, detailsAt := strings.Index(content, "Time tracked"), strings.Index(content, "Details")
-				if timeAt < 0 || detailsAt < timeAt || strings.Count(content, "Time tracked") != 1 || !strings.Contains(content, tc.clock+" Time tracked") {
+				timeAt, detailsAt := strings.Index(content, tc.clock+" 3h 45m"), strings.Index(content, "Details")
+				if timeAt < 0 || detailsAt < timeAt || strings.Count(content, "3h 45m") != 1 {
 					t.Fatalf("time must appear once in header with clock: %s", content)
 				}
 				for _, line := range strings.Split(content[:detailsAt], "\n") {
@@ -228,10 +246,29 @@ func TestTimeSummaryLivesInHeaderWithClock(t *testing.T) {
 						t.Fatalf("header exceeds width %d: %q", width, line)
 					}
 				}
-				if strings.Contains(ansi.Strip(m.detailsBody(tk, width-4, 0)), "Time tracked") {
+				if strings.Contains(ansi.Strip(m.detailsBody(tk, width-4, 0)), "3h 45m") {
 					t.Fatal("time remains in Details card")
 				}
 			}
 		})
+	}
+}
+
+func TestTodayTimeUsesThemeOKOnlyWhenPositive(t *testing.T) {
+	m, _ := timeModel(t)
+	m.timeSummaries = map[string]timeSummaryState{}
+	defer applyPalette(config.Config{}.Palette(true))
+	m.deps.Config.Colors.OK = config.Style{FG: "#123456"}
+	applyPalette(m.deps.Config.Palette(true))
+	for _, seconds := range []int64{0, 3600} {
+		m.timeSummaries["42"] = timeSummaryState{summary: timetracking.Summary{TotalSeconds: seconds, TodaySeconds: &seconds}}
+		plain, styled := m.timeSummaryValue("42"), m.timeSummaryStyled("42")
+		if ansi.Strip(styled) != plain {
+			t.Fatalf("styling changed text: %q vs %q", styled, plain)
+		}
+		tinted := okStyle.Faint(false).Render(trackedDuration(seconds) + " today")
+		if strings.Contains(styled, tinted) != (seconds > 0) {
+			t.Fatalf("today tint for %d: %q", seconds, styled)
+		}
 	}
 }

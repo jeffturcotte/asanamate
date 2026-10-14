@@ -72,7 +72,16 @@ func TestLinkedRepoRunsImmediately(t *testing.T) {
 	if cmd == nil || cmd.Dir != dir || !slices.Contains(cmd.Env, "ASANAMATE_REPO="+dir) || !slices.Contains(cmd.Env, "ASANAMATE_PROJECT=Web") {
 		t.Fatalf("exit command = %+v", cmd)
 	}
-	if _, err := os.Stat(filepath.Join(m.deps.StateDir, "tickets", "1", "ticket.md")); err != nil {
+	var ticketPath string
+	for _, kv := range cmd.Env {
+		if path, ok := strings.CutPrefix(kv, "ASANAMATE_TICKET_MD="); ok {
+			ticketPath = path
+		}
+	}
+	if !strings.HasPrefix(ticketPath, filepath.Join(m.deps.StateDir, "tickets", "1")+string(filepath.Separator)) {
+		t.Fatalf("ticket export outside its task directory: %q", ticketPath)
+	}
+	if _, err := os.Stat(ticketPath); err != nil {
 		t.Fatalf("ticket.md not written: %v", err)
 	}
 }

@@ -1,11 +1,13 @@
 package tui
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/sadmachine/asanamate/internal/agents"
@@ -69,6 +71,55 @@ func TestAgentColumnGroupsManyAgents(t *testing.T) {
 	m.Update(agentsMsg{list: list})
 	if first := strings.Split(ansi.Strip(m.listView(40, 4)), "\n")[0]; !strings.HasSuffix(first, "⚠1 ◐3 ●2 ") {
 		t.Fatalf("row = %q", first)
+	}
+}
+
+func TestAgentColumnUsesSelectionTheme(t *testing.T) {
+	for _, reverse := range []bool{false, true} {
+		for _, layout := range []string{config.LayoutSingle, config.LayoutMulti} {
+			for _, set := range []string{config.SymbolsASCII, config.SymbolsUnicode, config.SymbolsNerd} {
+				t.Run(layout+"/"+set+"/reverse="+fmt.Sprint(reverse), func(t *testing.T) {
+					m := agentModel(t, set, true)
+					m.deps.Config.List.Layout = layout
+					highlight := config.Style{Reverse: &reverse}
+					if !reverse {
+						highlight.FG, highlight.BG = "#dddddd", "#504945"
+					}
+					cfg := config.Config{Colors: config.Colors{Highlight: highlight}}
+					applyPalette(cfg.Palette(true))
+					for _, count := range []int{2, 6} {
+						list := []agents.Agent{onBranch(agents.Working, ""), onBranch(agents.Idle, "")}
+						m.Update(agentsMsg{list: slices.Repeat(list, count/2)})
+						row := strings.Split(m.listView(40, 4), "\n")[0]
+						if !strings.Contains(row, selectedStyle.Bold(true).Render(m.sym.robot)) {
+							t.Fatal("robot does not use the selection theme")
+						}
+						for _, st := range []agents.State{agents.Working, agents.Idle} {
+							style := stateStyles[st].Bold(true).Reverse(true)
+							if !reverse {
+								style = selectedStyle.Foreground(stateStyles[st].GetForeground()).Bold(true)
+							}
+							text := m.sym.agent(st, 0)
+							if count > 4 {
+								text += fmt.Sprint(count / 2)
+							}
+							if !strings.Contains(row, style.Render(text)) {
+								t.Fatalf("%s does not use the selection theme", st)
+							}
+						}
+						if ansi.StringWidth(row) != 40-listGutter {
+							t.Fatalf("highlight changed row width: %d", ansi.StringWidth(row))
+						}
+						m.focusReader = true
+						row = strings.Split(m.listView(40, 4), "\n")[0]
+						if !strings.Contains(row, lipgloss.NewStyle().Bold(true).Render(m.sym.robot)) {
+							t.Fatal("reader focus must leave the badge unhighlighted")
+						}
+						m.focusReader = false
+					}
+				})
+			}
+		}
 	}
 }
 
@@ -262,6 +313,22 @@ func TestReaderListsAgentsAndKeepsScroll(t *testing.T) {
 	m.Update(agentsMsg{list: []agents.Agent{titled(agents.Idle, "w1", "Refactor the queue")}})
 	if !strings.Contains(ansi.Strip(m.reader.GetContent()), "○ idle") || m.reader.YOffset() != 5 {
 		t.Fatalf("refresh must update the section and keep scroll (offset %d)", m.reader.YOffset())
+	}
+}
+
+func TestReaderAgentRowsStayOnOneLine(t *testing.T) {
+	for _, width := range []int{160, 70} {
+		m := agentModel(t, config.SymbolsUnicode, true)
+		m.Update(tea.WindowSizeMsg{Width: width, Height: 40})
+		m.Update(detailMsg{gid: "1", ticket: ticket.Ticket{Task: agentTask("feat/x")}})
+		a := titled(agents.Working, "w1", strings.Repeat("Improve SSO OAuth compatibility ", 3))
+		a.Path = "/code/web/feature-3091-masterclass-sso-46450568f0323c4b"
+		m.Update(agentsMsg{list: []agents.Agent{a}})
+		lines := strings.Split(ansi.Strip(m.reader.GetContent()), "\n")
+		i := slices.IndexFunc(lines, func(l string) bool { return strings.Contains(l, "◐ working · Improve") })
+		if i < 0 || !strings.Contains(lines[i], "…") || strings.Contains(lines[i+1], "compatibility") || strings.Contains(lines[i+1], "46450568") {
+			t.Fatalf("width %d: agent row must stay on one line:\n%s", width, strings.Join(lines, "\n"))
+		}
 	}
 }
 

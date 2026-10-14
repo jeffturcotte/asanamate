@@ -204,7 +204,11 @@ func (m *Model) gotTimeSummary(msg timeSummaryMsg) {
 	}
 }
 
-func (m *Model) timeSummaryValue(gid string) string {
+func (m *Model) timeSummaryValue(gid string) string { return m.timeSummary(gid, false) }
+
+func (m *Model) timeSummaryStyled(gid string) string { return m.timeSummary(gid, true) }
+
+func (m *Model) timeSummary(gid string, styled bool) string {
 	if !m.deps.Config.TimeTrackingEnabled() {
 		return ""
 	}
@@ -217,21 +221,34 @@ func (m *Model) timeSummaryValue(gid string) string {
 	case state.err != nil:
 		value = "unavailable"
 	default:
-		seconds := state.summary.TotalSeconds
-		parts := []string{}
-		if seconds >= 3600 {
-			parts = append(parts, fmt.Sprintf("%dh", seconds/3600))
+		value = trackedDuration(state.summary.TotalSeconds)
+		if today := state.summary.TodaySeconds; today != nil {
+			label := trackedDuration(*today) + " today"
+			if styled && *today > 0 {
+				label = okStyle.Faint(false).Render(label)
+			}
+			value += " · " + label
 		}
-		if minutes := seconds / 60 % 60; minutes > 0 {
-			parts = append(parts, fmt.Sprintf("%dm", minutes))
-		}
-		if remainder := seconds % 60; remainder > 0 {
-			parts = append(parts, fmt.Sprintf("%ds", remainder))
-		}
-		if len(parts) == 0 {
-			parts = append(parts, "0m")
-		}
-		value = strings.Join(parts, " ") + " (visible entries)"
 	}
-	return value + " · " + ticket.OneLine(m.deps.Config.TimeTracking.ID)
+	if styled {
+		return dimStyle.Render(value)
+	}
+	return value
+}
+
+func trackedDuration(seconds int64) string {
+	parts := []string{}
+	if seconds >= 3600 {
+		parts = append(parts, fmt.Sprintf("%dh", seconds/3600))
+	}
+	if minutes := seconds / 60 % 60; minutes > 0 {
+		parts = append(parts, fmt.Sprintf("%dm", minutes))
+	}
+	if remainder := seconds % 60; remainder > 0 {
+		parts = append(parts, fmt.Sprintf("%ds", remainder))
+	}
+	if len(parts) == 0 {
+		return "0m"
+	}
+	return strings.Join(parts, " ")
 }

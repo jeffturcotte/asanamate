@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -15,14 +16,15 @@ import (
 
 // rowContext is what a row needs beyond the task itself.
 type rowContext struct {
-	projectGID string          // viewed project, "" for My Tasks
-	preferred  map[string]bool // the viewed project's custom field gids
+	branchField string          // configured branch custom field name
+	projectGID  string          // viewed project, "" for My Tasks
+	preferred   map[string]bool // the viewed project's custom field gids
 }
 
 // rowContext builds the row context for t in the current view.
 func (m *Model) rowContext() rowContext {
 	view := gidOf(m.viewProject)
-	return rowContext{projectGID: view, preferred: m.projectFields[view]}
+	return rowContext{projectGID: view, preferred: m.projectFields[view], branchField: m.deps.Config.BranchField}
 }
 
 // ticketAgents returns the running agents on the ticket's branch in the repos
@@ -115,8 +117,8 @@ func rowFields(t asana.Task, names []string, rc rowContext) []string {
 }
 
 // cellValue is a list field's value as a row shows it, with the style to show
-// it in: due dates are relative and colored by urgency, and other values
-// have no style of their own.
+// it in: due dates are relative and colored by urgency, and other values are
+// muted, as secondary to the title, unless an enum's Asana color sets them.
 func cellValue(t asana.Task, name string, rc rowContext, today time.Time) (string, lipgloss.Style) {
 	name = strings.TrimSpace(name)
 	switch {
@@ -126,7 +128,29 @@ func cellValue(t asana.Task, name string, rc rowContext, today time.Time) (strin
 		// One space each side keeps the badge readable.
 		return " " + initials(t.Assignee.Name) + " ", authorStyle(t.Assignee.Name).Reverse(true).Bold(true)
 	}
-	return ticket.OneLine(fieldValue(t, name, rc)), lipgloss.Style{}
+	v := ticket.OneLine(fieldValue(t, name, rc))
+	if !slices.Contains(builtinFields, strings.ToLower(name)) {
+		if f, ok := t.Field(name, rc.preferred); ok {
+			return v, customCellStyle(f, rc.branchField)
+		}
+	}
+	return v, dimStyle
+}
+
+// customCellStyle gives the configured branch field its theme role.
+func customCellStyle(f asana.CustomField, branchField string) lipgloss.Style {
+	if branchField != "" && asana.SameFieldName(f.Name, branchField) {
+		return branchStyle
+	}
+	return fieldCellStyle(f)
+}
+
+// fieldCellStyle is a custom field's list cell style: its enum color, else muted.
+func fieldCellStyle(f asana.CustomField) lipgloss.Style {
+	if style, ok := enumStyle(f); ok {
+		return style
+	}
+	return dimStyle
 }
 
 // dueLabel shows a due date relative to today: "3d ago" in red, "today" in

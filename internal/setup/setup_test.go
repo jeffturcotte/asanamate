@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -51,8 +52,16 @@ func TestRunWritesLoadableConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generated config does not load: %v", err)
 	}
-	if cfg.Workspace != "w2" || cfg.RepoSource.Root != root || cfg.RepoSource.Command != "" || len(cfg.Actions) != 1 {
+	if cfg.Workspace != "w2" || cfg.RepoSource.Root != root || cfg.RepoSource.Command != "" || len(cfg.Actions) != 0 {
 		t.Fatalf("cfg = %+v", cfg)
+	}
+	// The pager action is an example, so a fresh install needs no pager.
+	actions := config.ActionsDir(o.ConfigPath)
+	if err := os.Rename(filepath.Join(actions, "pager.toml.example"), filepath.Join(actions, "pager.toml")); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, err := config.Load(o.ConfigPath); err != nil || len(cfg.Actions) != 1 || cfg.Actions[0].Key != "v" {
+		t.Fatalf("enabled pager example: actions = %+v, err = %v", cfg.Actions, err)
 	}
 	info, _ := os.Stat(o.ConfigPath)
 	if info.Mode().Perm() != 0o600 {
@@ -65,7 +74,8 @@ func TestRunWritesLoadableConfig(t *testing.T) {
 	}
 }
 
-// Setup never overwrites action files, and the example works once renamed.
+// Setup never overwrites action files, skips the example of an enabled one,
+// and the example works once renamed.
 func TestRunKeepsActionsAndExampleLoads(t *testing.T) {
 	root := t.TempDir()
 	o, _ := options(t, "2\n"+root+"\n")
@@ -78,6 +88,9 @@ func TestRunKeepsActionsAndExampleLoads(t *testing.T) {
 	}
 	if data, _ := os.ReadFile(filepath.Join(dir, "pager.toml")); string(data) != mine {
 		t.Fatalf("action overwritten: %q", data)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "pager.toml.example")); err == nil {
+		t.Fatal("wrote pager.toml.example next to an enabled pager.toml")
 	}
 	if err := os.Rename(filepath.Join(dir, "claude-tmux.toml.example"), filepath.Join(dir, "claude-tmux.toml")); err != nil {
 		t.Fatal(err)
@@ -105,21 +118,6 @@ func TestRunSkipsRepoRoot(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "type a repo path when an action asks") {
 		t.Errorf("output does not explain the skipped repo picker:\n%s", out)
-	}
-}
-
-func TestWarnMissingPager(t *testing.T) {
-	var out strings.Builder
-	t.Setenv("PAGER", "no-such-pager-asanamate --flag")
-	warnMissingPager(&out)
-	if !strings.Contains(out.String(), `pager "no-such-pager-asanamate" not found`) {
-		t.Errorf("missing pager warning:\n%s", out.String())
-	}
-	out.Reset()
-	t.Setenv("PAGER", "sh -c")
-	warnMissingPager(&out)
-	if out.Len() != 0 {
-		t.Errorf("warned about an installed pager:\n%s", out.String())
 	}
 }
 
@@ -404,5 +402,73 @@ func TestUpdateWritesThemeExample(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(config.ThemesDir(path), "example.toml.example")); err != nil {
 		t.Fatalf("config update must add the theme example: %v", err)
+	}
+}
+
+func TestThemeInstallerKeepsEditsAndAddsMissingFiles(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "config home")
+	t.Setenv("XDG_CONFIG_HOME", root)
+	script, err := filepath.Abs(filepath.Join("..", "..", "install-themes.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	workingDir := t.TempDir()
+	install := func() {
+		t.Helper()
+		cmd := exec.Command("sh", script)
+		cmd.Dir = workingDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("install themes: %v\n%s", err, out)
+		}
+	}
+	install()
+	path := filepath.Join(root, "asanamate", "config.toml")
+	dir := config.ThemesDir(path)
+	sources, err := filepath.Glob(filepath.Join("..", "..", "themes", "*.toml"))
+	if err != nil || len(sources) == 0 {
+		t.Fatalf("source themes = %v, err = %v", sources, err)
+	}
+	files, err := filepath.Glob(filepath.Join(dir, "*.toml"))
+	if err != nil || len(files) != len(sources) {
+		t.Fatalf("installed files = %v, err = %v; want %d", files, err, len(sources))
+	}
+	license, err := os.ReadFile(filepath.Join(dir, "LICENSE.sonokai"))
+	if err != nil || !strings.Contains(string(license), "Copyright (c) 2020 sainnhe") {
+		t.Fatalf("Sonokai license missing: %v", err)
+	}
+	for _, file := range files {
+		want, err := os.ReadFile(filepath.Join("..", "..", "themes", filepath.Base(file)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(file)
+		if err != nil || string(got) != string(want) {
+			t.Fatalf("installed theme differs: %s, err = %v", file, err)
+		}
+		info, err := os.Stat(file)
+		if err != nil || info.Mode().Perm() != 0o600 {
+			t.Fatalf("theme permissions: %s, err = %v", file, err)
+		}
+	}
+	custom := "base = \"dark\"\n[colors]\naccent = \"#123456\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "one-dark.toml"), []byte(custom), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(dir, "one-light.toml")); err != nil {
+		t.Fatal(err)
+	}
+	install()
+	if got, err := os.ReadFile(filepath.Join(dir, "one-dark.toml")); err != nil || string(got) != custom {
+		t.Fatalf("reinstall must keep theme edits: %q, err = %v", got, err)
+	}
+	if err := os.WriteFile(path, []byte("workspace = \"1\"\n[theme]\nname = \"auto\"\ndark = \"one-dark\"\nlight = \"one-light\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Palette(true).Colors.Accent.FG != "#123456" || cfg.Palette(false).Colors.Accent.FG != "#4078f2" {
+		t.Fatal("installed themes must load local edits and restore missing files")
 	}
 }

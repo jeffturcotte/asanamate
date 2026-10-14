@@ -192,8 +192,13 @@ func TestAutoRefreshPreservesReader(t *testing.T) {
 				if !ok || selected.GID != openTask.GID || len(m.visible) != 2 || m.loading || cmd == nil {
 					t.Fatal("refresh did not update the list while keeping the selected ticket")
 				}
-				if m.reader.YOffset() != 10 || !m.focusReader || m.fieldKey != "description" || !m.showEmpty {
-					t.Fatal("refresh changed reader scroll, focus, or field selection")
+				// A narrower markdown reader wraps to more lines and keeps the
+				// same share of the ticket above the viewport.
+				if offset := m.reader.YOffset(); (view == config.ViewMarkdown && wider) != (offset > 10) || offset < 10 {
+					t.Fatalf("refresh moved reader scroll to %d", offset)
+				}
+				if !m.focusReader || m.fieldKey != "description" || !m.showEmpty {
+					t.Fatal("refresh changed reader focus or field selection")
 				}
 				if wider {
 					if m.reader.Width() >= width {

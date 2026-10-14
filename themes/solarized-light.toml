@@ -1,0 +1,35 @@
+# Solarized Light palette adapted to asanamate's themed roles.
+# Palette reference: https://ethanschoonover.com/solarized/
+base = "light"
+
+[colors]
+accent = { fg = "#268bd2", bold = true }
+border = "#93a1a1"
+muted = { fg = "#839496", faint = false }
+highlight = { fg = "#657b83", bg = "#eee8d5", reverse = false }
+ok = "#859900"
+warn = "#b58900"
+error = "#dc322f"
+working = "#2aa198"
+pinned = { fg = "#cb4b16", bold = true }
+viewing = { fg = "#6c71c4", bold = true }
+reacted = { fg = "#657b83", bg = "#eee8d5" }
+new = { fg = "#fdf6e3", bg = "#268bd2", bold = true }
+more = { fg = "#fdf6e3", bg = "#2aa198", bold = true }
+authors = ["#268bd2", "#6c71c4", "#2aa198", "#859900", "#b58900", "#dc322f"]
+
+[colors.mode]
+normal = { fg = "#fdf6e3", bg = "#268bd2", bold = true }
+filter = { fg = "#fdf6e3", bg = "#b58900", bold = true }
+read = { fg = "#fdf6e3", bg = "#2aa198", bold = true }
+edit = { fg = "#fdf6e3", bg = "#6c71c4", bold = true }
+
+[colors.markdown]
+text = "#657b83"
+heading = { fg = "#268bd2", bold = true }
+h1 = { fg = "#fdf6e3", bg = "#268bd2", bold = true }
+link = { fg = "#2aa198", underline = true }
+code = { fg = "#859900", bg = "#eee8d5" }
+code_block = { fg = "#657b83", bg = "#eee8d5" }
+quote = { fg = "#839496", italic = true }
+rule = "#93a1a1"

@@ -25,10 +25,14 @@ type readerState struct {
 	viewImages     []asana.Attachment      // images the attachment viewer steps through
 	viewIndex      int                     // viewImages index of the image in the viewer
 	shownGID       string
+	shownWidth     int               // text width shownGID was rendered at
 	shownAgents    string            // agents section rendered for shownGID
 	fieldKey       string            // selected cards view target; "" for none
 	showEmpty      bool              // the cards view lists empty custom fields; resets per ticket
 	showOthers     bool              // Agents lists agents on other branches; resets per ticket
+	showComments   bool              // the cards view lists every comment, not only the newest; resets per ticket
+	openComments   map[string]bool   // comments shown in full instead of a preview, by target key; resets per ticket
+	clipped        map[string]bool   // comments the last render cut to a preview, by target key
 	fieldLines     map[string]int    // reader line of each cards view target, by key
 	fieldEnds      map[string]int    // last reader line of multi-line targets, by key
 	cardTargets    []string          // cards view targets in reading order
@@ -88,6 +92,7 @@ func (m *Model) renderDetail(keepScroll bool) {
 			content = lipgloss.NewStyle().PaddingLeft(1).Render(m.renderCards(t, width))
 		}
 	}
+	lines := m.reader.TotalLineCount()
 	if content != m.reader.GetContent() {
 		m.reader.SetContent(content)
 	}
@@ -95,11 +100,16 @@ func (m *Model) renderDetail(keepScroll bool) {
 		if line, ok := m.fieldLines[anchor]; anchor != "" && ok {
 			offset += line - anchorLine
 		}
+		// Markdown has no targets to anchor on; a new width keeps the same
+		// share of the ticket above the viewport.
+		if m.readerView == config.ViewMarkdown && width != m.shownWidth && lines > 0 {
+			offset = offset * m.reader.TotalLineCount() / lines
+		}
 		m.reader.SetYOffset(offset)
 	} else {
 		m.reader.GotoTop()
 	}
-	m.shownGID, m.shownAgents = t.GID, section
+	m.shownGID, m.shownAgents, m.shownWidth = t.GID, section, width
 }
 
 // stepField moves the cards view's tabbed-to row by dir, wrapping, and
@@ -179,14 +189,6 @@ func (m *Model) showTarget() {
 		m.reader.SetYOffset(line)
 	case last >= top+h:
 		m.reader.SetYOffset(min(line, last-h+1))
-	}
-}
-
-// clearField drops the cards view's tabbed-to row.
-func (m *Model) clearField() {
-	if m.fieldKey != "" {
-		m.fieldKey = ""
-		m.renderDetail(true)
 	}
 }
 

@@ -1,9 +1,15 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/sadmachine/asanamate/internal/asana"
+	"github.com/sadmachine/asanamate/internal/state"
+	"github.com/sadmachine/asanamate/internal/ticket"
 
 	"github.com/sadmachine/asanamate/internal/agents"
 	"github.com/sadmachine/asanamate/internal/config"
@@ -51,5 +57,66 @@ func TestNewAppliesConfiguredColors(t *testing.T) {
 	}
 	if _, pill, _ := m.mode(); pill.GetForeground() != lipgloss.Color("13") {
 		t.Fatalf("read pill = %v", pill)
+	}
+}
+
+func TestAdditionalColorsReachTicketSurfaces(t *testing.T) {
+	cfg := config.Default()
+	cfg.BranchField = "Branch Name"
+	cfg.Colors.Branch = config.Style{FG: "#112233"}
+	cfg.Colors.TitleTags = []config.Style{{FG: "#445566"}}
+	cfg.Colors.Asana.Red = config.Style{FG: "#778899"}
+	m, _ := testModel(t, cfg)
+	defer applyPalette(config.Config{}.Palette(true))
+	project := asana.Ref{GID: "p", Name: "Client", Color: "dark-red"}
+	task := asana.Task{GID: "1", Name: "[CLIENT] Work", Memberships: []asana.Membership{{Project: project, Section: &asana.Ref{Name: "QA"}}}, CustomFields: []asana.CustomField{{GID: "b", Name: "Branch Name", DisplayValue: strp("feature/color")}}}
+	markerStyle, ok := asanaStyle("dark-red")
+	if !ok || markerStyle.GetForeground() != lipgloss.Color("#778899") {
+		t.Fatal("project hue override lost")
+	}
+	for _, symbols := range []symbolSet{unicodeSymbols, asciiSymbols} {
+		m.sym = symbols
+		want := markerStyle.Render(symbols.icon(iconProjectColor)) + "Client"
+		if got := m.projectLabel(project, lipgloss.NewStyle()); got != want {
+			t.Fatalf("project label = %q, want %q", got, want)
+		}
+	}
+	m.sym = unicodeSymbols
+	if got := m.projectLabel(asana.Ref{Name: "Plain", Color: "none"}, lipgloss.NewStyle()); got != "Plain" {
+		t.Fatalf("uncolored project = %q", got)
+	}
+	m.projects = []asana.Project{{GID: "p", Name: "Client", Color: "dark-red"}}
+	m.deps.State.RecentProjects = []string{"p"}
+	if got := m.navView(40, 30); !strings.Contains(got, markerStyle.Render(m.sym.icon(iconProjectColor))) {
+		t.Fatal("sidebar marker missing")
+	}
+	for _, column := range []state.Column{{Field: "Branch Name"}, {GID: "b"}} {
+		value, style := columnValue(task, column, m.rowContext(), testToday)
+		if value != "feature/color" || style.GetForeground() != lipgloss.Color("#112233") {
+			t.Fatalf("branch column = %q %v", value, style)
+		}
+	}
+	m.visible = []asana.Task{task}
+	m.selectionStyle = config.StyleMarker
+	row, _ := m.listRow(0, make([]int, len(m.listColumns())))
+	tag := tagStyles[0].Render("[CLIENT]")
+	if !strings.Contains(row[0], tag) || !strings.Contains(m.branchLine(task, 200), branchStyle.Render(m.sym.icon(iconBranch)+"feature/color")) {
+		t.Fatal("list tag or header branch missing")
+	}
+	if got := tagTitle("[client] Work", lipgloss.NewStyle()); !strings.Contains(got, tagStyles[0].Render("[client]")) {
+		t.Fatal("tag color not stable")
+	}
+	if got := tagTitle("Work [CLIENT]", lipgloss.NewStyle()); got != "Work [CLIENT]" {
+		t.Fatal("nonleading tag was colored")
+	}
+	m.fieldLines = map[string]int{}
+	body := m.detailsBody(ticket.Ticket{Task: task}, 100, 0)
+	if !strings.Contains(ansi.Strip(body), "Client / QA") || !strings.Contains(body, branchStyle.Render("feature/color")) || !strings.Contains(body, markerStyle.Render(m.sym.icon(iconProjectColor))) {
+		t.Fatal("Details colors or section text lost")
+	}
+	m.filterInput.SetValue("is:open")
+	m.loading = false
+	if !strings.Contains(strings.Join(m.listSegs(), "|"), warnStyle.Render(m.sym.icon(iconFilter)+"is:open")) {
+		t.Fatal("applied filter not tinted")
 	}
 }

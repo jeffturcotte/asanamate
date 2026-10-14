@@ -47,6 +47,10 @@ const (
 	readerMinW   = 80
 )
 
+// readerFocusTitleW is the title room the fitted list keeps while the reader
+// has focus, when layout.focus.resize gives the reader the rest.
+const readerFocusTitleW = 40
+
 // panelFrame is the cells a panel's border takes across and down.
 const panelFrame = 2
 
@@ -90,7 +94,9 @@ type Model struct {
 	viewProject     *asana.Ref
 	activity        *activityView // API activity, cached on disk
 	activityOpen    bool
-	activityTicket  bool             // Esc returns from a ticket opened through Activity
+	activityTicket  bool // Esc returns from a ticket opened through Activity
+	feed            feedPanel
+	focusDim        bool             // panes without focus draw faint; starts at layout.focus.dim
 	palette         config.Palette   // resolved theme, for Markdown
 	bindings        []binding        // [keys.main] with their handlers
 	accentStyle     lipgloss.Style   // reader headings
@@ -107,6 +113,7 @@ type Model struct {
 
 	focusReader  bool
 	focusNav     bool   // the views panel has focus; wide layout only
+	focusFeed    bool   // the Feed panel has focus
 	navCursor    int    // selected row among the views panel's selectable rows
 	help         bool   // the key help is open
 	savedView    string // named view associated with the current project's settings
@@ -121,6 +128,7 @@ type Model struct {
 	projectFields   map[string]map[string]bool // project gid -> its custom field gids
 	projectCatalogs map[string][]asana.Ref     // project gid -> its custom field names and gids
 	users           []asana.Ref                // workspace users, loaded on first assign
+	meGID           string                     // your user GID, loaded with users
 
 	agents    []agents.Agent
 	linked    map[string][]agents.Agent // viewAgents by ticket gid; nil when stale
@@ -167,9 +175,10 @@ func New(d Deps) *Model {
 	m := &Model{
 		deps: d,
 		listState: listState{
-			filterInput: in,
-			separator:   *cmp.Or(d.State.Display.Separator, &d.Config.List.Separator),
-			spacing:     *cmp.Or(d.State.Display.HeaderSpacing, &d.Config.List.Header.Spacing),
+			filterInput:    in,
+			separator:      *cmp.Or(d.State.Display.Separator, &d.Config.List.Separator),
+			spacing:        *cmp.Or(d.State.Display.HeaderSpacing, &d.Config.List.Header.Spacing),
+			selectionStyle: d.Config.List.Selection.Style,
 		},
 		readerState: readerState{
 			reader:     viewport.New(),
@@ -180,6 +189,7 @@ func New(d Deps) *Model {
 			imageSeq:   rand.IntN(imageIDs),
 		},
 		lastAction:      -1,
+		focusDim:        *cmp.Or(d.State.Display.FocusDim, &d.Config.Layout.Focus.Dim),
 		palette:         p,
 		accentStyle:     lipStyle(c.Accent),
 		headerStyle:     lipStyle(c.Header),
@@ -193,11 +203,15 @@ func New(d Deps) *Model {
 		now:             time.Now,
 		readerHidden:    d.NoPreview || !d.Config.Layout.Reader,
 	}
+	if saved := d.State.Display.SelectionStyle; saved == config.StyleMarker || saved == config.StyleBar {
+		m.selectionStyle = saved
+	}
 	for _, p := range d.State.Projects {
 		m.projects = append(m.projects, asana.Project{GID: p.GID, Name: p.Name})
 	}
 	m.bindings = keyBindings()
 	m.activity = newActivityView(d)
+	m.feed = newFeedPanel(d.Config.Feed)
 	m.restoreView()
 	m.refreshInterval, _ = config.ParseRefreshInterval(cmp.Or(d.Config.List.RefreshInterval, config.Default().List.RefreshInterval))
 	if saved, err := config.ParseRefreshInterval(d.State.Display.RefreshInterval); err == nil {
@@ -210,7 +224,7 @@ func New(d Deps) *Model {
 func (m *Model) ExitCommand() *exec.Cmd { return m.exitCmd }
 
 func (m *Model) Init() tea.Cmd {
-	cmd := tea.Batch(loadTasks(m.deps.Client, m.deps.Config.Workspace, m.viewProject, m.pinnedTasks()), m.startSpinner(), m.scheduleRefresh(), m.startActivity())
+	cmd := tea.Batch(loadTasks(m.deps.Client, m.deps.Config.Workspace, m.viewProject, m.pinnedTasks()), m.startSpinner(), m.scheduleRefresh(), m.startActivity(), m.startFeed())
 	if m.deps.Config.AgentsEnabled() {
 		cmd = tea.Batch(cmd, loadAgents(m.deps.Config.Agents))
 	}
@@ -225,9 +239,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.gotActivity(msg)
 	case activityTickMsg:
 		return m, m.activityTick()
+	case feedTickMsg:
+		return m, tea.Batch(m.refreshFeed(), m.scheduleFeed())
+	case feedMsg:
+		m.gotFeed(msg)
+	case gitMsg:
+		m.gotGit(msg)
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.layout()
+		m.decideFeed()
 		// The views panel lists recent projects by name.
 		if m.showNav() {
 			return m, tea.Batch(m.refreshProjects(), m.requestImageCellSize())
@@ -292,7 +313,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.openSectionPicker(msg)
 	case usersMsg:
 		if msg.err == nil {
-			m.users = msg.users
+			m.users, m.meGID = msg.users, msg.me
 		}
 		m.openUserPicker(msg.err)
 	case editDoneMsg:
@@ -364,6 +385,10 @@ func (m *Model) gotTasks(msg tasksMsg) tea.Cmd {
 		m.status = msg.warning
 	}
 	cmd := m.selectionChanged()
+	if !m.background {
+		m.decideFeed()
+		cmd = tea.Batch(cmd, m.checkGit())
+	}
 	if t, ok := m.selected(); refreshing && ok && t.GID == m.shownGID {
 		return tea.Batch(cmd, m.loadDetail(t.GID))
 	}
@@ -445,6 +470,7 @@ func (m *Model) gotAgents(msg agentsMsg) tea.Cmd {
 		}
 	} else {
 		m.agents, m.agentsErr, m.linked = msg.list, "", nil
+		m.markAgents(msg.list)
 		badgeW := m.badgeW
 		m.applyFilter()
 		// Badges widen the rows; refit so titles keep their room.
@@ -496,13 +522,17 @@ func (m *Model) editDone(msg editDoneMsg) tea.Cmd {
 		m.status = msg.done
 	}
 	// Keep the edited ticket shown even if the reload drops it from the view.
+	var logTime tea.Cmd
 	if t, ok := m.selected(); ok && t.GID == msg.gid {
 		m.viewing = &t
+		if msg.logTime && m.deps.Config.TimeTrackingEnabled() {
+			logTime = m.openTime()
+		}
 	}
 	if m.shownGID != msg.gid {
 		delete(m.details, msg.gid)
 	}
-	return m.refresh()
+	return tea.Batch(m.refresh(), logTime)
 }
 
 func sameProject(a, b *asana.Ref) bool {
@@ -586,6 +616,11 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			return m.updateNav(name)
 		}
 	}
+	if m.focusFeed {
+		if name := cmp.Or(keys.Name("feed", k), keys.Name("views", k)); name != "" {
+			return m.updateFeed(name)
+		}
+	}
 	if b, ok := m.bindingFor(k); ok {
 		return b.run(m, msg)
 	}
@@ -656,6 +691,7 @@ func (m *Model) finishFilter() {
 	m.reader.SetHeight(m.paneHeight())
 	m.saveView()
 	m.fitList()
+	m.decideFeed()
 }
 
 // reload refetches the tasks, keeping the current view until they land.
@@ -690,15 +726,18 @@ func (m *Model) applyFilter() {
 	}
 	visible := filter.Parse(m.filterInput.Value()).Apply(m.tasks, m.agentStates, m.now())
 	visible = slices.DeleteFunc(visible, func(t asana.Task) bool { return slices.Contains(pins, t.GID) })
-	m.visible, m.groups = groupTasks(visible, m.groupBy, m.rowContext(), m.now())
+	fresh, rest := m.splitNew(visible)
+	m.visible, m.groups = groupTasks(rest, m.groupBy, m.rowContext(), m.now())
 	sortTasks(m.visible, m.groups, m.sortBy, m.rowContext())
-	m.pinnedCount, m.viewingRow = len(pinned), false
+	freshLabels := slices.Repeat([]string{newLabel}, len(fresh))
+	sortTasks(fresh, freshLabels, m.sortBy, m.rowContext())
+	m.pinnedCount, m.viewingRow, m.newCount = len(pinned), false, len(fresh)
 	var viewing []asana.Task
 	if t := m.viewing; t != nil && !slices.Contains(pins, t.GID) && !slices.ContainsFunc(visible, func(v asana.Task) bool { return v.GID == t.GID }) {
 		viewing = []asana.Task{*t}
 		m.viewingRow = true
 	}
-	if len(pinned)+len(viewing) > 0 {
+	if len(pinned)+len(viewing)+len(fresh) > 0 {
 		if m.groups == nil {
 			m.groups = slices.Repeat([]string{ungroupedLabel}, len(m.visible))
 		}
@@ -706,8 +745,8 @@ func (m *Model) applyFilter() {
 		if m.viewingRow {
 			labels = append(labels, viewingLabel)
 		}
-		m.visible = append(append(pinned, viewing...), m.visible...)
-		m.groups = append(labels, m.groups...)
+		m.visible = slices.Concat(pinned, viewing, fresh, m.visible)
+		m.groups = slices.Concat(labels, freshLabels, m.groups)
 	}
 	m.measureColumns()
 	if prevGID != "" {
@@ -788,11 +827,20 @@ func (m *Model) selectedDetail() (ticket.Ticket, bool) {
 
 func (m *Model) selectionChanged() tea.Cmd {
 	t, ok := m.selected()
-	if m.viewing != nil && (!ok || t.GID != m.viewing.GID) {
-		// Moving off the viewed ticket drops it unless the view still lists it.
-		m.viewing = nil
+	leftViewing := m.viewing != nil && (!ok || t.GID != m.viewing.GID)
+	leftNew := m.newHeld != "" && (!ok || t.GID != m.newHeld)
+	if leftViewing || leftNew {
+		// Moving off the viewed ticket drops it unless the view still lists
+		// it, and moving off a read New ticket lets it leave New.
+		if leftViewing {
+			m.viewing = nil
+		}
+		m.newHeld = ""
 		m.applyFilter()
 		t, ok = m.selected()
+	}
+	if label, _ := m.retainedSection(m.cursor); ok && label == newLabel {
+		m.newHeld = t.GID
 	}
 	if !ok {
 		m.shownGID = ""
@@ -802,7 +850,7 @@ func (m *Model) selectionChanged() tea.Cmd {
 	if t.GID == m.shownGID {
 		return nil
 	}
-	m.fieldKey, m.showEmpty, m.showOthers = "", false, false
+	m.fieldKey, m.showEmpty, m.showOthers, m.showComments, m.openComments = "", false, false, false, nil
 	if _, cached := m.details[t.GID]; cached {
 		m.renderDetail(false)
 		images := m.loadInlineImages(m.details[t.GID])
@@ -939,7 +987,11 @@ func (m *Model) paneWidths() (listW, readerW int, split bool) {
 		outer = room - readerMinW - panelFrame
 	}
 	if m.listW > 0 && !m.activityOpen {
-		outer = min(m.listW, room-readerMinW-panelFrame)
+		w := m.listW
+		if m.focusReader && m.deps.Config.Layout.Focus.Resize {
+			w -= max(m.titleW-readerFocusTitleW, 0)
+		}
+		outer = min(w, room-readerMinW-panelFrame)
 	}
 	outer = min(max(outer, minPaneW), room-minPaneW)
 	return outer - panelFrame, room - outer - panelFrame, true
@@ -1048,51 +1100,59 @@ func (m *Model) panes(h int) string {
 	var panes string
 	switch {
 	case split:
-		title, count := m.listTitle()
-		list := m.panel(title, count, m.listView(listW, inner), listW+panelFrame, h, m.listHighlight())
-		reader := m.panel("[2] Ticket", m.readerView, m.reader.View(), readerW+panelFrame, h, m.readerHighlight())
+		list := m.listPanel(listW, listW+panelFrame, h)
+		reader := m.panel("[2] Ticket", m.readerView, m.reader.View(), readerW+panelFrame, h, m.focusReader, m.readerHighlight())
 		panes = lipgloss.JoinHorizontal(lipgloss.Top, list, reader)
 	case m.focusReader:
 		panes = m.reader.View()
 		if m.showNav() {
-			panes = m.panel("[2] Ticket", m.readerView, panes, readerW+panelFrame, h, m.readerHighlight())
+			panes = m.panel("[2] Ticket", m.readerView, panes, readerW+panelFrame, h, m.focusReader, m.readerHighlight())
 		}
 	case m.showNav():
-		title, count := m.listTitle()
-		panes = m.panel(title, count, m.listView(listW-panelFrame, inner), listW, h, m.listHighlight())
+		panes = m.listPanel(listW-panelFrame, listW, h)
 	default:
 		panes = lipgloss.NewStyle().Width(listW).Height(h).Render(m.listView(listW, h))
 	}
 	if m.showNav() {
-		nav := m.panel("[0] Views", "", m.navView(navW-panelFrame, inner), navW, h, m.focusColor(m.focusNav))
+		nav := m.panel("[0] Views", "", m.navView(navW-panelFrame, inner), navW, h, m.focusNav, nil)
 		panes = lipgloss.JoinHorizontal(lipgloss.Top, nav, panes)
 	}
 	return panes
 }
 
-// focusColor is the accent color for a focused panel, or nil.
-func (m *Model) focusColor(focused bool) color.Color {
-	if focused {
-		return m.accentStyle.GetForeground()
+// listPanel is the list panel, contentW columns of rows in width columns,
+// above the Feed panel, h rows in all.
+func (m *Model) listPanel(contentW, width, h int) string {
+	title, count := m.listTitle()
+	panel := m.feedHeight()
+	list := m.panel(title, count, m.listView(contentW, m.listHeight()), width, h-panel, m.listFocused(), m.listHighlight())
+	if panel == 0 {
+		return list
 	}
-	return nil
+	return list + "\n" + m.feedView(width, panel)
+}
+
+// listFocused reports whether the list panel has focus.
+func (m *Model) listFocused() bool {
+	return !m.focusReader && !m.focusNav && !m.focusFeed
 }
 
 // listHighlight marks the list panel in the warning color while the timer
-// refreshes it, since that refresh shows no modal.
+// refreshes it, since that refresh shows no modal; nil otherwise.
 func (m *Model) listHighlight() color.Color {
 	if m.loading && m.background {
 		return warnStyle.GetForeground()
 	}
-	return m.focusColor(!m.focusReader && !m.focusNav)
+	return nil
 }
 
 // readerHighlight marks the selected ticket while its details load, including
-// the list request that precedes a refresh of the displayed ticket.
+// the list request that precedes a refresh of the displayed ticket; nil
+// otherwise.
 func (m *Model) readerHighlight() color.Color {
 	if t, ok := m.selected(); ok && (m.detailRequests[t.GID] != 0 ||
 		m.loading && m.background && t.GID == m.shownGID) {
 		return warnStyle.GetForeground()
 	}
-	return m.focusColor(m.focusReader)
+	return nil
 }

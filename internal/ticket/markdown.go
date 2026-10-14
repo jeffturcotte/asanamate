@@ -324,3 +324,42 @@ func SplitImages(html string) []RichPart {
 	text(md[last:])
 	return parts
 }
+
+// Link is a link in a ticket's rich text. Label is its cleaned text, or ""
+// when the text is the URL itself.
+type Link struct{ Label, URL string }
+
+// Links returns the http(s) links in the ticket's description, then in its
+// comments, in the order they appear. A URL that repeats is listed once, and
+// user mentions are left out.
+func (t Ticket) Links() []Link {
+	sources := []string{t.HTMLNotes}
+	for _, c := range t.Comments {
+		sources = append(sources, c.HTMLText)
+	}
+	var links []Link
+	seen := map[string]bool{}
+	for _, src := range sources {
+		doc, err := html.Parse(strings.NewReader(src))
+		if err != nil {
+			continue
+		}
+		for n := range doc.Descendants() {
+			if n.Type != html.ElementNode || n.DataAtom != atom.A || dom.GetAttributeOr(n, "data-asana-type", "") == "user" {
+				continue
+			}
+			href := OneLine(strings.TrimSpace(dom.GetAttributeOr(n, "href", "")))
+			u, err := url.Parse(href)
+			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || seen[href] {
+				continue
+			}
+			seen[href] = true
+			label := strings.Join(strings.Fields(OneLine(dom.CollectText(n))), " ")
+			if label == href {
+				label = ""
+			}
+			links = append(links, Link{Label: label, URL: href})
+		}
+	}
+	return links
+}

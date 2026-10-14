@@ -105,7 +105,10 @@ func handlers() map[string]handler {
 	// reader by it when the reader has focus: div 1 is a page, 2 half one.
 	page := func(div int, up bool) func(*Model, tea.KeyPressMsg) tea.Cmd {
 		return func(m *Model, _ tea.KeyPressMsg) tea.Cmd {
-			n := max(m.paneHeight()/div, 1)
+			n := max(m.listHeight()/div, 1)
+			if m.focusReader {
+				n = max(m.paneHeight()/div, 1)
+			}
 			if m.focusReader {
 				if up {
 					m.reader.ScrollUp(n)
@@ -140,6 +143,8 @@ func handlers() map[string]handler {
 		"focus_views":    {run: do((*Model).focusViews)},
 		"focus_list":     {run: do((*Model).focusList)},
 		"focus_reader":   {splitOnly: true, run: do((*Model).focusReaderPane)},
+		"focus_feed":     {run: do((*Model).focusFeedPanel)},
+		"toggle_feed":    {run: do((*Model).toggleFeed)},
 		"next_pane":      {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.cyclePane(false) }},
 		"prev_pane":      {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.cyclePane(true) }},
 		"open":           {splitOnly: true, run: (*Model).open},
@@ -153,6 +158,7 @@ func handlers() map[string]handler {
 		}},
 		"activity":      {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.openActivity() }},
 		"history":       {splitOnly: true, run: do((*Model).openHistory)},
+		"next_new":      {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.nextNew() }},
 		"action":        {run: menu(func(m *Model) func() { return m.openActionMenu })},
 		"repeat_action": {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.requestMenu(m.repeatAction) }},
 		"pin":           {run: (*Model).togglePin},
@@ -166,6 +172,7 @@ func handlers() map[string]handler {
 		"complete":     {run: edit(editComplete)},
 		"log_time":     {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.requestMenu(m.openTime) }},
 		"attachments":  {run: menu(func(m *Model) func() { return m.openAttachments })},
+		"links":        {run: menu(func(m *Model) func() { return m.openContentLinks })},
 		"open_browser": {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd {
 			if t, ok := m.selected(); ok {
 				return openURL(t.PermalinkURL)
@@ -197,7 +204,7 @@ func handlers() map[string]handler {
 		}},
 		"create":           {run: do((*Model).openCreate)},
 		"create_subtask":   {run: do((*Model).openCreateSubtask)},
-		"reload":           {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.refreshWithImages() }},
+		"reload":           {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return tea.Batch(m.refreshWithImages(), m.refreshFeed()) }},
 		"reader_view":      {splitOnly: true, run: do(func(m *Model) { m.toggleReaderView(); m.saveDisplay() })},
 		"toggle_reader":    {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.toggleReader() }},
 		"toggle_sidebar":   {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.toggleSidebar() }},
@@ -218,20 +225,26 @@ func handlers() map[string]handler {
 }
 
 // open focuses the reader from the list. In the reader, it edits the
-// targeted row, opens the targeted comment's menu, or shows the empty fields
-// or agents on other branches.
+// targeted row, shows the targeted comment in full or opens its menu, or shows
+// the empty fields, older comments, or agents on other branches.
 func (m *Model) open(tea.KeyPressMsg) tea.Cmd {
 	if !m.focusReader {
 		m.focusReaderPane()
 		return nil
 	}
 	if t, ok := m.selectedDetail(); ok && m.readerView != config.ViewMarkdown {
+		if m.clipped[m.fieldKey] {
+			m.openComment(m.fieldKey)
+			return nil
+		}
 		if c := m.selectedComment(t); c != nil && c.GID != "" {
 			m.openCommentMenu(t.GID, *c)
 			return nil
 		}
 	}
 	switch {
+	case m.fieldKey == allCommentsKey:
+		m.showAllComments()
 	case m.fieldKey == emptyFieldsKey:
 		m.showEmptyFields()
 	case m.fieldKey == otherAgentsKey:
@@ -287,10 +300,12 @@ func (m *Model) scrollReader(msg tea.KeyPressMsg) tea.Cmd {
 
 // focusList gives the list focus.
 func (m *Model) focusList() {
-	m.focusNav = false
+	m.focusNav, m.focusFeed = false, false
 	if m.focusReader {
 		m.focusReader = false
-		m.clearField()
+		m.fieldKey = ""
+		m.layout()
+		m.renderDetail(true)
 	}
 }
 
@@ -305,10 +320,13 @@ func (m *Model) focusViews() {
 // focusReaderPane gives the reader focus, on its first editable row, and
 // counts the selected ticket as viewed.
 func (m *Model) focusReaderPane() {
-	m.focusNav = false
+	m.focusNav, m.focusFeed = false, false
 	if !m.focusReader {
 		m.focusReader = true
-		m.stepField(1)
+		m.layout()
+		if !m.stepField(1) {
+			m.renderDetail(true)
+		}
 		m.recordViewed()
 	}
 }

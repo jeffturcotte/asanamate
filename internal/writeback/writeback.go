@@ -12,9 +12,9 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/sadmachine/asanamate/internal/asana"
+	"github.com/sadmachine/asanamate/internal/dateinput"
 	"github.com/sadmachine/asanamate/internal/prompt"
 	"github.com/sadmachine/asanamate/internal/ticket"
 )
@@ -364,13 +364,15 @@ func (s Service) assignee(ctx context.Context, user string) (asana.Ref, error) {
 	return findUser(users, user)
 }
 
-// SetDue sets the task's due date as YYYY-MM-DD; an empty date clears it.
+// SetDue sets the task's due date, typed as dateinput.Resolve accepts; an
+// empty date clears it.
 func (s Service) SetDue(ctx context.Context, gid, date string) error {
 	date = strings.TrimSpace(date)
 	question, args := "Clear the due date of %q?", []any{}
 	if date != "" {
-		if _, err := time.Parse(time.DateOnly, date); err != nil {
-			return fmt.Errorf("due date needs YYYY-MM-DD, got %q", date)
+		var err error
+		if date, err = dateinput.Resolve(ctx, date); err != nil {
+			return fmt.Errorf("due date: %w", err)
 		}
 		question, args = "Set the due date of %q to %s?", []any{date}
 	}
@@ -438,7 +440,7 @@ type NewTicket struct {
 	Project  string // a project gid
 	Section  string // a section of Project, by name or gid
 	Assignee string // a full name, gid, or "me"
-	Due      string // YYYY-MM-DD
+	Due      string // as dateinput.Resolve accepts
 }
 
 // Create makes a ticket and returns it: a subtask of Parent, a ticket in
@@ -459,9 +461,11 @@ func (s Service) Create(ctx context.Context, nt NewTicket) (asana.Task, error) {
 		return asana.Task{}, errors.New("no workspace to create the ticket in")
 	}
 	if task.DueOn != "" {
-		if _, err := time.Parse(time.DateOnly, task.DueOn); err != nil {
-			return asana.Task{}, fmt.Errorf("due date needs YYYY-MM-DD, got %q", task.DueOn)
+		due, err := dateinput.Resolve(ctx, task.DueOn)
+		if err != nil {
+			return asana.Task{}, fmt.Errorf("due date: %w", err)
 		}
+		task.DueOn = due
 	}
 	assignee := strings.TrimSpace(nt.Assignee)
 	if assignee == "" && nt.Parent == "" && nt.Project == "" {
@@ -610,7 +614,7 @@ func (s Service) resolveField(ctx context.Context, t asana.Task, name, projectGI
 // workspace users.
 func (s Service) fieldValue(ctx context.Context, f asana.CustomField, value string) (any, error) {
 	if f.ResourceSubtype != asana.FieldPeople || value == "" {
-		return FieldValue(f, value)
+		return FieldValue(ctx, f, value)
 	}
 	users, err := s.users(ctx)
 	if err != nil {
@@ -684,10 +688,10 @@ func optionGID(f asana.CustomField, name string) (string, error) {
 }
 
 // FieldValue converts typed text to the API value for a text, number, enum,
-// multi_enum (comma-separated option names), or date (YYYY-MM-DD) field.
-// Option gids work in place of names. Empty text is nil, which clears the
-// field.
-func FieldValue(f asana.CustomField, value string) (any, error) {
+// multi_enum (comma-separated option names), or date (as dateinput.Resolve
+// accepts) field. Option gids work in place of names. Empty text is nil,
+// which clears the field.
+func FieldValue(ctx context.Context, f asana.CustomField, value string) (any, error) {
 	name := ticket.FieldName(f)
 	if value == "" {
 		return nil, nil
@@ -718,10 +722,11 @@ func FieldValue(f asana.CustomField, value string) (any, error) {
 		}
 		return gids, nil
 	case asana.FieldDate:
-		if _, err := time.Parse(time.DateOnly, value); err != nil {
-			return nil, fmt.Errorf("%s needs a date as YYYY-MM-DD, got %q", name, value)
+		date, err := dateinput.Resolve(ctx, value)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", name, err)
 		}
-		return map[string]any{"date": value}, nil
+		return map[string]any{"date": date}, nil
 	}
 	return nil, fmt.Errorf("%s: custom field type %q is not supported", name, f.ResourceSubtype)
 }

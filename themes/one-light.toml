@@ -1,0 +1,35 @@
+# One Light palette adapted to asanamate's themed roles.
+# Palette reference: https://github.com/atom/one-light-syntax
+base = "light"
+
+[colors]
+accent = { fg = "#4078f2", bold = true }
+border = "#a0a1a7"
+muted = { fg = "#696c77", faint = false }
+highlight = { fg = "#383a42", bg = "#e5e5e6", reverse = false }
+ok = "#50a14f"
+warn = "#986801"
+error = "#e45649"
+working = "#0184bc"
+pinned = { fg = "#c18401", bold = true }
+viewing = { fg = "#a626a4", bold = true }
+reacted = { fg = "#383a42", bg = "#e5e5e6" }
+new = { fg = "#fafafa", bg = "#4078f2", bold = true }
+more = { fg = "#fafafa", bg = "#0184bc", bold = true }
+authors = ["#4078f2", "#a626a4", "#0184bc", "#50a14f", "#986801", "#e45649"]
+
+[colors.mode]
+normal = { fg = "#fafafa", bg = "#4078f2", bold = true }
+filter = { fg = "#fafafa", bg = "#986801", bold = true }
+read = { fg = "#fafafa", bg = "#0184bc", bold = true }
+edit = { fg = "#fafafa", bg = "#a626a4", bold = true }
+
+[colors.markdown]
+text = "#383a42"
+heading = { fg = "#4078f2", bold = true }
+h1 = { fg = "#fafafa", bg = "#4078f2", bold = true }
+link = { fg = "#0184bc", underline = true }
+code = { fg = "#50a14f", bg = "#f0f0f0" }
+code_block = { fg = "#383a42", bg = "#f0f0f0" }
+quote = { fg = "#696c77", italic = true }
+rule = "#a0a1a7"

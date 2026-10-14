@@ -211,3 +211,18 @@ func TestSplitImages(t *testing.T) {
 		t.Fatalf("gids = %v", gids)
 	}
 }
+
+func TestLinks(t *testing.T) {
+	tk := Ticket{
+		Task: asana.Task{HTMLNotes: `<body>See <a href="https://a.test/spec">the
+ spec</a>, <a href="https://b.test">https://b.test</a>, <a href="mailto:x@y.test">mail</a>,
+ and <a href="https://app.asana.com/0/u" data-asana-type="user">@Sam</a>.</body>`},
+		Comments: []asana.Story{
+			{HTMLText: `<body><a href="https://a.test/spec">again</a> <a href="https://c.test/x?q=1">C</a></body>`},
+		},
+	}
+	want := []Link{{"the spec", "https://a.test/spec"}, {"", "https://b.test"}, {"C", "https://c.test/x?q=1"}}
+	if got := tk.Links(); !slices.Equal(got, want) {
+		t.Fatalf("Links() = %+v, want %+v", got, want)
+	}
+}

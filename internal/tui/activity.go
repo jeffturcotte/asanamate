@@ -37,6 +37,8 @@ type activityView struct {
 	cache     *activity.Cache
 	report    activity.Report // the running or last scan: progress and warning
 	visible   []activity.Entry
+	rows      []activityRow
+	expanded  map[string]bool // task GIDs whose runs of events are expanded
 	mode      string
 	days      int
 	cursor    int
@@ -53,6 +55,16 @@ type activityView struct {
 	cancel    context.CancelFunc
 	updates   chan activityMsg
 	err       string
+}
+
+// activityRow is one row of the Activity list: the newest event in a run of
+// consecutive events on one ticket, or, while the run is expanded, one of
+// its older events.
+type activityRow struct {
+	entry int  // index into visible
+	more  int  // older events in the run, on its newest event's row
+	child bool // an older event of an expanded run
+	last  bool // the run's oldest event
 }
 
 // activityMsg carries a scan snapshot. Partial snapshots stream in while the
@@ -77,7 +89,7 @@ func newActivityView(d Deps) *activityView {
 	if d.CacheDir != "" {
 		path = filepath.Join(d.CacheDir, activity.CacheFile)
 	}
-	return &activityView{cache: activity.LoadCache(path, d.Config.Workspace), mode: "Both", days: 7, query: query, reader: viewport.New(), interval: interval}
+	return &activityView{cache: activity.LoadCache(path, d.Config.Workspace), mode: "Both", days: 7, query: query, reader: viewport.New(), interval: interval, expanded: map[string]bool{}}
 }
 
 // startActivity runs the launch scan and starts the background timer.
@@ -232,10 +244,29 @@ func (m *Model) gotActivity(msg activityMsg) tea.Cmd {
 }
 
 func (a *activityView) selected() (activity.Entry, bool) {
-	if a.cursor >= 0 && a.cursor < len(a.visible) {
-		return a.visible[a.cursor], true
+	if a.cursor >= 0 && a.cursor < len(a.rows) {
+		return a.visible[a.rows[a.cursor].entry], true
 	}
 	return activity.Entry{}, false
+}
+
+// group splits visible into rows, one per run of consecutive events on the
+// same ticket, plus the older events of expanded runs.
+func (a *activityView) group() {
+	a.rows = a.rows[:0]
+	for i := 0; i < len(a.visible); {
+		gid, j := a.visible[i].Task.GID, i+1
+		for j < len(a.visible) && a.visible[j].Task.GID == gid {
+			j++
+		}
+		a.rows = append(a.rows, activityRow{entry: i, more: j - i - 1})
+		if a.expanded[gid] {
+			for k := i + 1; k < j; k++ {
+				a.rows = append(a.rows, activityRow{entry: k, child: true, last: k == j-1})
+			}
+		}
+		i = j
+	}
 }
 
 func (m *Model) filterActivity() {
@@ -253,10 +284,22 @@ func (m *Model) filterActivity() {
 			a.visible = append(a.visible, e)
 		}
 	}
+	a.group()
+	// The cursor stays on the previous event, or on its run's row when the
+	// run is collapsed.
 	i := slices.IndexFunc(a.visible, func(e activity.Entry) bool { return e.Story.GID == previous.Story.GID })
-	a.cursor = max(i, 0)
+	a.cursor = 0
+	for r, row := range a.rows {
+		if row.entry > i {
+			break
+		}
+		if !row.child || row.entry == i {
+			a.cursor = r
+		}
+	}
 	// Streamed snapshots must not reset the reader under the user.
-	m.renderActivityDetail(i >= 0)
+	current, _ := a.selected()
+	m.renderActivityDetail(i >= 0 && current.Story.GID == previous.Story.GID)
 }
 
 // activitySince is the start of the selected period.
@@ -425,6 +468,14 @@ func (m *Model) handleActivityKey(msg tea.KeyPressMsg) tea.Cmd {
 		m.filterActivity()
 	case "reload":
 		return m.scanActivity(true)
+	case "expand":
+		if a.cursor < len(a.rows) {
+			row := a.rows[a.cursor]
+			if gid := a.visible[row.entry].Task.GID; row.child || row.more > 0 {
+				a.expanded[gid] = !a.expanded[gid]
+				m.filterActivity()
+			}
+		}
 	case "period":
 		m.openActivityPeriod()
 	case "filter":
@@ -478,13 +529,13 @@ func (m *Model) handleActivityKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.reader.GotoTop()
 			return nil
 		}
-		move = -len(a.visible)
+		move = -len(a.rows)
 	case "bottom":
 		if a.details {
 			a.reader.GotoBottom()
 			return nil
 		}
-		move = len(a.visible)
+		move = len(a.rows)
 	case "half_page_down":
 		move = max(a.reader.Height()/6, 1)
 	case "half_page_up":
@@ -503,7 +554,7 @@ func (m *Model) handleActivityKey(msg tea.KeyPressMsg) tea.Cmd {
 			}
 			return nil
 		}
-		a.cursor = max(0, min(a.cursor+move, len(a.visible)-1))
+		a.cursor = max(0, min(a.cursor+move, len(a.rows)-1))
 		m.renderActivityDetail(false)
 	}
 	return nil
@@ -566,7 +617,7 @@ func (m *Model) activityList(width, height int) string {
 		rows -= lipgloss.Height(banner) - 1
 	}
 	box := lipgloss.NewStyle().Width(width).Height(height).MaxHeight(height)
-	if len(a.visible) == 0 {
+	if len(a.rows) == 0 {
 		text := "No matching activity."
 		if a.loading {
 			text = "Loading workspace activity…"
@@ -575,15 +626,60 @@ func (m *Model) activityList(width, height int) string {
 		}
 		return box.Render(banner + ansi.Wrap(text, max(width, 1), ""))
 	}
-	count := max(rows/3, 1)
-	start := max(0, a.cursor-count+1)
+	// The window ends at the cursor's row once it would pass the bottom.
+	first, used := a.cursor, activityRowHeight(a.rows[a.cursor])
+	for first > 0 && used+activityRowHeight(a.rows[first-1]) <= rows {
+		first--
+		used += activityRowHeight(a.rows[first])
+	}
 	var lines []string
-	for i := start; i < min(start+count, len(a.visible)); i++ {
-		e := a.visible[i]
-		lead := "  "
-		if i == a.cursor {
-			lead = m.sym.cursor + " "
+	for i := first; i < len(a.rows) && len(lines) < rows; i++ {
+		lines = append(lines, m.activityRowLines(i, width)...)
+	}
+	return box.Render(banner + strings.Join(lines, "\n"))
+}
+
+func activityRowHeight(r activityRow) int {
+	if r.child {
+		return 2
+	}
+	return 3
+}
+
+// activityRowLines renders list row i: an event with its ticket, or, for an
+// older event of an expanded run, the event alone, indented under its run.
+func (m *Model) activityRowLines(i, width int) []string {
+	a := m.activity
+	row := a.rows[i]
+	e := a.visible[row.entry]
+	lead := "  "
+	if i == a.cursor {
+		lead = m.sym.cursor + " "
+	}
+	kind := "RELATED"
+	if e.Mine {
+		kind = "MINE"
+	}
+	if e.Automatic {
+		kind = "AUTO"
+	}
+	summary := activitySummary(e)
+	at := e.At.Local().Format("01/02 15:04")
+	selected := i == a.cursor && !a.details && !m.focusNav
+	// A collapsed run is new when any of its events is.
+	events := a.visible[row.entry : row.entry+1]
+	collapsed := !row.child && row.more > 0 && !a.expanded[e.Task.GID]
+	if collapsed {
+		events = a.visible[row.entry : row.entry+row.more+1]
+	}
+	var rows []string
+	if row.child {
+		guide, rail := "├ ", "│ "
+		if row.last {
+			guide, rail = "└ ", "  "
 		}
+		rows = []string{lead + guide + summary, "  " + rail + at + "  " + kind}
+	} else {
 		icon := m.sym.icon(iconView)
 		switch e.Story.ResourceSubtype {
 		case "due_date_changed", "due_today":
@@ -591,47 +687,38 @@ func (m *Model) activityList(width, height int) string {
 		case "section_changed", "added_to_project":
 			icon = m.sym.icon(iconFolder)
 		}
-		kind := "RELATED"
-		if e.Mine {
-			kind = "MINE"
-		}
-		if e.Automatic {
-			kind = "AUTO"
-		}
-		summary := ticket.OneLine(e.Story.Text)
-		if e.Story.ResourceSubtype == "comment_added" {
-			summary = ticket.Author(e.Story) + " commented"
-		}
-		if e.Mine && e.Story.CreatedBy != nil {
-			summary = strings.Replace(summary, ticket.OneLine(e.Story.CreatedBy.Name), "You", 1)
-		}
-		selected := i == a.cursor && !a.details && !m.focusNav
-		var flag string
-		if e.NewSince(a.lastSeen) {
-			flag = newPill(selected)
-		}
-		rows := []string{lead + icon + ticket.OneLine(e.Task.Name), "  " + summary, "  " + e.At.Local().Format("01/02 15:04") + "  " + kind}
-		for j, row := range rows {
-			room := width
-			if j == 0 && flag != "" {
-				room = max(width-ansi.StringWidth(flag)-1, 1)
-			}
-			row = ansi.Truncate(row, max(room, 1), "…")
-			fill := strings.Repeat(" ", max(room-ansi.StringWidth(row), 0))
-			switch {
-			case selected && j == 0 && flag != "":
-				row = selectedStyle.Render(row+" ") + flag + selectedStyle.Render(fill)
-			case selected:
-				row = selectedStyle.Render(row + fill)
-			case j > 0:
-				row = dimStyle.Render(row)
-			case flag != "":
-				row += " " + flag
-			}
-			lines = append(lines, row)
-		}
+		rows = []string{lead + icon + ticket.OneLine(e.Task.Name), "  " + summary, "  " + at + "  " + kind}
 	}
-	return box.Render(banner + strings.Join(lines, "\n"))
+	// NEW trails the first line; a collapsed run's count trails the last,
+	// just above where expanding puts its older events.
+	flags := make([]string, len(rows))
+	if slices.ContainsFunc(events, func(e activity.Entry) bool { return e.NewSince(a.lastSeen) }) {
+		flags[0] = newPill(selected)
+	}
+	if collapsed {
+		flags[len(rows)-1] = moreStyle.Render(fmt.Sprintf(" +%d more ", row.more))
+	}
+	for j, line := range rows {
+		flag, room := flags[j], width
+		if flag != "" {
+			room = max(width-ansi.StringWidth(flag)-1, 1)
+		}
+		line = ansi.Truncate(line, max(room, 1), "…")
+		fill := strings.Repeat(" ", max(room-ansi.StringWidth(line), 0))
+		switch {
+		case selected && flag != "":
+			line = selectedStyle.Render(line+" ") + flag + selectedStyle.Render(fill)
+		case selected:
+			line = selectedStyle.Render(line + fill)
+		case j > 0 || row.child:
+			line = dimStyle.Render(line)
+		}
+		if !selected && flag != "" {
+			line += " " + flag
+		}
+		rows[j] = line
+	}
+	return rows
 }
 
 // note is the load error or partial-scan warning, if any.
@@ -655,21 +742,21 @@ func (m *Model) activityPanes(h int) string {
 			body = a.reader.View()
 		}
 		if m.showNav() {
-			nav := m.panel("[0] Views", "", m.navView(navW-panelFrame, max(h-panelFrame, 1)), navW, h, m.focusColor(m.focusNav))
+			nav := m.panel("[0] Views", "", m.navView(navW-panelFrame, max(h-panelFrame, 1)), navW, h, m.focusNav, nil)
 			return lipgloss.JoinHorizontal(lipgloss.Top, nav, lipgloss.NewStyle().Width(listW).Height(h).Render(body))
 		}
 		return lipgloss.NewStyle().Width(m.width).Height(h).Render(body)
 	}
 	inner := max(h-panelFrame, 1)
 	a.reader.SetHeight(inner)
-	count := fmt.Sprintf("%d/%d", a.cursor+1, len(a.visible))
-	if len(a.visible) == 0 {
+	count := fmt.Sprintf("%d/%d", a.cursor+1, len(a.rows))
+	if len(a.rows) == 0 {
 		count = "0/0"
 	}
-	list := m.panel("[1] Activity · "+a.mode, count, m.activityList(listW, inner), listW+panelFrame, h, m.focusColor(!a.details && !m.focusNav))
-	reader := m.panel("[2] Event", "enter ticket", a.reader.View(), readerW+panelFrame, h, m.focusColor(a.details))
+	list := m.panel("[1] Activity · "+a.mode, count, m.activityList(listW, inner), listW+panelFrame, h, !a.details && !m.focusNav, nil)
+	reader := m.panel("[2] Event", "enter ticket", a.reader.View(), readerW+panelFrame, h, a.details, nil)
 	if m.showNav() {
-		nav := m.panel("[0] Views", "", m.navView(navW-panelFrame, inner), navW, h, m.focusColor(m.focusNav))
+		nav := m.panel("[0] Views", "", m.navView(navW-panelFrame, inner), navW, h, m.focusNav, nil)
 		return lipgloss.JoinHorizontal(lipgloss.Top, nav, list, reader)
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, list, reader)
@@ -686,7 +773,7 @@ func (m *Model) activityMode() (name string, pill lipgloss.Style, hints [][2]str
 		return "ACTIVITY", readPill, [][2]string{{keyLabel("main", "down", "up"), "scroll"}, {keyLabel("main", "open"), "ticket"}, {keyLabel("main", "focus_list"), "list"}}
 	}
 	return "ACTIVITY", normalPill, [][2]string{{keyLabel("main", "down", "up"), "move"}, {keyLabel("activity", "prev_mode", "next_mode"), "filter"},
-		{keyLabel("activity", "period"), "period"}, {keyLabel("main", "filter"), "search"}, {keyLabel("main", "reload"), "refresh"},
+		{keyLabel("activity", "period"), "period"}, {keyLabel("activity", "expand"), "expand"}, {keyLabel("main", "filter"), "search"}, {keyLabel("main", "reload"), "refresh"},
 		{keyLabel("main", "activity"), "back"}, {keyLabel("main", "help"), "keys"}}
 }
 
@@ -732,6 +819,7 @@ func (m *Model) activityHelp() string {
 		{"activity", "period", "last 24 hours / 7 days / 30 days"},
 		{"main", "filter", "search ticket, actor, and activity text"},
 		{"activity", "automated", "include / hide automated reminders"},
+		{"activity", "expand", "show / hide a ticket's earlier events in a row"},
 		{"main", "down", "move down; scroll event reader"},
 		{"main", "up", "move up; scroll event reader"},
 		{"main", "next_pane", "next pane: views, list, event reader"},
@@ -750,4 +838,17 @@ func (m *Model) activityHelp() string {
 		}
 	}
 	return strings.Join(lines, "\n") + "\n\n" + dimStyle.Render("Workspace search requires paid Asana access.\nCurrent ownership/mentions are labelled as current context.\nAsana consolidates stories; this is not an exhaustive audit log.\nActivity scans in the background and caches 30 days on disk.\n\nAny key closes")
+}
+
+// activitySummary describes an event in one line: "Amy commented", or the
+// story's own text, with "You" for the user's own actions.
+func activitySummary(e activity.Entry) string {
+	summary := ticket.OneLine(e.Story.Text)
+	if e.Story.ResourceSubtype == "comment_added" {
+		summary = ticket.Author(e.Story) + " commented"
+	}
+	if e.Mine && e.Story.CreatedBy != nil {
+		summary = strings.Replace(summary, ticket.OneLine(e.Story.CreatedBy.Name), "You", 1)
+	}
+	return summary
 }

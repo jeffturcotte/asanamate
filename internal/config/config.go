@@ -77,6 +77,7 @@ type Config struct {
 	Images       Images       `toml:"images"`
 	Picker       Picker       `toml:"picker"`
 	Activity     Activity     `toml:"activity"`
+	Feed         Feed         `toml:"feed"`
 	// Keys overrides key bindings: scope, then binding name, then keys. See
 	// internal/keymap for the scopes and names, including Activity controls.
 	Keys map[string]map[string][]string `toml:"keys"`
@@ -94,7 +95,19 @@ type TimeTracking struct {
 	ID string `toml:"id"`
 	// Command reads a JSON request from stdin and returns a form spec as JSON.
 	Command string `toml:"command"`
+	// PromptAfter lists the TUI edits that open the log time form once they
+	// succeed: PromptAssign (to someone else) and PromptComplete.
+	PromptAfter []string `toml:"prompt_after"`
 }
+
+// Edits time_tracking.prompt_after accepts.
+const (
+	PromptAssign   = "assign"
+	PromptComplete = "complete"
+)
+
+// PromptsAfter reports whether a successful edit opens the log time form.
+func (t TimeTracking) PromptsAfter(edit string) bool { return slices.Contains(t.PromptAfter, edit) }
 
 func (c Config) TimeTrackingEnabled() bool {
 	return c.TimeTracking.ID != "" && c.TimeTracking.Command != ""
@@ -157,9 +170,20 @@ func (c Config) SymbolSet(getenv func(string) string) string {
 // --hide-preview starts with it hidden and the toggle_reader key flips it for the
 // session. ListWidth fixes the list pane's width in columns, borders
 // included, and gives the reader the rest; 0 sizes the list automatically.
+// Focus styles the focused pane against the rest.
 type Layout struct {
-	Reader    bool `toml:"reader"`
-	ListWidth int  `toml:"list_width"`
+	Reader    bool  `toml:"reader"`
+	ListWidth int   `toml:"list_width"`
+	Focus     Focus `toml:"focus"`
+}
+
+// Focus configures how the focused pane stands out. The focused pane's title
+// is always a filled tab; Dim also draws every other pane faint. Resize gives
+// the focused pane the room: the list fits its titles while it has focus, and
+// shrinks to short titles while the reader has it.
+type Focus struct {
+	Dim    bool `toml:"dim"`
+	Resize bool `toml:"resize"`
 }
 
 // List configures how tickets appear in the list. The title is always shown;
@@ -168,14 +192,15 @@ type Layout struct {
 // GroupBy groups tickets under a header per value of one such field; "" is ungrouped.
 type List struct {
 	// RefreshInterval is the automatic list reload interval, at least one second.
-	RefreshInterval string    `toml:"refresh_interval"`
-	Layout          string    `toml:"layout"`
-	Fields          []string  `toml:"fields"`
-	Separator       bool      `toml:"separator"`
-	GroupBy         string    `toml:"group_by"`
-	Sort            Sort      `toml:"sort"`
-	Header          Header    `toml:"header"`
-	Selection       Selection `toml:"selection"`
+	RefreshInterval string     `toml:"refresh_interval"`
+	Layout          string     `toml:"layout"`
+	Fields          []string   `toml:"fields"`
+	Separator       bool       `toml:"separator"`
+	GroupBy         string     `toml:"group_by"`
+	Sort            Sort       `toml:"sort"`
+	Header          Header     `toml:"header"`
+	Selection       Selection  `toml:"selection"`
+	New             NewTickets `toml:"new"`
 }
 
 // Sort orders tickets within each group, or the whole ungrouped list.
@@ -192,6 +217,12 @@ type Header struct {
 	Spacing bool   `toml:"spacing"`
 }
 
+// NewTickets configures My Tasks tickets changed since last viewed, which
+// carry a NEW badge. Section lists them first, under a New header.
+type NewTickets struct {
+	Section bool `toml:"section"`
+}
+
 // Selection configures the selected ticket. Style marks it with a bold title
 // and a left marker, or a reversed bar.
 type Selection struct {
@@ -201,10 +232,20 @@ type Selection struct {
 // Reader configures the reading pane. View is its starting view: cards
 // (sections and boxed comments) or markdown (the rendered ticket Markdown).
 // MaxTextWidth caps the wrap width of the cards view's description and
-// comment text; 0 wraps at the pane width.
+// comment text; 0 wraps at the pane width. Comments shapes its comments.
 type Reader struct {
-	View         string `toml:"view"`
-	MaxTextWidth int    `toml:"max_text_width"`
+	View         string   `toml:"view"`
+	MaxTextWidth int      `toml:"max_text_width"`
+	Comments     Comments `toml:"comments"`
+}
+
+// Comments configures the cards view's comments. Latest is how many of the
+// newest it lists until Show all comments is opened; 0 lists them all.
+// PreviewLines is how many lines of text each listed comment but the newest
+// keeps until opened; 0 shows them in full.
+type Comments struct {
+	Latest       int `toml:"latest"`
+	PreviewLines int `toml:"preview_lines"`
 }
 
 // Images configures kitty graphics. Mode is "auto" (detect kitty-protocol
@@ -229,11 +270,38 @@ type Activity struct {
 }
 
 // Interval is the background scan interval; 0 turns background scans off.
-func (a Activity) Interval() (time.Duration, error) {
-	if d, err := time.ParseDuration(a.RefreshInterval); err == nil && d == 0 {
+func (a Activity) Interval() (time.Duration, error) { return optionalInterval(a.RefreshInterval) }
+
+// Feed configures the Feed panel under the ticket list. Expand is "auto"
+// (expanded when the list leaves Height empty rows), "collapsed", or
+// "expanded". Height is its rows when expanded, borders included.
+// RefreshInterval is how often Feeds run: a duration of at least one second,
+// or "0" to run them only at start and on reload. Feeds are commands that
+// answer the feed protocol (docs/extensions.md).
+type Feed struct {
+	Expand          string   `toml:"expand"`
+	Height          int      `toml:"height"`
+	RefreshInterval string   `toml:"refresh_interval"`
+	Commands        []string `toml:"commands"`
+}
+
+// Feed.Expand values.
+const (
+	ExpandAuto      = "auto"
+	ExpandCollapsed = "collapsed"
+	ExpandExpanded  = "expanded"
+)
+
+// Interval is the feed refresh interval; 0 runs feeds only at start and on
+// reload.
+func (f Feed) Interval() (time.Duration, error) { return optionalInterval(f.RefreshInterval) }
+
+// optionalInterval parses an interval of at least one second, or "0" for off.
+func optionalInterval(value string) (time.Duration, error) {
+	if d, err := time.ParseDuration(value); err == nil && d == 0 {
 		return 0, nil
 	}
-	d, err := ParseRefreshInterval(a.RefreshInterval)
+	d, err := ParseRefreshInterval(value)
 	if err != nil {
 		return 0, errors.New("must be 0 (off) or a duration of at least 1s, such as 2m")
 	}
@@ -261,7 +329,7 @@ type Action struct {
 	// where it is listed first; "" shows it everywhere.
 	Context string `toml:"context"`
 	Command string `toml:"command"`
-	// Form optionally asks for select or hours values before running the command.
+	// Form optionally asks for parameter values before running the command.
 	Form form.Spec `toml:"form"`
 	// Input, when set, is the title of a text box shown before the action
 	// runs; the typed text reaches the command as $ASANAMATE_INPUT_FILE.
@@ -277,16 +345,17 @@ func Default() Config {
 		TimeTracking: TimeTracking{},
 		ProjectLinks: ProjectLinks{},
 		Actions:      nil,
-		Layout:       Layout{Reader: true},
+		Layout:       Layout{Reader: true, Focus: Focus{Dim: true, Resize: true}},
 		List: List{
 			RefreshInterval: "30s",
 			Sort:            Sort{By: "", Direction: "asc"},
 			Layout:          LayoutSingle, Fields: []string{"section", "due"},
 			Header: Header{Style: StyleRule}, Selection: Selection{Style: StyleMarker},
 		},
-		Reader:   Reader{View: ViewCards},
+		Reader:   Reader{View: ViewCards, Comments: Comments{Latest: 3, PreviewLines: 2}},
 		Images:   Images{Mode: "auto"},
 		Activity: Activity{RefreshInterval: "2m"},
+		Feed:     Feed{Expand: ExpandAuto, Height: 12, RefreshInterval: "1m", Commands: []string{}},
 		Keymap:   keymap.Default(),
 	}
 }
@@ -393,6 +462,11 @@ func (c Config) validate() error {
 	if strings.TrimSpace(c.TimeTracking.ID) != c.TimeTracking.ID {
 		return errors.New("time_tracking.id must not have surrounding whitespace")
 	}
+	for _, edit := range c.TimeTracking.PromptAfter {
+		if edit != PromptAssign && edit != PromptComplete {
+			return fmt.Errorf("time_tracking.prompt_after: %q must be %q or %q", edit, PromptAssign, PromptComplete)
+		}
+	}
 	if c.ProjectLinks.Command != "" && strings.TrimSpace(c.ProjectLinks.Command) == "" {
 		return errors.New("project_links.command must not be blank; remove it to turn project links off")
 	}
@@ -421,11 +495,31 @@ func (c Config) validate() error {
 	if c.Reader.MaxTextWidth < 0 {
 		return fmt.Errorf("reader.max_text_width must be 0 (no limit) or more, got %d", c.Reader.MaxTextWidth)
 	}
+	if c.Reader.Comments.Latest < 0 {
+		return fmt.Errorf("reader.comments.latest must be 0 (all) or more, got %d", c.Reader.Comments.Latest)
+	}
+	if c.Reader.Comments.PreviewLines < 0 {
+		return fmt.Errorf("reader.comments.preview_lines must be 0 (full comments) or more, got %d", c.Reader.Comments.PreviewLines)
+	}
 	if _, err := ParseRefreshInterval(c.List.RefreshInterval); err != nil {
 		return fmt.Errorf("list.refresh_interval: %w", err)
 	}
 	if _, err := c.Activity.Interval(); err != nil {
 		return fmt.Errorf("activity.refresh_interval: %w", err)
+	}
+	if err := oneOf("feed.expand", c.Feed.Expand, ExpandAuto, ExpandCollapsed, ExpandExpanded); err != nil {
+		return err
+	}
+	if c.Feed.Height < 3 {
+		return fmt.Errorf("feed.height must be at least 3, got %d", c.Feed.Height)
+	}
+	if _, err := c.Feed.Interval(); err != nil {
+		return fmt.Errorf("feed.refresh_interval: %w", err)
+	}
+	for _, f := range c.Feed.Commands {
+		if strings.TrimSpace(f) == "" {
+			return errors.New("feed.commands must not hold a blank command")
+		}
 	}
 	for _, f := range c.List.Fields {
 		switch name := strings.TrimSpace(f); {

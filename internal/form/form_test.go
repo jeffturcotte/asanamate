@@ -2,6 +2,31 @@ package form
 
 import "testing"
 
+func TestSpecValidatesScalarControls(t *testing.T) {
+	spec := Spec{Fields: []Field{
+		{ID: "dry_run", Label: "Dry run", Type: Bool, Default: "true"},
+		{ID: "count", Label: "Count", Type: Number, Default: "-2.5"},
+		{ID: "note", Label: "Note", Type: String, Default: "hi"},
+		{ID: "on", Label: "On", Type: Date, Default: "2026-10-09"},
+	}}
+	if err := spec.ValidateValues(map[string]string{"dry_run": "false", "count": "3", "note": "", "on": "2026-02-28"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, values := range []map[string]string{
+		{"dry_run": "", "count": "3", "on": "2026-10-09"}, {"dry_run": "true", "count": "", "on": "2026-10-09"},
+		{"dry_run": "true", "count": "Inf", "on": "2026-10-09"}, {"dry_run": "true", "count": "3", "on": ""},
+		{"dry_run": "true", "count": "3", "on": "2026-02-30"}, {"dry_run": "true", "count": "3", "on": "+1 day"},
+	} {
+		if err := spec.ValidateValues(values); err == nil {
+			t.Fatalf("accepted %v", values)
+		}
+	}
+	spec.Fields[3].Default = "tomorrow"
+	if err := spec.Validate(); err == nil {
+		t.Fatal("accepted date default that is not YYYY-MM-DD")
+	}
+}
+
 func TestSpecValidatesControlsAndValues(t *testing.T) {
 	spec := Spec{Fields: []Field{
 		{ID: "project_id", Label: "Project", Type: Select, Options: []Option{{ID: "123", Name: "Web"}}, Remember: true},
@@ -27,6 +52,10 @@ func TestSpecValidatesControlsAndValues(t *testing.T) {
 		{Fields: []Field{{ID: "x", Label: "X", Type: Hours}, {ID: "x", Label: "Again", Type: Hours}}},
 		{Fields: []Field{{ID: "x", Label: "X", Type: Select, Options: []Option{{ID: "1", Name: "One"}}, Default: "2"}}},
 		{Fields: []Field{{ID: "x", Label: "X", Type: Hours, Default: "1"}}},
+		{Fields: []Field{{ID: "x", Label: "X", Type: Bool, Default: "yes"}}},
+		{Fields: []Field{{ID: "x", Label: "X", Type: Number, Default: "two"}}},
+		{Fields: []Field{{ID: "x", Label: "X", Type: String, Remember: true}}},
+		{Fields: []Field{{ID: "x", Label: "X", Type: Bool, Options: []Option{{ID: "1", Name: "One"}}}}},
 	}
 	for _, candidate := range bad {
 		if err := candidate.Validate(); err == nil {

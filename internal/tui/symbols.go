@@ -30,16 +30,19 @@ type symbolSet struct {
 
 // Icon names, for symbolSet.icon.
 const (
-	iconView    = "view"
-	iconFilter  = "filter"
-	iconGroup   = "group"
-	iconFolder  = "folder"
-	iconDue     = "due"
-	iconClock   = "clock"
-	iconBranch  = "branch"
-	iconClip    = "clip"
-	iconRepo    = "repo"
-	iconRefresh = "refresh"
+	iconView         = "view"
+	iconFilter       = "filter"
+	iconGroup        = "group"
+	iconFolder       = "folder"
+	iconProjectColor = "project_color"
+	iconDue          = "due"
+	iconClock        = "clock"
+	iconBranch       = "branch"
+	iconClip         = "clip"
+	iconRepo         = "repo"
+	iconRefresh      = "refresh"
+	iconBell         = "bell"
+	iconWarning      = "warning"
 )
 
 // Spinners use dense glyphs, so a working agent stands out at a glance.
@@ -48,14 +51,14 @@ var braille = []string{"⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"}
 // Each set only sets what it changes: nerd falls back to unicode, unicode to
 // ascii, which defines everything.
 var (
-	asciiSymbols = symbolSet{open: "[ ]", done: "[x]", cursor: ">", robot: "@", barOn: "#", barOff: "-", codeWrap: ">", info: "(i)", icons: map[string]string{iconClock: "(time)"}, border: lipgloss.ASCIIBorder(), states: map[agents.State]string{
+	asciiSymbols = symbolSet{open: "[ ]", done: "[x]", cursor: ">", robot: "@", barOn: "#", barOff: "-", codeWrap: ">", info: "(i)", icons: map[string]string{iconClock: "(time)", iconProjectColor: "*"}, border: lipgloss.ASCIIBorder(), states: map[agents.State]string{
 		agents.Waiting: "(!)", agents.Working: "(~)", agents.Completed: "(+)", agents.Idle: "(-)", agents.Unknown: "(?)"}}
-	unicodeSymbols = asciiSymbols.with(symbolSet{open: "□", done: "✓", cursor: "▌", robot: "🤖", barOn: "▰", barOff: "▱", codeWrap: "↪", emoji: true, spinner: braille, icons: map[string]string{iconClock: "◷"}, border: lipgloss.RoundedBorder(), states: map[agents.State]string{
+	unicodeSymbols = asciiSymbols.with(symbolSet{open: "□", done: "✓", cursor: "▌", robot: "🤖", barOn: "▰", barOff: "▱", codeWrap: "↪", emoji: true, spinner: braille, icons: map[string]string{iconClock: "◷", iconProjectColor: "●"}, border: lipgloss.RoundedBorder(), states: map[agents.State]string{
 		agents.Waiting: "⚠", agents.Working: "◐", agents.Completed: "●", agents.Idle: "○", agents.Unknown: "?"}})
 	// Nerd Font (Font Awesome) glyphs; needs a Nerd Font.
 	nerdSymbols = unicodeSymbols.with(symbolSet{open: "", done: "", robot: "󰚩", info: "\uf05a", states: map[agents.State]string{
 		agents.Waiting: "", agents.Working: "", agents.Completed: "", agents.Idle: "", agents.Unknown: ""},
-		icons: map[string]string{iconView: "\uf01c", iconFilter: "\uf0b0", iconGroup: "\uf03a", iconFolder: "\uf07b", iconDue: "\uf073", iconClock: "\uf017", iconBranch: "\ue725", iconClip: "\uf0c6", iconRepo: "\ue702", iconRefresh: "\uf021"}})
+		icons: map[string]string{iconView: "\uf01c", iconFilter: "\uf0b0", iconGroup: "\uf03a", iconFolder: "\uf07b", iconDue: "\uf073", iconClock: "\uf017", iconBranch: "\ue725", iconClip: "\uf0c6", iconRepo: "\ue702", iconRefresh: "\uf021", iconBell: "\uf0f3", iconWarning: "\uf071"}})
 )
 
 var symbolSets = map[string]symbolSet{
@@ -121,20 +124,28 @@ func (s symbolSet) agent(state agents.State, frame int) string {
 // badge renders agents (already in urgency order) in bold after the robot,
 // which gets a two-cell slot plus a space, as one symbol each, or as
 // grouped counts when there are more than four, padded by one trailing cell.
-// Reversed badges swap each state's colors, to sit inside a selection
-// highlight.
-func (s symbolSet) badge(list []agents.Agent, frame int, reversed bool) string {
+// Highlighted badges follow the selection theme while keeping state colors.
+func (s symbolSet) badge(list []agents.Agent, frame int, highlighted bool) string {
 	if len(list) == 0 {
 		return ""
 	}
 	sep := " "
-	if reversed {
+	if highlighted {
 		sep = selectedStyle.Render(sep)
 	}
-	style := func(st agents.State) lipgloss.Style { return stateStyles[st].Bold(true).Reverse(reversed) }
+	style := func(st agents.State) lipgloss.Style {
+		if highlighted && !selectedStyle.GetReverse() {
+			return selectedStyle.Foreground(stateStyles[st].GetForeground()).Bold(true)
+		}
+		return stateStyles[st].Bold(true).Reverse(highlighted)
+	}
 	// Pad narrow robots outside Render, which trims trailing spaces; terminals
 	// often draw Nerd Font glyphs wider than the one cell they count.
-	robot := lipgloss.NewStyle().Bold(true).Reverse(reversed).Render(s.robot)
+	robotStyle := lipgloss.NewStyle().Bold(true)
+	if highlighted {
+		robotStyle = selectedStyle.Bold(true)
+	}
+	robot := robotStyle.Render(s.robot)
 	if lipgloss.Width(s.robot) < 2 {
 		robot += sep
 	}

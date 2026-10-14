@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -71,6 +72,49 @@ func TestSharedFormEditsHoursAndCancelsPicker(t *testing.T) {
 	f.update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if f.values["project"] != "a" || f.values["hours"] != "1.25" || f.spec.ValidateValues(f.values) != nil {
 		t.Fatalf("form values = %v", f.values)
+	}
+}
+
+func TestSharedFormAppliesDefaultsAndTogglesBool(t *testing.T) {
+	spec := form.Spec{Fields: []form.Field{
+		{ID: "dry_run", Label: "Dry run", Type: form.Bool},
+		{ID: "note", Label: "Note", Type: form.String},
+		{ID: "count", Label: "Count", Type: form.Number},
+		{ID: "size", Label: "Size", Type: form.Number, Default: "3"},
+	}}
+	f := newFormModal("Run", spec, nil, func(map[string]string) tea.Cmd { return nil })
+	if f.cursor != 2 || f.values["dry_run"] != "false" || f.values["size"] != "3" {
+		t.Fatalf("cursor = %d, values = %v", f.cursor, f.values)
+	}
+	if f.spec.ValidateValues(f.values) == nil {
+		t.Fatal("accepted missing number")
+	}
+	f.update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	f.input.SetValue("-1.5")
+	f.update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	f.cursor = 0
+	f.update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if f.values["dry_run"] != "true" || f.values["count"] != "-1.5" || f.spec.ValidateValues(f.values) != nil {
+		t.Fatalf("form values = %v", f.values)
+	}
+}
+
+func TestSharedFormDefaultsAndResolvesDates(t *testing.T) {
+	spec := form.Spec{Fields: []form.Field{{ID: "on", Label: "Date", Type: form.Date}}}
+	f := newFormModal("Log", spec, nil, func(map[string]string) tea.Cmd { return nil })
+	if today := time.Now().Format(time.DateOnly); f.values["on"] != today {
+		t.Fatalf("date = %q, want today %q", f.values["on"], today)
+	}
+	f.update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	f.input.SetValue("nonsense")
+	f.update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !f.editing || f.err == "" || f.values["on"] == "nonsense" {
+		t.Fatalf("bad date accepted: editing = %v, err = %q, values = %v", f.editing, f.err, f.values)
+	}
+	f.input.SetValue(" 2026-01-05 ")
+	f.update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if f.editing || f.err != "" || f.values["on"] != "2026-01-05" {
+		t.Fatalf("editing = %v, err = %q, values = %v", f.editing, f.err, f.values)
 	}
 }
 
@@ -345,7 +389,7 @@ func TestActionBuilderHelpFollowsSelectionAndStaysWhileEditing(t *testing.T) {
 	m.Update(key("esc"))
 	builderPick(t, m, "Form fields")
 	builderPick(t, m, "Add field")
-	b.menu.cursor = 3 // Remember
+	b.menu.cursor = 4 // Remember
 	view = ansi.Strip(b.view(80, 16, m.accentStyle))
 	if !strings.Contains(view, "For select fields only") {
 		t.Fatal("nested field has no help")
@@ -419,7 +463,7 @@ func TestActionBuilderInfoIconFollowsSymbolSet(t *testing.T) {
 			}
 			m.Update(key("esc"))
 			builderPick(t, m, "Form fields")
-			if !strings.Contains(ansi.Strip(b.view(90, 16, m.accentStyle)), tc.icon+" Add a required") {
+			if !strings.Contains(ansi.Strip(b.view(90, 16, m.accentStyle)), tc.icon+" Add a prompt") {
 				t.Fatal("nested help used wrong info icon")
 			}
 		})

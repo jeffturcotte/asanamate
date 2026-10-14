@@ -10,6 +10,7 @@ import (
 
 	"github.com/sadmachine/asanamate/internal/action"
 	"github.com/sadmachine/asanamate/internal/asana"
+	"github.com/sadmachine/asanamate/internal/config"
 	"github.com/sadmachine/asanamate/internal/ticket"
 	"github.com/sadmachine/asanamate/internal/writeback"
 )
@@ -91,7 +92,7 @@ func (m *Model) pickedEdit(op editOp) tea.Cmd {
 	t := m.edit.ticket
 	switch op {
 	case editComment:
-		m.openComment(t.Task)
+		m.openCommentComposer(t.Task)
 	case editSection:
 		targets := m.sectionTargets(t.Task)
 		switch len(targets) {
@@ -112,7 +113,7 @@ func (m *Model) pickedEdit(op editOp) tea.Cmd {
 		return m.requestUsers()
 	case editDue:
 		m.edit.due = true
-		m.input = newInputBox("Due date", "YYYY-MM-DD; empty clears the date")
+		m.input = newInputBox("Due date", "YYYY-MM-DD or date -d text, such as +1 day; empty clears the date")
 		if t.DueOn != nil {
 			m.input.area.SetValue(*t.DueOn)
 		}
@@ -142,13 +143,14 @@ func completeLabel(t asana.Task) string {
 func (m *Model) toggleComplete() tea.Cmd {
 	t := m.edit.ticket
 	svc, gid, done := m.writer(), t.GID, !t.Completed
+	logTime := done && m.deps.Config.TimeTracking.PromptsAfter(config.PromptComplete)
 	what, status := "reopen "+ticket.Clean(t.Name), "Reopened "+ticket.Clean(t.Name)
 	if done {
 		what, status = "complete "+ticket.Clean(t.Name), "Completed "+ticket.Clean(t.Name)
 	}
 	m.edit, m.status = nil, what+"…"
 	return request(func(ctx context.Context) tea.Msg {
-		return editDoneMsg{gid: gid, what: what, done: status, err: svc.Complete(ctx, gid, done)}
+		return editDoneMsg{gid: gid, what: what, done: status, logTime: logTime, err: svc.Complete(ctx, gid, done)}
 	})
 }
 
@@ -367,6 +369,29 @@ func (m *Model) fieldTargets(t ticket.Ticket) []string {
 	return append(keys, commentKey)
 }
 
+// allCommentsKey is the field key of the cards view's Show all comments row.
+const allCommentsKey = "all_comments"
+
+// showAllComments reveals the selected ticket's older comments and selects
+// the oldest.
+func (m *Model) showAllComments() {
+	t, ok := m.selectedDetail()
+	if !ok || len(t.Comments) == 0 {
+		return
+	}
+	m.showComments, m.fieldKey = true, commentTarget(t.Comments[0], 0)
+	m.showTarget()
+}
+
+// openComment shows the comment with key in full instead of its preview.
+func (m *Model) openComment(key string) {
+	if m.openComments == nil {
+		m.openComments = map[string]bool{}
+	}
+	m.openComments[key] = true
+	m.showTarget()
+}
+
 // showEmptyFields reveals the selected ticket's empty custom fields and
 // selects the first editable one.
 func (m *Model) showEmptyFields() {
@@ -445,7 +470,7 @@ func (m *Model) pickedField(f asana.CustomField) tea.Cmd {
 	case asana.FieldPeople:
 		return m.requestUsers()
 	case asana.FieldDate:
-		m.input = newInputBox(ticket.FieldName(f), "YYYY-MM-DD; empty clears the field")
+		m.input = newInputBox(ticket.FieldName(f), "YYYY-MM-DD or date -d text, such as +1 day; empty clears the field")
 		if f.DateValue != nil {
 			m.input.area.SetValue(f.DateValue.Date)
 		}
@@ -550,8 +575,10 @@ func (m *Model) pickedUser(u asana.Ref) tea.Cmd {
 		what = "assign to " + ticket.Clean(u.Name)
 	}
 	svc, gid := m.writer(), m.edit.ticket.GID
-	return m.saveEdit(what, func(ctx context.Context) error {
-		return svc.Assign(ctx, gid, u.GID)
+	logTime := u.GID != "" && u.GID != m.meGID && m.deps.Config.TimeTracking.PromptsAfter(config.PromptAssign)
+	m.edit, m.status = nil, what+"…"
+	return request(func(ctx context.Context) tea.Msg {
+		return editDoneMsg{gid: gid, what: what, logTime: logTime, err: svc.Assign(ctx, gid, u.GID)}
 	})
 }
 

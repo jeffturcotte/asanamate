@@ -44,6 +44,9 @@ type Provider struct{ Command string }
 // the authenticated account, across projects for one exact ticket.
 type Summary struct {
 	TotalSeconds int64 `json:"total_seconds"`
+	// TodaySeconds is the subset logged on today's local calendar date.
+	// Nil means the provider does not supply daily totals.
+	TodaySeconds *int64 `json:"today_seconds,omitempty"`
 }
 
 // ErrUnsupported means the provider does not offer ticket summaries.
@@ -60,6 +63,7 @@ func (p Provider) Summary(ctx context.Context, asana Asana) (Summary, error) {
 	}
 	var response struct {
 		TotalSeconds *int64 `json:"total_seconds"`
+		TodaySeconds *int64 `json:"today_seconds"`
 		Unsupported  bool   `json:"unsupported"`
 	}
 	if err := json.Unmarshal(out, &response); err != nil {
@@ -71,7 +75,10 @@ func (p Provider) Summary(ctx context.Context, asana Asana) (Summary, error) {
 	if response.TotalSeconds == nil || *response.TotalSeconds < 0 {
 		return Summary{}, errors.New("time summary needs nonnegative integer total_seconds")
 	}
-	return Summary{TotalSeconds: *response.TotalSeconds}, nil
+	if response.TodaySeconds != nil && (*response.TodaySeconds < 0 || *response.TodaySeconds > *response.TotalSeconds) {
+		return Summary{}, errors.New("time summary needs nonnegative integer today_seconds no greater than total_seconds")
+	}
+	return Summary{TotalSeconds: *response.TotalSeconds, TodaySeconds: response.TodaySeconds}, nil
 }
 
 func (p Provider) call(ctx context.Context, req Request) ([]byte, error) {
