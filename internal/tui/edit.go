@@ -11,6 +11,7 @@ import (
 
 	"github.com/sadmachine/asanamate/internal/action"
 	"github.com/sadmachine/asanamate/internal/asana"
+	"github.com/sadmachine/asanamate/internal/config"
 	"github.com/sadmachine/asanamate/internal/ticket"
 	"github.com/sadmachine/asanamate/internal/writeback"
 )
@@ -148,13 +149,14 @@ func completeLabel(t asana.Task) string {
 func (m *Model) toggleComplete() tea.Cmd {
 	t := m.edit.ticket
 	svc, gid, done := m.writer(), t.GID, !t.Completed
+	logTime := done && m.deps.Config.TimeTracking.PromptsAfter(config.PromptComplete)
 	what, status := "reopen "+ticket.Clean(t.Name), "Reopened "+ticket.Clean(t.Name)
 	if done {
 		what, status = "complete "+ticket.Clean(t.Name), "Completed "+ticket.Clean(t.Name)
 	}
 	m.edit, m.status = nil, what+"…"
 	return request(func(ctx context.Context) tea.Msg {
-		return editDoneMsg{gid: gid, what: what, done: status, err: svc.Complete(ctx, gid, done)}
+		return editDoneMsg{gid: gid, what: what, done: status, logTime: logTime, err: svc.Complete(ctx, gid, done)}
 	})
 }
 
@@ -586,8 +588,10 @@ func (m *Model) pickedUser(u asana.Ref) tea.Cmd {
 		what = "assign to " + ticket.Clean(u.Name)
 	}
 	svc, gid := m.writer(), m.edit.ticket.GID
-	return m.saveEdit(what, func(ctx context.Context) error {
-		return svc.Assign(ctx, gid, u.GID)
+	logTime := u.GID != "" && u.GID != m.meGID && m.deps.Config.TimeTracking.PromptsAfter(config.PromptAssign)
+	m.edit, m.status = nil, what+"…"
+	return request(func(ctx context.Context) tea.Msg {
+		return editDoneMsg{gid: gid, what: what, logTime: logTime, err: svc.Assign(ctx, gid, u.GID)}
 	})
 }
 

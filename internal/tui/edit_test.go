@@ -354,6 +354,37 @@ func TestWideCardsPutSubtasksBesideDetails(t *testing.T) {
 	}
 }
 
+func TestTimePromptAfterHandoff(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		prompt []string
+		keys   []string
+		want   bool
+	}{
+		{"assign to someone else", []string{config.PromptAssign}, []string{"@", "j", "j", "enter"}, true},
+		{"assign to yourself", []string{config.PromptAssign}, []string{"@", "j", "enter"}, false},
+		{"unassign", []string{config.PromptAssign}, []string{"@", "enter"}, false},
+		{"complete", []string{config.PromptComplete}, []string{"x"}, true},
+		{"assign without the prompt", []string{config.PromptComplete}, []string{"@", "j", "j", "enter"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, writes := editModel(t)
+			m.deps.Config.ConfirmWrites = false
+			m.deps.Config.TimeTracking = config.TimeTracking{ID: "hrvst", Command: "printf '%s' '" + timeFormJSON + "'", PromptAfter: tc.prompt}
+			tk := m.details["1"]
+			tk.PermalinkURL = "https://app.asana.com/0/p1/1"
+			m.details["1"] = tk
+			press(m, tc.keys...)
+			if len(*writes) != 1 {
+				t.Fatalf("writes = %q", *writes)
+			}
+			if got := m.form != nil && strings.HasPrefix(m.form.title, "Log time"); got != tc.want {
+				t.Fatalf("log time form open = %v, want %v (status %q)", got, tc.want, m.status)
+			}
+		})
+	}
+}
+
 func TestDetailsCardLeavesOutNoise(t *testing.T) {
 	m, _ := editModel(t)
 	tk := m.details["1"]

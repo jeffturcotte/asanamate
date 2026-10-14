@@ -577,6 +577,7 @@ once. Run `asanamate doctor` to check a change without starting the TUI.
 | `repo_source.root` | your setup directory, or empty | directory whose direct children with a `.git` entry (clones and worktrees) fill the repo picker; absolute or starting with `~`; empty: type a path |
 | `repo_source.command` | unset | prints one repo path per line; replaces `repo_source.root` when set; see [Repo sources](docs/extensions.md#repo-sources) |
 | `time_tracking.id` / `time_tracking.command` | unset (off) | provider ID for saved choices and command implementing the [time tracking JSON protocol](docs/extensions.md#time-tracking) |
+| `time_tracking.prompt_after` | `[]` | TUI edits that open the log time form once they succeed: `"assign"` (to someone else) and `"complete"`; `esc` skips it. See [Time tracking](#time-tracking-optional) |
 | `project_links.command` | unset (off) | command implementing the [project links JSON protocol](docs/extensions.md#project-links); its links preselect the repo picker and time form |
 
 The title is always shown. `list.fields` picks the other columns and their
@@ -787,6 +788,11 @@ command = "asanamate-hrvst --task-id YOUR_TASK_ID"
 ```
 
 To turn time tracking off, remove the `[time_tracking]` keys.
+
+To be asked for time when you hand a ticket off, add
+`prompt_after = ["assign", "complete"]`. Assigning a ticket to someone else or
+completing it then opens the log time form; `esc` skips it. Unassigning,
+assigning to yourself, and reopening never ask.
 
 Press `t` on a ticket. If ticket belongs to several Asana projects, choose one.
 The form shows the Harvest projects where your task is active, the task under

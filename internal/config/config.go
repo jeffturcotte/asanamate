@@ -95,7 +95,19 @@ type TimeTracking struct {
 	ID string `toml:"id"`
 	// Command reads a JSON request from stdin and returns a form spec as JSON.
 	Command string `toml:"command"`
+	// PromptAfter lists the TUI edits that open the log time form once they
+	// succeed: PromptAssign (to someone else) and PromptComplete.
+	PromptAfter []string `toml:"prompt_after"`
 }
+
+// Edits time_tracking.prompt_after accepts.
+const (
+	PromptAssign   = "assign"
+	PromptComplete = "complete"
+)
+
+// PromptsAfter reports whether a successful edit opens the log time form.
+func (t TimeTracking) PromptsAfter(edit string) bool { return slices.Contains(t.PromptAfter, edit) }
 
 func (c Config) TimeTrackingEnabled() bool {
 	return c.TimeTracking.ID != "" && c.TimeTracking.Command != ""
@@ -446,6 +458,11 @@ func (c Config) validate() error {
 	}
 	if strings.TrimSpace(c.TimeTracking.ID) != c.TimeTracking.ID {
 		return errors.New("time_tracking.id must not have surrounding whitespace")
+	}
+	for _, edit := range c.TimeTracking.PromptAfter {
+		if edit != PromptAssign && edit != PromptComplete {
+			return fmt.Errorf("time_tracking.prompt_after: %q must be %q or %q", edit, PromptAssign, PromptComplete)
+		}
 	}
 	if c.ProjectLinks.Command != "" && strings.TrimSpace(c.ProjectLinks.Command) == "" {
 		return errors.New("project_links.command must not be blank; remove it to turn project links off")

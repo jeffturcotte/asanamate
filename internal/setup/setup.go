@@ -459,6 +459,9 @@ commands = []
 [time_tracking]
 # id = "hrvst"
 # command = "asanamate-hrvst --task-id YOUR_TASK_ID"
+# Open the log time form after these edits succeed in the TUI: "assign" (to
+# someone else) and "complete". esc skips it.
+# prompt_after = ["assign", "complete"]
 
 # Optional: suggest each Asana project's git repository and time tracking
 # project from another system. The command reads a JSON request from stdin and

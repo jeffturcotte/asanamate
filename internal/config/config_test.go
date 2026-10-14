@@ -314,6 +314,13 @@ func TestTimeTrackingConfig(t *testing.T) {
 	if err != nil || !cfg.TimeTrackingEnabled() {
 		t.Fatalf("configured time tracking = %+v, err = %v", cfg.TimeTracking, err)
 	}
+	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[time_tracking]\nid = \"hrvst\"\ncommand = \"p\"\nprompt_after = [\"assign\", \"complete\"]\n"))
+	if err != nil || !cfg.TimeTracking.PromptsAfter(PromptAssign) || !cfg.TimeTracking.PromptsAfter(PromptComplete) {
+		t.Fatalf("prompt_after = %+v, err = %v", cfg.TimeTracking, err)
+	}
+	if _, err := Load(writeFile(t, "workspace = \"1\"\n[time_tracking]\nid = \"hrvst\"\ncommand = \"p\"\nprompt_after = [\"move\"]\n")); err == nil || !strings.Contains(err.Error(), "time_tracking.prompt_after") {
+		t.Fatalf("bad prompt_after: err = %v", err)
+	}
 	for _, body := range []string{"id = \"hrvst\"", "command = \"provider\"", "id = \"hrvst\"\ncommand = \"  \""} {
 		if _, err := Load(writeFile(t, "workspace = \"1\"\n[time_tracking]\n"+body+"\n")); err == nil || !strings.Contains(err.Error(), "time_tracking") {
 			t.Fatalf("config %q error = %v", body, err)

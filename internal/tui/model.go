@@ -124,6 +124,7 @@ type Model struct {
 	projectFields   map[string]map[string]bool // project gid -> its custom field gids
 	projectCatalogs map[string][]asana.Ref     // project gid -> its custom field names and gids
 	users           []asana.Ref                // workspace users, loaded on first assign
+	meGID           string                     // your user GID, loaded with users
 
 	agents    []agents.Agent
 	linked    map[string][]agents.Agent // viewAgents by ticket gid; nil when stale
@@ -307,7 +308,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.openSectionPicker(msg)
 	case usersMsg:
 		if msg.err == nil {
-			m.users = msg.users
+			m.users, m.meGID = msg.users, msg.me
 		}
 		m.openUserPicker(msg.err)
 	case editDoneMsg:
@@ -514,13 +515,17 @@ func (m *Model) editDone(msg editDoneMsg) tea.Cmd {
 		m.status = msg.done
 	}
 	// Keep the edited ticket shown even if the reload drops it from the view.
+	var logTime tea.Cmd
 	if t, ok := m.selected(); ok && t.GID == msg.gid {
 		m.viewing = &t
+		if msg.logTime && m.deps.Config.TimeTrackingEnabled() {
+			logTime = m.openTime()
+		}
 	}
 	if m.shownGID != msg.gid {
 		delete(m.details, msg.gid)
 	}
-	return m.refresh()
+	return tea.Batch(m.refresh(), logTime)
 }
 
 func sameProject(a, b *asana.Ref) bool {
