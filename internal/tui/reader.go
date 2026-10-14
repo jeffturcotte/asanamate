@@ -185,14 +185,6 @@ func (m *Model) showTarget() {
 	}
 }
 
-// clearField drops the cards view's tabbed-to row.
-func (m *Model) clearField() {
-	if m.fieldKey != "" {
-		m.fieldKey = ""
-		m.renderDetail(true)
-	}
-}
-
 // rendererKey identifies a cached Markdown renderer. Bare renderers drop the
 // document margins, for Markdown set inside cards and sections.
 type rendererKey struct {
