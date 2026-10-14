@@ -304,6 +304,7 @@ func (m *Model) focusList() {
 	if m.focusReader {
 		m.focusReader = false
 		m.fieldKey = ""
+		m.layout()
 		m.renderDetail(true)
 	}
 }
@@ -322,6 +323,7 @@ func (m *Model) focusReaderPane() {
 	m.focusNav, m.focusFeed = false, false
 	if !m.focusReader {
 		m.focusReader = true
+		m.layout()
 		if !m.stepField(1) {
 			m.renderDetail(true)
 		}

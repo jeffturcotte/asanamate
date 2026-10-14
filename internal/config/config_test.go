@@ -615,10 +615,10 @@ func TestPickerConfig(t *testing.T) {
 
 func TestLayoutConfig(t *testing.T) {
 	cfg, err := Load(writeFile(t, "workspace = \"1\"\n"))
-	if err != nil || cfg.Layout != (Layout{Reader: true, Focus: Focus{Dim: true}}) {
+	if err != nil || cfg.Layout != (Layout{Reader: true, Focus: Focus{Dim: true, Resize: true}}) {
 		t.Fatalf("default: %+v, err = %v", cfg.Layout, err)
 	}
-	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[layout]\nreader = false\nlist_width = 60\n[layout.focus]\ndim = false\n"))
+	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[layout]\nreader = false\nlist_width = 60\n[layout.focus]\ndim = false\nresize = false\n"))
 	if err != nil || cfg.Layout != (Layout{ListWidth: 60}) {
 		t.Fatalf("set: %+v, err = %v", cfg.Layout, err)
 	}

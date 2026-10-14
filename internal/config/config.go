@@ -178,9 +178,12 @@ type Layout struct {
 }
 
 // Focus configures how the focused pane stands out. The focused pane's title
-// is always a filled tab; Dim also draws every other pane faint.
+// is always a filled tab; Dim also draws every other pane faint. Resize gives
+// the focused pane the room: the list fits its titles while it has focus, and
+// shrinks to short titles while the reader has it.
 type Focus struct {
-	Dim bool `toml:"dim"`
+	Dim    bool `toml:"dim"`
+	Resize bool `toml:"resize"`
 }
 
 // List configures how tickets appear in the list. The title is always shown;
@@ -342,7 +345,7 @@ func Default() Config {
 		TimeTracking: TimeTracking{},
 		ProjectLinks: ProjectLinks{},
 		Actions:      nil,
-		Layout:       Layout{Reader: true, Focus: Focus{Dim: true}},
+		Layout:       Layout{Reader: true, Focus: Focus{Dim: true, Resize: true}},
 		List: List{
 			RefreshInterval: "30s",
 			Sort:            Sort{By: "", Direction: "asc"},

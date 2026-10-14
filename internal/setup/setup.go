@@ -342,6 +342,9 @@ list_width = 0
 [layout.focus]
 # Draw every pane but the focused one faint, so focus stands out.
 dim = true
+# Give the focused pane the room: the list fits its titles while it has
+# focus, and shrinks to short titles while the reader has it.
+resize = true
 
 [list]
 # Automatically reload the list at this interval (at least 1s).

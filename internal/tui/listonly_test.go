@@ -162,6 +162,34 @@ func TestFixedListWidth(t *testing.T) {
 	}
 }
 
+func TestFocusResizeGivesTheFocusedPaneRoom(t *testing.T) {
+	long := asana.Task{GID: "2", Name: strings.Repeat("Long ticket title ", 6)}
+	for _, resize := range []bool{true, false} {
+		layout := config.Default().Layout
+		layout.Focus.Resize = resize
+		m, _ := testModel(t, config.Config{Layout: layout})
+		m.Update(tea.WindowSizeMsg{Width: 260, Height: 30})
+		m.Update(tasksMsg{tasks: []asana.Task{openTask, long}})
+		m.Update(detailMsg{gid: "1", ticket: ticket.Ticket{Task: openTask}})
+		listW, readerW, _ := m.paneWidths()
+		m.focusReaderPane()
+		focusedList, focusedReader, _ := m.paneWidths()
+		if m.reader.Width() != focusedReader {
+			t.Fatalf("resize %v: reader viewport %d, want %d", resize, m.reader.Width(), focusedReader)
+		}
+		if resize != (focusedList < listW && focusedReader > readerW) {
+			t.Fatalf("resize %v: list %d to %d, reader %d to %d", resize, listW, focusedList, readerW, focusedReader)
+		}
+		if resize && focusedList < readerFocusTitleW {
+			t.Fatalf("list shrank past its short titles: %d", focusedList)
+		}
+		m.focusList()
+		if back, _, _ := m.paneWidths(); back != listW {
+			t.Fatalf("resize %v: list focus restores %d, got %d", resize, listW, back)
+		}
+	}
+}
+
 func TestSpaceOpensMenuAfterDetailLoads(t *testing.T) {
 	m, _ := testModel(t, config.Config{Actions: []config.Action{{Name: "Go", Key: "x", Mode: config.ModeExit, Command: "true"}}})
 	m.Update(tasksMsg{tasks: []asana.Task{openTask}})

@@ -47,6 +47,10 @@ const (
 	readerMinW   = 80
 )
 
+// readerFocusTitleW is the title room the fitted list keeps while the reader
+// has focus, when layout.focus.resize gives the reader the rest.
+const readerFocusTitleW = 40
+
 // panelFrame is the cells a panel's border takes across and down.
 const panelFrame = 2
 
@@ -974,7 +978,11 @@ func (m *Model) paneWidths() (listW, readerW int, split bool) {
 		outer = room - readerMinW - panelFrame
 	}
 	if m.listW > 0 && !m.activityOpen {
-		outer = min(m.listW, room-readerMinW-panelFrame)
+		w := m.listW
+		if m.focusReader && m.deps.Config.Layout.Focus.Resize {
+			w -= max(m.titleW-readerFocusTitleW, 0)
+		}
+		outer = min(w, room-readerMinW-panelFrame)
 	}
 	outer = min(max(outer, minPaneW), room-minPaneW)
 	return outer - panelFrame, room - outer - panelFrame, true
