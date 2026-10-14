@@ -340,9 +340,12 @@ func shortDate(d, today time.Time) string {
 	return d.Format("Jan 2 2006")
 }
 
-// detailMeta inserts the Add project row after the ticket's projects.
+// detailMeta inserts the Add project row after the ticket's projects. It
+// leaves out the URL, which o and y cover, and the Status of an open ticket.
 func detailMeta(t ticket.Ticket) []ticket.Field {
-	rows := t.Meta()
+	rows := slices.DeleteFunc(t.Meta(), func(f ticket.Field) bool {
+		return f.Key == "" && (f.Label == "URL" || f.Label == "Status" && !t.Completed)
+	})
 	index := -1
 	for i, f := range rows {
 		if strings.HasPrefix(f.Key, ticket.KeyProject+":") {
@@ -395,10 +398,17 @@ func (m *Model) detailsBody(t ticket.Ticket, width, top int) string {
 				gid := strings.TrimPrefix(f.Key, ticket.KeyProject+":")
 				for _, membership := range t.Memberships {
 					if membership.Project.GID == gid {
-						value = m.projectLabel(membership.Project, lipgloss.NewStyle())
+						var section string
 						if membership.Section != nil {
-							value += " / " + ticket.Clean(membership.Section.Name)
+							section = " / " + ticket.Clean(membership.Section.Name)
 						}
+						// Cut the project name so its section stays on the row,
+						// unless that leaves too little of the name to read.
+						value = m.projectLabel(membership.Project, lipgloss.NewStyle())
+						if room := width - labelW - 2 - ansi.StringWidth(section); room >= 12 {
+							value = ansi.Truncate(value, room, "…")
+						}
+						value += section
 						break
 					}
 				}

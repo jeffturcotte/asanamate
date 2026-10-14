@@ -354,6 +354,27 @@ func TestWideCardsPutSubtasksBesideDetails(t *testing.T) {
 	}
 }
 
+func TestDetailsCardLeavesOutNoise(t *testing.T) {
+	m, _ := editModel(t)
+	tk := m.details["1"]
+	tk.PermalinkURL = "https://app.asana.com/0/p1/1"
+	tk.Memberships[0].Project.Name = strings.Repeat("Long project name ", 5)
+	m.fieldLines = map[string]int{}
+	body := ansi.Strip(m.detailsBody(tk, 56, 0))
+	if strings.Contains(body, "URL") || strings.Contains(body, "Status") {
+		t.Fatalf("open ticket shows URL or Status:\n%s", body)
+	}
+	row := slices.IndexFunc(strings.Split(body, "\n"), func(l string) bool { return strings.Contains(l, "Project") })
+	if lines := strings.Split(body, "\n"); row < 0 || !strings.Contains(lines[row], "… / Todo") {
+		t.Fatalf("project row must cut the name and keep the section on one line:\n%s", body)
+	}
+	tk.Completed = true
+	if body := ansi.Strip(m.detailsBody(tk, 56, 0)); !strings.Contains(body, "Status") {
+		t.Fatalf("complete ticket hides Status:\n%s", body)
+	}
+	cardLines(t, m, tk, 60)
+}
+
 func TestInlineAddProjectRow(t *testing.T) {
 	for _, tc := range []struct {
 		count   int
