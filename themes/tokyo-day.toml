@@ -15,7 +15,7 @@ pinned = { fg = "#b15c00", bold = true }
 viewing = { fg = "#9854f1", bold = true }
 reacted = { fg = "#3760bf", bg = "#b6bfe2" }
 new = { fg = "#e1e2e7", bg = "#2e7de9", bold = true }
-more = { fg = "#e1e2e7", bg = "#007197", bold = true }
+more = { fg = "#e1e2e7", bg = "#b15c00", bold = true }
 authors = ["#2e7de9", "#9854f1", "#007197", "#587539", "#8c6c3e", "#f52a65"]
 
 [colors.mode]
