@@ -375,6 +375,16 @@ func TestDetailsCardLeavesOutNoise(t *testing.T) {
 	cardLines(t, m, tk, 60)
 }
 
+func TestAttachmentsListNamesOnly(t *testing.T) {
+	m, _ := editModel(t)
+	tk := m.details["1"]
+	tk.Attachments = []asana.Attachment{{GID: "a", Name: "setup.pdf", Host: "asana", PermanentURL: "https://app.asana.com/app/asana/-/get_asset?asset_id=a"}}
+	body := ansi.Strip(m.renderCards(tk, 60))
+	if !strings.Contains(body, "1. setup.pdf") || strings.Contains(body, "get_asset") {
+		t.Fatalf("attachments must list names without URLs:\n%s", body)
+	}
+}
+
 func TestInlineAddProjectRow(t *testing.T) {
 	for _, tc := range []struct {
 		count   int

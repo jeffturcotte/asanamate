@@ -118,8 +118,7 @@ func (m *Model) renderCards(t ticket.Ticket, width int) string {
 
 	var attachments []string
 	for i, a := range t.Attachments {
-		attachments = append(attachments, fmt.Sprintf("%d. %s%s\n   %s", i+1, m.sym.icon(iconClip), ticket.OneLine(a.Name),
-			dimStyle.Render(ansi.Truncate(ticket.OneLine(ticket.AttachmentURL(a)), width-3, "…"))))
+		attachments = append(attachments, ansi.Truncate(fmt.Sprintf("%d. %s%s", i+1, m.sym.icon(iconClip), ticket.OneLine(a.Name)), width, "…"))
 	}
 	add("section:attachments", fmt.Sprintf("Attachments %d", len(t.Attachments)), strings.Join(attachments, "\n"))
 
