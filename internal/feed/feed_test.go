@@ -24,7 +24,7 @@ func TestFeedFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reply.Source != "ci" || reply.Summary != "1 failed" || len(reply.Items) != 2 {
+	if reply.Source != "ci" || reply.Summary != "1 failed" || reply.Icon != "warning" || len(reply.Items) != 2 {
 		t.Fatalf("reply = %+v", reply)
 	}
 	first := reply.Items[0]

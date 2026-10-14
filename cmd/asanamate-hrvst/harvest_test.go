@@ -287,7 +287,7 @@ func TestHarvestFeedListsTheDaysEntries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reply.Source != "hrvst" || reply.Summary != "3h 10m logged" || len(reply.Items) != 3 {
+	if reply.Source != "hrvst" || reply.Summary != "3h 10m logged" || reply.Icon != "clock" || len(reply.Items) != 3 {
 		t.Fatalf("reply = %+v", reply)
 	}
 	linked, unlinked, running := reply.Items[0], reply.Items[1], reply.Items[2]

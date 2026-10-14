@@ -133,6 +133,14 @@ func TestFeedFailedFeedKeepsItems(t *testing.T) {
 	if s := fresh.feedSummary(); s != "ci-feed failed" {
 		t.Fatalf("never-answered feed summary = %q", s)
 	}
+	fresh.sym = newSymbols(config.SymbolsNerd, nil, false)
+	if s := fresh.feedSummary(); s != "\uf071 ci-feed failed" {
+		t.Fatalf("nerd failed summary = %q", s)
+	}
+	fresh.Update(feedMsg{reply: feed.Reply{Source: "ci", Summary: "2h logged", Icon: "clock", Items: []feed.Item{}}})
+	if s := fresh.feedSummary(); s != "\uf017 2h logged" {
+		t.Fatalf("nerd summary = %q", s)
+	}
 }
 
 func TestFeedAgentsShowStateChangesAndUnlinked(t *testing.T) {

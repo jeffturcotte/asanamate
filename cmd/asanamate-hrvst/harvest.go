@@ -417,7 +417,7 @@ func harvestFeed(ctx context.Context, configPath, endpoint, date string) (feed.R
 	if err := json.Unmarshal(data, &me); err != nil || me.ID == "" {
 		return feed.Reply{}, errors.New("Harvest feed: missing user id")
 	}
-	reply := feed.Reply{Source: "hrvst", Items: []feed.Item{}}
+	reply := feed.Reply{Source: "hrvst", Icon: "clock", Items: []feed.Item{}}
 	var total float64
 	query := url.Values{"user_id": {me.ID.String()}, "from": {date}, "to": {date}}
 	err = eachPage(ctx, credentials, base, query, "Harvest feed", func(data []byte) error {
