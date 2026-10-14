@@ -1274,8 +1274,10 @@ A local image, `![](~/Desktop/shot.png)`, is attached to the task and shown
 inline in the comment; a comment can be only an image. Paths are relative to
 the working directory, `~/` is your home directory, and a path with spaces
 needs angle brackets: `![](<~/My Shots/a.png>)`. Only image files qualify, up
-to 100 MB each. The confirmation lists the files to upload, and each upload
-also adds an "attached" entry to the task's activity. Images on the web
+to 100 MB each. The confirmation lists the files to upload. Asana adds an
+"attached" entry to the task's activity for each upload; asanamate deletes it
+after posting, so the image shows only in the comment and stays in the task's
+attachments. Images on the web
 (`https://...`) keep only their alt text. In the TUI comment box, `alt+v`
 saves the clipboard image to a temporary file and inserts its Markdown.
 

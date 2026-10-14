@@ -47,6 +47,8 @@ func fake(t *testing.T) (*asana.Client, *[]write) {
 			io.WriteString(w, `{"data":{"gid":"mt"}}`)
 		case r.Method == http.MethodGet && r.URL.Path == "/projects/mt/sections":
 			io.WriteString(w, `{"data":[{"gid":"m1","name":"Inbox"},{"gid":"m2","name":"Later"}]}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/tasks/1/stories":
+			io.WriteString(w, `{"data":[{"gid":"st1","resource_subtype":"attachment_added","text":"Ann attached shot.png"},{"gid":"st2","resource_subtype":"attachment_added","text":"Ann attached other.png"},{"gid":"st3","resource_subtype":"comment_added","text":"shot.png"}]}`)
 		case r.Method == http.MethodGet && r.URL.Path == "/projects/p3":
 			io.WriteString(w, `{"data":{"gid":"p3","name":"Ops"}}`)
 		case r.Method == http.MethodPost && r.URL.Path == "/attachments":

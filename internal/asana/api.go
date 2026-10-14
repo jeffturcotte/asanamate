@@ -194,6 +194,11 @@ func (c *Client) addStory(ctx context.Context, taskGID string, body map[string]a
 	return c.do(ctx, http.MethodPost, "/tasks/"+taskGID+"/stories", nil, body, nil)
 }
 
+// DeleteStory deletes a story the user created.
+func (c *Client) DeleteStory(ctx context.Context, gid string) error {
+	return c.do(ctx, http.MethodDelete, "/stories/"+gid, nil, nil, nil)
+}
+
 // Story returns one story with its author, text, and reactions.
 func (c *Client) Story(ctx context.Context, gid string) (Story, error) {
 	return getOne[Story](ctx, c, "/stories/"+gid, fields("type,created_by.name,text,reaction_summary.emoji_base,reaction_summary.variant,reaction_summary.count,reaction_summary.reacted"))
