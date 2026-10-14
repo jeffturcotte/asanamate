@@ -8,6 +8,7 @@ import (
 	"maps"
 	"math"
 	"net"
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -31,6 +32,13 @@ type commentComposer struct {
 	busy      bool
 	confirm   *picker
 	quitting  bool
+	task      *asana.Task // new comments can also stage task edits
+	changes   []writeback.Change
+	labels    map[string]string
+	branch    *string
+	review    *picker
+	footer    int // -1 focuses the comment; otherwise an optional task control
+	logTime   bool
 }
 
 type commentOperation int
@@ -48,10 +56,13 @@ type commentDoneMsg struct {
 	saved    bool
 	err      error
 	cleanup  error // a successful post whose draft could not be removed
+	logTime  bool
 }
 
 func (m *Model) openCommentComposer(t asana.Task) {
 	m.openCommentInput(t.GID, "", "Comment on "+ticket.Clean(t.Name), "")
+	t.CustomFields, t.Memberships = slices.Clone(t.CustomFields), slices.Clone(t.Memberships)
+	m.composer.task = &t
 }
 
 func (m *Model) openCommentEditor(gid string, story asana.Story) {
@@ -65,7 +76,7 @@ func (m *Model) openCommentInput(gid, storyGID, title, initial string) {
 	b.area.MaxContentHeight = math.MaxInt
 	b.images = true
 	b.area.SetValue(initial)
-	c := &commentComposer{gid: gid, storyGID: storyGID, original: initial, box: b}
+	c := &commentComposer{gid: gid, storyGID: storyGID, original: initial, box: b, footer: -1}
 	identity := gid
 	if storyGID != "" {
 		identity = "story:" + storyGID
@@ -75,7 +86,8 @@ func (m *Model) openCommentInput(gid, storyGID, title, initial string) {
 		b.err = "loading draft: " + err.Error()
 	} else {
 		c.store, c.images, c.uncertain = store, draft.Images, draft.Uncertain
-		if draft.Text != "" {
+		c.changes, c.labels, c.branch = draft.Changes, draft.ChangeLabels, draft.Branch
+		if draft.Text != "" || len(draft.Changes) > 0 || draft.Branch != nil {
 			b.area.SetValue(draft.Text)
 			b.title += " (draft)"
 		}
@@ -83,7 +95,7 @@ func (m *Model) openCommentInput(gid, storyGID, title, initial string) {
 	}
 	b.onSubmit = func(string) tea.Cmd { return m.postComment() }
 	b.onSaveDraft = func() tea.Cmd {
-		if strings.TrimSpace(b.area.Value()) == "" {
+		if !c.hasChanges() {
 			return m.leaveComment(false)
 		}
 		return m.runComment(commentSave)
@@ -106,6 +118,43 @@ func (m *Model) updateComment(msg tea.Msg) tea.Cmd {
 	if c.busy {
 		return nil
 	}
+	if key, ok := msg.(tea.KeyPressMsg); ok && c.task != nil && c.confirm == nil {
+		switch key.String() {
+		case "tab", "shift+tab":
+			step := 1
+			if key.String() == "shift+tab" {
+				step = 3
+			}
+			c.footer = (c.footer+1+step)%4 - 1
+			if c.footer == -1 {
+				c.box.area.Focus()
+				return nil
+			}
+			c.box.area.Blur()
+			return nil
+		case "enter":
+			switch c.footer {
+			case 0:
+				return m.beginDraftEdit(editAssignee)
+			case 1:
+				return m.beginDraftEdit(editSection)
+			case 2:
+				m.openBatchReview()
+				return nil
+			}
+		}
+		if c.footer >= 0 {
+			switch bound("input", key, true) {
+			case "submit":
+				return m.postComment()
+			case "save_draft":
+				return c.box.onSaveDraft()
+			case "cancel":
+				return m.leaveComment(false)
+			}
+			return nil
+		}
+	}
 	if c.confirm != nil {
 		if key, ok := msg.(tea.KeyPressMsg); ok {
 			res, cmd := c.confirm.update(key)
@@ -120,6 +169,10 @@ func (m *Model) updateComment(msg tea.Msg) tea.Cmd {
 	}
 	res, cmd := c.box.update(msg)
 	if res.cancelled {
+		if c.review != nil {
+			m.openBatchReview()
+			return cmd
+		}
 		return m.leaveComment(false)
 	}
 	if res.done {
@@ -134,8 +187,12 @@ func (m *Model) leaveComment(quit bool) tea.Cmd {
 		return nil
 	}
 	c.quitting = quit
-	if strings.TrimSpace(c.box.area.Value()) == "" || (c.storyGID != "" && c.box.area.Value() == c.original) {
+	if !c.hasChanges() || (c.storyGID != "" && c.box.area.Value() == c.original) {
 		return m.runComment(commentDiscard)
+	}
+	title := "Save comment as draft?"
+	if len(c.changes) > 0 || c.branch != nil || c.review != nil {
+		title = "Save changes as draft?"
 	}
 	c.confirm = newPicker(pickValue(func(choice string) tea.Cmd {
 		c.confirm = nil
@@ -148,7 +205,7 @@ func (m *Model) leaveComment(quit bool) tea.Cmd {
 		default:
 			return m.runComment(commentDiscard)
 		}
-	}), "Save comment as draft?", []pickItem{
+	}), title, []pickItem{
 		{Label: "Save draft", Value: "save"},
 		{Label: "Discard", Value: "discard"},
 		{Label: "Keep editing", Value: "keep"},
@@ -165,7 +222,9 @@ func (m *Model) postComment() tea.Cmd {
 			c.box.err = "comment text is empty"
 			return nil
 		}
-		return m.leaveComment(false)
+		if !c.hasChanges() {
+			return m.leaveComment(false)
+		}
 	}
 	if c.uncertain {
 		retry := "Post again"
@@ -196,8 +255,23 @@ func (m *Model) runComment(op commentOperation) tea.Cmd {
 		if op == commentDiscard {
 			return m.commentDone(commentDoneMsg{composer: c, op: op})
 		}
-		c.box.err = "draft storage is unavailable; keep this text and fix the draft file before saving or posting"
+		c.setError("draft storage is unavailable; keep this text and fix the draft file before saving or posting")
 		return nil
+	}
+	if op == commentPost && c.branch != nil {
+		previous, existed := m.deps.State.TaskBranches[c.gid]
+		m.deps.State.SetTaskBranch(c.gid, *c.branch)
+		if err := m.deps.State.Save(); err != nil {
+			m.deps.State.SetTaskBranch(c.gid, previous)
+			if !existed {
+				delete(m.deps.State.TaskBranches, c.gid)
+			}
+			c.setError("saving branch: " + err.Error())
+			return nil
+		}
+		c.branch = nil
+		m.linked = nil
+		m.renderDetail(true)
 	}
 	c.busy = true
 	c.box.err, c.box.help = "", "Saving draft…"
@@ -205,12 +279,23 @@ func (m *Model) runComment(op commentOperation) tea.Cmd {
 		c.box.help = "Discarding draft…"
 	} else if op == commentPost {
 		c.box.help = "Posting comment…"
+		if c.task != nil && (len(c.changes) > 0 || c.review != nil) {
+			c.box.help = "Submitting changes…"
+		}
 		if c.storyGID != "" {
 			c.box.help = "Updating comment…"
 		}
 	}
-	draft := drafts.Comment{Text: c.box.area.Value(), Images: maps.Clone(c.images), Uncertain: c.uncertain}
+	if c.review != nil && m.modal == c.review {
+		c.review.err = c.box.help
+	}
+	draft := drafts.Comment{Text: c.box.area.Value(), Images: maps.Clone(c.images), Uncertain: c.uncertain,
+		Changes: slices.Clone(c.changes), ChangeLabels: maps.Clone(c.labels), Branch: c.branch}
 	svc, gid := m.writer(), c.gid
+	logAfter := make([]bool, len(draft.Changes)+1)
+	for i := range draft.Changes {
+		logAfter[i+1] = m.draftLogTime(draft.Changes[:i+1])
+	}
 	return request(func(ctx context.Context) tea.Msg {
 		msg := commentDoneMsg{composer: c, op: op}
 		if op == commentDiscard {
@@ -231,14 +316,33 @@ func (m *Model) runComment(op commentOperation) tea.Cmd {
 			images[path] = data
 		}
 		draft.Images = images
-		if op == commentPost {
-			draft.Uncertain = true
-		}
 		if msg.err = c.store.Save(draft); msg.err != nil {
 			return msg
 		}
 		msg.saved, msg.draft = true, draft
 		if op == commentSave {
+			return msg
+		}
+		if len(draft.Changes) > 0 {
+			done, err := svc.Batch(ctx, gid, draft.Changes)
+			draft.Changes = draft.Changes[done:]
+			msg.draft, msg.err, msg.logTime = draft, err, logAfter[done]
+			if saveErr := c.store.Save(draft); saveErr != nil {
+				msg.err = errors.Join(err, fmt.Errorf("saving remaining edits: %w", saveErr))
+			}
+			if msg.err != nil {
+				return msg
+			}
+		}
+		if strings.TrimSpace(draft.Text) == "" {
+			msg.cleanup = c.store.Remove()
+			return msg
+		}
+		// Only comment delivery is non-idempotent. Mark uncertainty immediately
+		// before posting, after checkpointing successful task edits.
+		draft.Uncertain = true
+		msg.draft = draft
+		if msg.err = c.store.Save(draft); msg.err != nil {
 			return msg
 		}
 		svc.Images = images
@@ -274,15 +378,22 @@ func (m *Model) commentDone(msg commentDoneMsg) tea.Cmd {
 		return nil
 	}
 	c.busy = false
+	applied := 0
 	if msg.saved {
+		if msg.op == commentPost {
+			applied = len(c.changes) - len(msg.draft.Changes)
+			m.applyDraftChanges(c.changes[:applied])
+		}
 		c.images, c.uncertain = msg.draft.Images, msg.draft.Uncertain
+		c.changes, c.labels, c.branch = msg.draft.Changes, msg.draft.ChangeLabels, msg.draft.Branch
 	}
+	c.logTime = c.logTime || msg.logTime
 	c.deliveryHint()
 	if msg.err != nil {
 		// Empty input has nothing to protect. Close even if an old draft
 		// cannot be removed, preserving that file and reporting the failure.
-		if msg.op == commentDiscard && strings.TrimSpace(c.box.area.Value()) == "" {
-			m.composer, m.input = nil, nil
+		if msg.op == commentDiscard && !c.hasChanges() {
+			m.composer, m.input, m.modal, m.edit = nil, nil, nil, nil
 			m.status = "comment closed; draft retained: " + msg.err.Error()
 			if c.quitting {
 				m.closeActivity()
@@ -292,9 +403,17 @@ func (m *Model) commentDone(msg commentDoneMsg) tea.Cmd {
 		}
 		c.quitting = false
 		c.box.err = msg.err.Error()
+		if c.review != nil {
+			m.openBatchReview()
+		}
+		if applied > 0 {
+			refresh := m.editDone(editDoneMsg{gid: c.gid, what: "update ticket"})
+			m.status = "some changes saved; remaining edits kept in draft"
+			return refresh
+		}
 		return nil
 	}
-	m.composer, m.input = nil, nil
+	m.composer, m.input, m.modal, m.edit = nil, nil, nil, nil
 	switch msg.op {
 	case commentSave:
 		m.status = "comment draft saved"
@@ -305,9 +424,15 @@ func (m *Model) commentDone(msg commentDoneMsg) tea.Cmd {
 		if c.storyGID != "" {
 			what = "edit comment"
 		}
-		cmd := m.editDone(editDoneMsg{gid: c.gid, what: what})
+		if c.task != nil && (applied > 0 || c.logTime || c.review != nil) {
+			what = "update ticket"
+		}
+		cmd := m.editDone(editDoneMsg{gid: c.gid, what: what, logTime: c.logTime})
 		if msg.cleanup != nil {
 			m.status = "comment posted; removing draft failed: " + msg.cleanup.Error()
+			if what == "update ticket" {
+				m.status = "ticket updated; removing draft failed: " + msg.cleanup.Error()
+			}
 			if c.storyGID != "" {
 				m.status = "comment updated; removing draft failed: " + msg.cleanup.Error()
 			}

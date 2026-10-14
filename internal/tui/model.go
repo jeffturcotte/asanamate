@@ -441,6 +441,11 @@ func (m *Model) gotProjects(msg projectsMsg) tea.Cmd {
 	m.loadingProjects = false
 	if msg.err != nil {
 		m.status = "loading projects: " + msg.err.Error()
+		if m.composer != nil && m.afterProjects != nil {
+			m.afterProjects = nil
+			m.composer.setError(m.status)
+			m.returnToDraft()
+		}
 		return nil
 	}
 	m.status = ""
@@ -562,6 +567,29 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		return nil
 	}
+	if c := m.composer; c != nil {
+		if c.busy {
+			return nil
+		}
+		if c.confirm != nil {
+			return m.updateComment(msg)
+		}
+		if m.modal == c.review && c.review != nil {
+			switch bound("input", msg, true) {
+			case "submit":
+				return m.postComment()
+			case "save_draft":
+				return c.box.onSaveDraft()
+			}
+		}
+		if m.input == nil && m.modal == nil {
+			if bound("picker", msg, false) == "cancel" {
+				m.afterProjects = nil
+				m.returnToDraft()
+			}
+			return nil
+		}
+	}
 	if m.waiting != "" {
 		switch {
 		case keys.Name("main", k) == "quit":
@@ -640,6 +668,13 @@ func (m *Model) updateModal(msg tea.KeyPressMsg) tea.Cmd {
 	res, cmd := p.update(msg)
 	switch {
 	case res.cancelled:
+		if c := m.composer; c != nil {
+			if p == c.review {
+				return m.leaveComment(false)
+			}
+			m.returnToDraft()
+			return cmd
+		}
 		m.modal, m.run, m.edit, m.timeEntry = nil, nil, nil, nil
 	case res.done:
 		return tea.Batch(cmd, p.onPick(res))
@@ -648,12 +683,16 @@ func (m *Model) updateModal(msg tea.KeyPressMsg) tea.Cmd {
 }
 
 func (m *Model) updateInput(msg tea.Msg) tea.Cmd {
-	if m.composer != nil {
+	if m.composer != nil && m.input == m.composer.box {
 		return m.updateComment(msg)
 	}
 	res, cmd := m.input.update(msg)
 	switch {
 	case res.cancelled:
+		if m.composer != nil {
+			m.returnToDraft()
+			return cmd
+		}
 		m.input, m.run, m.edit = nil, nil, nil
 	case res.done:
 		if m.input.onSubmit != nil {
@@ -1056,11 +1095,17 @@ func (m *Model) body() string {
 		if m.input.area.DynamicHeight {
 			w = max(min(m.width-4, 100), 10)
 		}
-		content = m.input.view(w, mh, m.accentStyle)
+		if m.composer != nil && m.input == m.composer.box {
+			content = m.composer.view(w, mh, m.accentStyle)
+		} else {
+			content = m.input.view(w, mh, m.accentStyle)
+		}
 	case m.form != nil:
 		content = m.form.view(w, mh, m.accentStyle)
 	case m.modal != nil:
 		content = m.modal.view(w, mh, m.accentStyle)
+	case m.composer != nil:
+		content = "Loading task details…\n" + hintLine(m.accentStyle, [2]string{keyLabel("picker", "cancel"), "cancel"})
 	case m.help:
 		if m.activityOpen {
 			content = m.activityHelp()

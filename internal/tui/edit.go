@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -11,6 +12,7 @@ import (
 	"github.com/sadmachine/asanamate/internal/action"
 	"github.com/sadmachine/asanamate/internal/asana"
 	"github.com/sadmachine/asanamate/internal/config"
+	"github.com/sadmachine/asanamate/internal/dateinput"
 	"github.com/sadmachine/asanamate/internal/ticket"
 	"github.com/sadmachine/asanamate/internal/writeback"
 )
@@ -27,6 +29,7 @@ const (
 	editRemoveProject
 	editBranch
 	editComplete
+	editMultiple
 )
 
 // myTasks stands for the My Tasks list among a ticket's projects.
@@ -82,6 +85,7 @@ func (m *Model) openEditMenu() {
 		{Label: "Remove from project", Key: "r", Value: editRemoveProject},
 		{Label: "Set branch", Key: "b", Value: editBranch},
 		{Label: completeLabel(t.Task), Key: "x", Value: editComplete},
+		{Label: "Edit multiple", Key: "m", Value: editMultiple},
 	})
 	p.keySelect = true
 	m.modal = p
@@ -93,11 +97,17 @@ func (m *Model) pickedEdit(op editOp) tea.Cmd {
 	switch op {
 	case editComment:
 		m.openCommentComposer(t.Task)
+	case editMultiple:
+		m.openCommentComposer(t.Task)
+		m.openBatchReview()
 	case editSection:
 		targets := m.sectionTargets(t.Task)
 		switch len(targets) {
 		case 0:
 			m.edit, m.status = nil, "ticket is not in any project or your My Tasks"
+			if m.composer != nil {
+				m.returnToDraft()
+			}
 		case 1:
 			return m.pickedEditProject(targets[0])
 		default:
@@ -116,6 +126,9 @@ func (m *Model) pickedEdit(op editOp) tea.Cmd {
 		m.input = newInputBox("Due date", "YYYY-MM-DD or date -d text, such as +1 day; empty clears the date")
 		if t.DueOn != nil {
 			m.input.area.SetValue(*t.DueOn)
+		}
+		if c := m.composer; c != nil {
+			m.input.area.SetValue(c.value("due", "", "", m.input.area.Value()))
 		}
 	case editAddProject:
 		return m.requestProjects(func() tea.Cmd { m.openAddProjectPicker(); return nil })
@@ -142,6 +155,10 @@ func completeLabel(t asana.Task) string {
 // complete.
 func (m *Model) toggleComplete() tea.Cmd {
 	t := m.edit.ticket
+	if c := m.composer; c != nil {
+		done := c.value("complete", "", "", strconv.FormatBool(t.Completed)) != "true"
+		return m.stageChange(writeback.Change{Kind: "complete", Value: strconv.FormatBool(done)}, strconv.FormatBool(done), strconv.FormatBool(t.Completed))
+	}
 	svc, gid, done := m.writer(), t.GID, !t.Completed
 	logTime := done && m.deps.Config.TimeTracking.PromptsAfter(config.PromptComplete)
 	what, status := "reopen "+ticket.Clean(t.Name), "Reopened "+ticket.Clean(t.Name)
@@ -160,7 +177,18 @@ func (m *Model) openBranchInput(t asana.Task) {
 	fallback := action.Branch(t, "", m.deps.Config.BranchField, m.projectFields[gidOf(m.viewProject)])
 	b := newInputBox("Branch", fmt.Sprintf("empty uses %q", fallback))
 	b.area.SetValue(m.deps.State.TaskBranches[t.GID])
+	if c := m.composer; c != nil && c.branch != nil {
+		b.area.SetValue(*c.branch)
+	}
 	b.onSubmit = func(value string) tea.Cmd {
+		if c := m.composer; c != nil {
+			c.branch = &value
+			if value == m.deps.State.TaskBranches[t.GID] {
+				c.branch = nil
+			}
+			m.returnToDraft()
+			return nil
+		}
 		m.input, m.edit = nil, nil
 		m.saveBranch(t.GID, value)
 		return nil
@@ -199,6 +227,9 @@ func (m *Model) openAddProjectPicker() {
 	}
 	if len(items) == 0 {
 		m.edit, m.status = nil, "no other member projects available"
+		if m.composer != nil {
+			m.returnToDraft()
+		}
 		return
 	}
 	m.modal = newPicker(pickValue(m.addToProject), "Add to which project?", items)
@@ -207,6 +238,9 @@ func (m *Model) openAddProjectPicker() {
 func (m *Model) openRemoveProjectPicker() {
 	if len(m.edit.ticket.Memberships) == 0 {
 		m.edit, m.status = nil, "ticket is not in any project"
+		if m.composer != nil {
+			m.returnToDraft()
+		}
 		return
 	}
 	items := make([]pickItem, len(m.edit.ticket.Memberships))
@@ -217,6 +251,9 @@ func (m *Model) openRemoveProjectPicker() {
 }
 
 func (m *Model) addToProject(project asana.Ref) tea.Cmd {
+	if m.composer != nil {
+		return m.stageChange(writeback.Change{Kind: "project_add", Target: project.GID, Value: "add"}, "Add to "+ticket.Clean(project.Name), "")
+	}
 	m.modal = nil
 	svc, gid := m.writer(), m.edit.ticket.GID
 	return m.saveEdit("add to "+ticket.Clean(project.Name), func(ctx context.Context) error {
@@ -225,6 +262,10 @@ func (m *Model) addToProject(project asana.Ref) tea.Cmd {
 }
 
 func (m *Model) removeFromProject(project asana.Ref) tea.Cmd {
+	if c := m.composer; c != nil {
+		c.changes = slices.DeleteFunc(c.changes, func(change writeback.Change) bool { return change.Kind == "move" && change.Project == project.GID })
+		return m.stageChange(writeback.Change{Kind: "project_remove", Target: project.GID, Value: "remove"}, "Remove from "+ticket.Clean(project.Name), "")
+	}
 	m.modal = nil
 	svc, gid := m.writer(), m.edit.ticket.GID
 	return m.saveEdit("remove from "+ticket.Clean(project.Name), func(ctx context.Context) error {
@@ -273,19 +314,39 @@ func (m *Model) openSectionPicker(msg sectionsMsg) {
 	if m.edit == nil {
 		return
 	}
+	project := msg.project.GID
+	if project == "" {
+		project = writeback.MyTasks
+	}
+	if m.composer != nil && m.edit.project != project {
+		return
+	}
 	if msg.err != nil {
 		m.edit, m.status = nil, "loading sections: "+msg.err.Error()
+		if m.composer != nil {
+			m.composer.box.err = m.status
+			m.returnToDraft()
+		}
 		return
 	}
 	m.status = ""
-	current := m.edit.ticket.SectionIn(msg.project.GID)
+	current := ""
 	if m.edit.project == writeback.MyTasks {
-		current = m.edit.ticket.AssigneeSection.Name
+		current = m.edit.ticket.AssigneeSection.GID
+	} else {
+		for _, mb := range m.edit.ticket.Memberships {
+			if mb.Project.GID == project && mb.Section != nil {
+				current = mb.Section.GID
+			}
+		}
+	}
+	if c := m.composer; c != nil {
+		current = c.value("move", "", project, current)
 	}
 	items := make([]pickItem, len(msg.sections))
 	for i, sec := range msg.sections {
 		items[i] = pickItem{Label: ticket.Clean(sec.Name), Value: sec}
-		if sec.Name == current {
+		if sec.GID == current {
 			items[i].Hint = "current"
 		}
 	}
@@ -293,6 +354,20 @@ func (m *Model) openSectionPicker(msg sectionsMsg) {
 }
 
 func (m *Model) pickedSection(sec asana.Ref) tea.Cmd {
+	if m.composer != nil {
+		t, project := m.edit.ticket, m.edit.project
+		original := ""
+		if project == writeback.MyTasks && t.AssigneeSection != nil {
+			original = t.AssigneeSection.GID
+		} else {
+			for _, mb := range t.Memberships {
+				if mb.Project.GID == project && mb.Section != nil {
+					original = mb.Section.GID
+				}
+			}
+		}
+		return m.stageChange(writeback.Change{Kind: "move", Project: project, Value: sec.GID}, ticket.Clean(sec.Name), original)
+	}
 	m.modal = nil
 	svc, gid, project := m.writer(), m.edit.ticket.GID, m.edit.project
 	return m.saveEdit("move to "+ticket.Clean(sec.Name), func(ctx context.Context) error {
@@ -318,6 +393,9 @@ func (m *Model) openFieldPicker() {
 // editable reports whether the edit flow can set custom field f. ID and
 // formula fields are read-only text and number fields.
 func editable(f asana.CustomField) bool {
+	if f.IsValueReadOnly || f.IsFormulaField {
+		return false
+	}
 	kind := f.RepresentationType
 	if kind == "" {
 		kind = f.ResourceSubtype
@@ -456,6 +534,10 @@ func (m *Model) openField(key string) tea.Cmd {
 func (m *Model) pickedField(f asana.CustomField) tea.Cmd {
 	m.modal = nil
 	m.edit.field = &f
+	value := fieldText(f)
+	if c := m.composer; c != nil {
+		value = c.value("field", f.GID, "", value)
+	}
 	switch f.ResourceSubtype {
 	case asana.FieldEnum:
 	case asana.FieldMultiEnum:
@@ -463,7 +545,7 @@ func (m *Model) pickedField(f asana.CustomField) tea.Cmd {
 		checked := map[int]bool{}
 		for i, o := range f.EnumOptions {
 			items[i] = pickItem{Label: ticket.Clean(o.Name), Value: o.GID}
-			checked[i] = slices.ContainsFunc(f.MultiEnumValues, func(v asana.EnumOption) bool { return v.GID == o.GID })
+			checked[i] = slices.Contains(strings.Split(value, ","), o.GID)
 		}
 		m.modal = newMultiPicker(m.pickedValues, ticket.FieldName(f), items, checked)
 		return nil
@@ -471,19 +553,17 @@ func (m *Model) pickedField(f asana.CustomField) tea.Cmd {
 		return m.requestUsers()
 	case asana.FieldDate:
 		m.input = newInputBox(ticket.FieldName(f), "YYYY-MM-DD or date -d text, such as +1 day; empty clears the field")
-		if f.DateValue != nil {
-			m.input.area.SetValue(f.DateValue.Date)
-		}
+		m.input.area.SetValue(value)
 		return nil
 	default:
 		m.input = newInputBox(ticket.FieldName(f), "empty clears the field")
-		m.input.area.SetValue(f.Value())
+		m.input.area.SetValue(value)
 		return nil
 	}
 	items := []pickItem{{Label: "(none)", Hint: "clear", Value: ""}}
 	for _, o := range f.EnumOptions {
 		it := pickItem{Label: ticket.Clean(o.Name), Value: o.GID}
-		if o.Name == f.Value() {
+		if o.GID == value {
 			it.Hint = "current"
 		}
 		items = append(items, it)
@@ -495,6 +575,9 @@ func (m *Model) pickedField(f asana.CustomField) tea.Cmd {
 // setField sets the field being edited to value, as writeback.FieldValue
 // reads it.
 func (m *Model) setField(value string) tea.Cmd {
+	if m.composer != nil {
+		return m.stageField(value)
+	}
 	m.modal = nil
 	svc, gid, f := m.writer(), m.edit.ticket.GID, *m.edit.field
 	return m.saveEdit("set "+ticket.FieldName(f), func(ctx context.Context) error {
@@ -504,14 +587,37 @@ func (m *Model) setField(value string) tea.Cmd {
 
 // typedEdit takes the input box's text for a due date or custom field.
 func (m *Model) typedEdit(text string) tea.Cmd {
-	m.input = nil
 	if m.edit.due {
+		if m.composer != nil {
+			date := strings.TrimSpace(text)
+			if date != "" {
+				var err error
+				date, err = dateinput.Resolve(context.Background(), date)
+				if err != nil {
+					m.input.err = err.Error()
+					return nil
+				}
+			}
+			original := ""
+			if m.edit.ticket.DueOn != nil {
+				original = *m.edit.ticket.DueOn
+			}
+			label := date
+			if label == "" {
+				label = "(empty)"
+			}
+			return m.stageChange(writeback.Change{Kind: "due", Value: date}, label, original)
+		}
+		m.input = nil
 		svc, gid := m.writer(), m.edit.ticket.GID
 		return m.saveEdit("set due date", func(ctx context.Context) error {
 			return svc.SetDue(ctx, gid, text)
 		})
 	}
 	if m.edit.field != nil {
+		if m.composer == nil {
+			m.input = nil
+		}
 		return m.setField(text)
 	}
 	return nil
@@ -535,6 +641,10 @@ func (m *Model) openUserPicker(err error) {
 	}
 	if err != nil {
 		m.edit, m.status = nil, "loading people: "+err.Error()
+		if m.composer != nil {
+			m.composer.box.err = m.status
+			m.returnToDraft()
+		}
 		return
 	}
 	m.status = ""
@@ -545,9 +655,13 @@ func (m *Model) openUserPicker(err error) {
 	if f := m.edit.field; f != nil {
 		items := make([]pickItem, len(users))
 		checked := map[int]bool{}
+		value := fieldText(*f)
+		if c := m.composer; c != nil {
+			value = c.value("field", f.GID, "", value)
+		}
 		for i, u := range users {
 			items[i] = pickItem{Label: ticket.Clean(u.Name), Value: u.GID}
-			checked[i] = slices.ContainsFunc(f.PeopleValue, func(v asana.Ref) bool { return v.GID == u.GID })
+			checked[i] = slices.Contains(strings.Split(value, ","), u.GID)
 		}
 		m.modal = newMultiPicker(m.pickedValues, ticket.FieldName(*f), items, checked)
 		return
@@ -556,9 +670,16 @@ func (m *Model) openUserPicker(err error) {
 	for _, u := range users {
 		items = append(items, pickItem{Label: ticket.Clean(u.Name), Value: u})
 	}
+	current := ""
 	if a := m.edit.ticket.Assignee; a != nil {
+		current = a.GID
+	}
+	if c := m.composer; c != nil {
+		current = c.value("assign", "", "", current)
+	}
+	if current != "" {
 		for i := range items {
-			if items[i].Value.(asana.Ref).GID == a.GID {
+			if items[i].Value.(asana.Ref).GID == current {
 				items[i].Hint = "current"
 			}
 		}
@@ -569,6 +690,17 @@ func (m *Model) openUserPicker(err error) {
 }
 
 func (m *Model) pickedUser(u asana.Ref) tea.Cmd {
+	if m.composer != nil {
+		original := ""
+		if a := m.edit.ticket.Assignee; a != nil {
+			original = a.GID
+		}
+		label := ticket.Clean(u.Name)
+		if u.GID == "" {
+			label = "(unassigned)"
+		}
+		return m.stageChange(writeback.Change{Kind: "assign", Value: u.GID}, label, original)
+	}
 	m.modal = nil
 	what := "unassign"
 	if u.GID != "" {
