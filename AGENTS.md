@@ -45,6 +45,10 @@ the user whether to migrate their local config to it. On yes:
 - Validate with the branch's build: `go run ./cmd/asanamate doctor` loads the
   config and actions and names the first bad file or key. Done when it runs
   clean; then report what changed and where the backups are.
+- Check whether `~/.config/asanamate` sits in a git repo
+  (`git -C ~/.config/asanamate rev-parse --show-toplevel`). If it does, ask
+  the user whether to commit the changes. On yes, stage and commit only paths
+  under `~/.config/asanamate`, never unrelated changes elsewhere in that repo.
 
 ## Asana writes
 
