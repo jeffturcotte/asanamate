@@ -92,6 +92,10 @@ func TestFeedLinksItemsToTickets(t *testing.T) {
 	if line := ansi.Strip(m.feedLine(m.feedRows()[0], false, 100, 5)); !strings.Contains(line, "by gid · Other") {
 		t.Fatalf("linked line = %q", line)
 	}
+	titled := feedRow{Item: feed.Item{Time: now, Text: "1h · Fuse · Other"}, task: m.feedRows()[0].task}
+	if line := ansi.Strip(m.feedLine(titled, false, 100, 5)); strings.Count(line, "Other") != 1 {
+		t.Fatalf("titled line = %q", line)
+	}
 
 	press(m, "3")
 	if !m.focusFeed || !m.feed.open {
