@@ -2,7 +2,7 @@
 
 Date: 2026-10-05
 Updated: 2026-10-13
-Status: Core portability implemented; remaining release work tracked in the plan
+Status: Archive release gate met with v0.2.0; Homebrew remains, tracked in the plan
 
 ## Purpose
 

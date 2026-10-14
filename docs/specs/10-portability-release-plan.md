@@ -2,7 +2,7 @@
 
 Date: 2026-10-05
 Updated: 2026-10-13
-Status: Tasks 1 to 4 done; candidate verification and Homebrew open
+Status: Tasks 1 to 5 done; v0.2.0 published 2026-10-13; Homebrew (Task 6) open
 
 ## Goal and scope
 
@@ -141,37 +141,51 @@ v0.1.0 archives held only `asanamate`, so no released asset is removed.
 - [x] Point imarc staff to the Hub repository from the README, the setup
   template comment, and `docs/extensions.md`; drop Hub from install,
   quarantine, and uninstall steps.
-- [ ] Create the `imarc/asanamate-hub` repository and push the provider.
+- [x] Create the `imarc/asanamate-hub` repository and push the provider;
+  tagged v0.2.0 to match asanamate.
 
 ## Task 5 Verify the final packaged candidate and onboarding
 
-Priority: P0 release gate. Dependencies: Tasks 2, 3, and 4.
+Priority: P0 release gate. Dependencies: Tasks 2, 3, and 4. Status: done
+2026-10-13, with the gaps recorded below.
 
 Primary files: `.github/workflows/ci.yml`, `.github/workflows/release.yml`,
 `.goreleaser.yaml`, this plan's evidence record; test changes after permission.
 
-- [ ] Identify the final candidate commit and intended tag/version. Older CI
+- [x] Identify the final candidate commit and intended tag/version. Older CI
   success and published v0.1.0 do not prove this candidate.
-- [ ] Run vet, staticcheck, race tests, and all target builds using the versions
+- [x] Run vet, staticcheck, race tests, and all target builds using the versions
   in CI. Use the existing GoReleaser CI action if local GoReleaser is unavailable;
   do not substitute a raw Go build for archive validation.
-- [ ] Build snapshot archives; verify checksums, binary/theme/license contents,
+- [x] Build snapshot archives; verify checksums, binary/theme/license contents,
   version/help, and selected adapter help/check behavior on all four native
   targets. Reuse the current matrix rather than creating another release system.
-- [ ] Strengthen minimal-environment proof beyond help and a failing doctor:
+- [x] Strengthen minimal-environment proof beyond help and a failing doctor:
   setup must complete without optional tools, produce loadable config/actions,
   and browse through read-only local fixtures. Prefer existing setup/API fixtures;
   add no production API override solely for tests.
-- [ ] Follow README archive installation verbatim on fresh macOS and Linux,
+- [x] Follow README archive installation verbatim on fresh macOS and Linux,
   including checksum tools, `PATH`, theme installation, and Gatekeeper behavior.
-- [ ] With a designated authorized Asana account, authenticate, browse My Tasks
+- [x] With a designated authorized Asana account, authenticate, browse My Tasks
   and a project, and read a ticket. Exercise required optional features through
   read-only lookups. No comments, ticket edits, time entries, or agent spawns.
-- [ ] Verify upgrade from v0.1.0 with a temporary copy of representative config
+- [x] Verify upgrade from v0.1.0 with a temporary copy of representative config
   and actions: migration preserves values, timestamps backups, and documents
   the new adapter install and hook-repair steps. Use temporary hook files.
-- [ ] Record date, OS/version/architecture, candidate, checksums, CI links, and
+- [x] Record date, OS/version/architecture, candidate, checksums, CI links, and
   results. Mark unavailable checks as gaps; do not call them passed.
+
+Gaps, accepted for v0.2.0:
+
+- Linux and Intel macOS installs were proven only by the CI smoke jobs, not by
+  following the README by hand on a fresh system.
+- Minimal onboarding ran against live Asana with a bare `PATH`, not against
+  local fixtures.
+- The v0.1.0 upgrade check used v0.1.0's config template; v0.1.0 action files
+  and hook repair were not exercised.
+- The release workflow's upgrade-notes step (`docs/migrations.md` to the
+  release header) was added after the tag; the v0.2.0 header was applied by
+  hand. Its first real run is the next release.
 
 Release handoff: stage/commit/publish only with appropriate authorization.
 Release from the verified candidate. Verify actual published checksums and
@@ -214,14 +228,23 @@ Fill against the final candidate; historical evidence above is not completion.
 | Package scope | Hub decision and agreed binary list | Hub in `imarc/asanamate-hub`; archives ship three binaries |
 | Pager | Fresh inactive example; existing actions preserved | Done; setup tests cover both |
 | Diagnostic docs | Precise coverage and manual provider checks | Done |
-| Candidate | Commit, version, artifact checksum set | Pending |
-| Automated checks | Candidate CI URL; tests, vet, staticcheck, all builds | Older baseline only |
-| Native archives | macOS/Linux amd64/arm64 install and smoke results | Older baseline only |
-| Minimal onboarding | No optional tools; setup and fixture browsing | Candidate proof pending |
-| Live Asana | Dated read-only auth, My Tasks, project, ticket results | Pending |
-| Compatibility | v0.1.0 config/action values and backups preserved | Candidate proof pending |
-| Publication | Actual asset checksums and README install result | After authorized release |
-| Homebrew | Real tap install/upgrade/uninstall | Deferred; not advertised |
+| Candidate | Commit, version, artifact checksum set | `44a4f13`, tag `v0.2.0`; checksums below |
+| Automated checks | Candidate CI URL; tests, vet, staticcheck, all builds | [CI run 38491632659](https://github.com/sadmachine/asanamate/actions/runs/38491632659): tests on Ubuntu and macOS, vet, staticcheck, race, snapshot archives; 928 tests locally with `-race` |
+| Native archives | macOS/Linux amd64/arm64 install and smoke results | CI smoke jobs pass on all four targets: bare `PATH`, themes install, version/help, adapters' help, doctor |
+| Minimal onboarding | No optional tools; setup and fixture browsing | 2026-10-13, macOS 26.6.2 arm64, `PATH=/usr/bin:/bin`, empty home: setup completes with repos skipped, both actions written as inactive examples, doctor exits 0 |
+| Live Asana | Dated read-only auth, My Tasks, project, ticket results | 2026-10-13: auth and workspace ok; `list` My Tasks; `list --project` 155 rows; `show` a ticket; TUI renders My Tasks and the reader. No writes |
+| Compatibility | v0.1.0 config/action values and backups preserved | v0.1.0 config template: `config update` moves keys, keeps values, writes a timestamped backup; doctor loads it. Action files not tested |
+| Publication | Actual asset checksums and README install result | [v0.2.0 release](https://github.com/sadmachine/asanamate/releases/tag/v0.2.0): README archive steps on macOS arm64, checksum OK, three binaries and 21 themes, `asanamate version` prints 0.2.0, no quarantine with `curl` |
+| Homebrew | Real tap install/upgrade/uninstall | Deferred to Task 6; not advertised |
+
+Published v0.2.0 checksums:
+
+```text
+f71f4275046b92f9c15bd377d587fb6b1145af8d458b23d7067d980ddef14bd1  asanamate_darwin_amd64.tar.gz
+6bc5c3e3c39c6139b450317727c20d910538339da946d5e74f7cd59f27c29156  asanamate_darwin_arm64.tar.gz
+e78adf4517b686f6f352b8ebb81e806ce30e7e02cdf7a5b8ea79211e71d4b11f  asanamate_linux_amd64.tar.gz
+45c53cbb98ae51a39cb5549d36130b1eea4d9312d26bc6bd51c2b13666743532  asanamate_linux_arm64.tar.gz
+```
 
 Stop once Tasks 1 through 5 meet the archive release gate and required decisions
 are recorded. Task 6 is a separately tracked install improvement. Do not expand
