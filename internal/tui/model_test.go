@@ -146,6 +146,27 @@ func TestPickingProjectRecordsRecent(t *testing.T) {
 	}
 }
 
+func TestSwitchingBackToDueGroupedMyTasksRendersStaleProjectRows(t *testing.T) {
+	m, st := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle, GroupBy: "due"}})
+	m.Update(tasksMsg{tasks: []asana.Task{openTask}})
+
+	project := &asana.Ref{GID: "p", Name: "Project"}
+	st.SetView(project.GID, state.View{})
+	m.pickedProject(project)
+	m.Update(tasksMsg{project: project, tasks: []asana.Task{sideTask}})
+	if m.groups != nil {
+		t.Fatalf("project groups = %q, want ungrouped", m.groups)
+	}
+
+	m.pickedProject(nil)
+	if m.groupBy != "due" || !m.loading {
+		t.Fatalf("group = %q, loading = %v; want due-grouped My Tasks loading", m.groupBy, m.loading)
+	}
+	if got := m.listView(40, 10); !strings.Contains(got, sideTask.Name) {
+		t.Fatalf("stale project row missing while My Tasks loads: %q", got)
+	}
+}
+
 // historyGIDs returns the ticket history's gids, most recent first.
 func historyGIDs(st *state.State) []string {
 	var gids []string
