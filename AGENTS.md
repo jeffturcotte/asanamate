@@ -29,6 +29,21 @@ The config is TOML, decoded into the structs in `internal/config/config.go`.
   absolute links), and tell the user the next release tag needs a breaking
   version bump (see Version bumps).
 
+## Incoming PRs
+
+- Before a release, check open PRs and identify relevant fixes for inclusion.
+- Review the full diff against the PR description and repository conventions
+  before approving contributor CI workflows.
+- For bug fixes, verify that the regression test fails without the fix and
+  passes with it.
+- Check compatibility with pending local changes. Adapt callers and tests to
+  config or API changes while preserving the PR's intended behavior.
+- Require every `ci` job to succeed for the reviewed PR head before merging;
+  recheck if the head changes. Use a GitHub merge commit to preserve the
+  contributor's commits and authorship.
+- Validate the combined `main` after integration, then follow "Version bumps"
+  for the release gates on that exact commit.
+
 ## Version bumps
 
 Releases come only from `v*` tags; there is no version file. Everything on
