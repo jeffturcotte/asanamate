@@ -24,13 +24,29 @@ can run in parallel, each on its own branch.
 | [09-activity-background-cache](09-activity-background-cache.md) (done) | Scan Activity in the background, cache it on disk, and show a new-event count | none | no |
 | [10-portability-release](10-portability-release.md) (done, Homebrew pending) | Released as v0.2.0. **Homebrew is still to do** (plan Task 6); see the [implementation plan](10-portability-release-plan.md) | current main baseline | no |
 | [11-feed-panel](11-feed-panel.md) (done) | Feed panel under the list, fed by Asana, agents, local git, and a generic feed protocol | none | no |
-| [12-startup-config-migration](12-startup-config-migration.md) | The TUI offers `config update` at startup when the config uses moved settings | none | no |
-| [13-settings-file](13-settings-file.md) | Settings the TUI changes move from `config.toml` and state into `settings.toml`; `[theme.auto]` and `ansi-dark`/`ansi-light` | 12 | yes |
-| [14-default-view](14-default-view.md) | `default_filter`, `list.group_by`, and `list.sort` move to `[list.default_view]` | 12, after 13 | yes |
-| [15-remove-deprecated](15-remove-deprecated.md) | Remove the hidden `hook` subcommand and `--no-preview` | none | yes |
+| [12-startup-config-migration](12-startup-config-migration.md) (done) | The TUI offers `config update` at startup when the config uses moved settings | none | no |
+| [13-settings-file](13-settings-file.md) (done) | Settings the TUI changes move from `config.toml` and state into `settings.toml`; `[theme.auto]` and `ansi-dark`/`ansi-light` | 12 | yes |
+| [14-default-view](14-default-view.md) (done) | `default_filter`, `list.group_by`, and `list.sort` move to `[list.default_view]` | 12, after 13 | yes |
+| [15-remove-deprecated](15-remove-deprecated.md) (done) | Remove the hidden `hook` subcommand and `--no-preview` | none | yes |
+| [16-conversation-history](16-conversation-history.md) | Generic ticket conversation source, metadata, config, and open contract | none | no |
+| [17-conversation-companion](17-conversation-companion.md) | Standalone `asana-sessions` package/CLI for native history, linking, and resumption | 16's adapter contract only; provider feasibility gate first | no |
+| [18-conversation-plugins](18-conversation-plugins.md) | `asana-sessions` native hook plugins, skill, installation, and independent releases | 17 | no |
+| [19-conversation-ui](19-conversation-ui.md) | Native ticket conversation picker, CLI, foreground opening, and end-to-end proof | 16, 17 | no |
 
-Specs 12 to 15 ship together as v0.3.0. Tag the release only after all four
-are merged, so users migrate once.
+Specs 12 to 15 are complete and shipped together in v0.3.0.
+
+Specs 16 to 19 describe a separate proposed feature. The standalone
+`asana-sessions` package lives in
+`packages/asana-sessions/` in this repository while it is built out; moving
+to its own repository is a later decision. It has its own CLI, README,
+tests, package version, and releases, and works without asanamate.
+Specs 17–18 can ship before the core integration in 16/19, after their
+provider feasibility and standalone acceptance checks. The integrated
+feature requires all four acceptance lists. Spec 16 owns shared terms,
+the portable ticket marker, core configuration, and extension contracts.
+The optional Node package/plugins add no runtime dependency to the main Go
+binary. Only a thin adapter knows asanamate's protocol and environment;
+core/package compatibility is not tied to matching release numbers.
 
 ## Rules for every task
 
