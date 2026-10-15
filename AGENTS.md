@@ -55,9 +55,20 @@ When the user asks for a release, on local `main`:
    the release workflow copies only the section whose heading matches the tag
    exactly. Delete the heading instead if nothing is under it.
 2. Commit it as `docs(migrations): release vX.Y.Z`.
-3. Create an annotated tag: `git tag -a vX.Y.Z -m vX.Y.Z`.
-4. Push `main`, then the tag: `git push origin main vX.Y.Z`. The tag push
-   starts the release workflow.
+3. Push `main` without a tag: `git push origin main`.
+4. Wait for the `ci` workflow on that exact `main` commit to finish with
+   every job successful. All tests must pass on every environment in
+   `.github/workflows/ci.yml`, including archive checks and smoke tests.
+   Local checks alone are insufficient. Failed, pending, skipped, or cancelled
+   jobs block tagging. Any new commit requires a new successful CI run.
+5. Verify local `main` and `origin/main` still match the tested commit and
+   the working tree is clean. Then create an annotated tag:
+   `git tag -a vX.Y.Z -m vX.Y.Z`.
+6. Push only the tag: `git push origin vX.Y.Z`. This starts the release
+   workflow; verify it succeeds before reporting the release complete.
+
+Keep pushed version tags immutable, including tags whose release workflow
+failed. Release a corrected commit under a new patch version.
 
 ## Local config migration
 
