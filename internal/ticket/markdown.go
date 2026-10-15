@@ -11,6 +11,7 @@ import (
 	"github.com/JohannesKaufmann/html-to-markdown/v2/converter"
 	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/base"
 	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/commonmark"
+	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/table"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 
@@ -236,6 +237,7 @@ func newMarkdownConverter() *converter.Converter {
 	conv := converter.NewConverter(converter.WithPlugins(
 		base.NewBasePlugin(),
 		commonmark.NewCommonmarkPlugin(),
+		table.NewTablePlugin(table.WithHeaderPromotion(true)),
 	))
 	conv.Register.RendererFor("a", converter.TagTypeInline, renderLink, converter.PriorityEarly)
 	conv.Register.PreRenderer(normalizeCodeBlocks, converter.PriorityEarly)
