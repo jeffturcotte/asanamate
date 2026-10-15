@@ -47,7 +47,7 @@ func TestSortTasks(t *testing.T) {
 
 func TestSortWithinGroupsPreservesGroupOrder(t *testing.T) {
 	str := func(v string) *string { return &v }
-	m, st := testModel(t, config.Config{List: config.List{GroupBy: "section"}})
+	m, st := testModel(t, config.Config{List: config.List{DefaultView: config.DefaultView{GroupBy: "section"}}})
 	st.PinnedTasks = map[string][]string{"": {"pin2", "pin1"}}
 	m.Update(tasksMsg{tasks: []asana.Task{
 		{GID: "late", DueOn: str("2026-10-05"), AssigneeSection: &asana.Ref{Name: "Z"}},
@@ -81,7 +81,7 @@ func TestSortWithinGroupsPreservesGroupOrder(t *testing.T) {
 }
 
 func TestSortPickerAndProjectPersistence(t *testing.T) {
-	m, st := testModel(t, config.Config{List: config.List{Sort: config.Sort{By: "due", Direction: "asc"}}})
+	m, st := testModel(t, config.Config{List: config.List{DefaultView: config.DefaultView{Sort: config.Sort{By: "due", Direction: "asc"}}}})
 	m.Update(tasksMsg{tasks: []asana.Task{{GID: "1", CustomFields: []asana.CustomField{{Name: "Priority"}}}}})
 	m.Update(key("B"))
 	if m.modal == nil {
@@ -114,7 +114,7 @@ func TestSortPickerAndProjectPersistence(t *testing.T) {
 	m.deps.State = loaded
 	m.viewProject = &asana.Ref{GID: "other"}
 	m.restoreView()
-	if m.sortBy != m.deps.Config.List.Sort {
+	if m.sortBy != m.deps.Config.List.DefaultView.Sort {
 		t.Fatal("new project did not use default sort")
 	}
 	m.viewProject = nil

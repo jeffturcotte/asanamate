@@ -120,7 +120,7 @@ func TestRefreshIntervalOverridePersists(t *testing.T) {
 		t.Fatal("override changed config")
 	}
 	// Another session from the same config and state keeps the override.
-	next := New(Deps{Config: m.deps.Config, State: st})
+	next := New(Deps{Config: reloadSettings(t, m), State: st})
 	if next.refreshInterval != 15*time.Second {
 		t.Fatalf("new session interval = %s", next.refreshInterval)
 	}

@@ -14,7 +14,7 @@ import (
 
 func TestListOnlyShowsOnlyTheList(t *testing.T) {
 	for name, start := range map[string]func(t *testing.T) *Model{
-		"--no-preview": func(t *testing.T) *Model {
+		"--hide-preview": func(t *testing.T) *Model {
 			m, _ := testModel(t, config.Config{})
 			m.readerHidden = true
 			return m
@@ -74,11 +74,11 @@ func TestNoPreviewStartsHiddenButAllowsToggle(t *testing.T) {
 	m.loading = false
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
 	if m.readerOn() || !strings.Contains(m.helpView(), "show / hide reader") {
-		t.Fatal("--no-preview must start hidden and advertise the toggle")
+		t.Fatal("--hide-preview must start hidden and advertise the toggle")
 	}
 	m.Update(key("z"))
 	if _, _, split := m.paneWidths(); !split {
-		t.Fatal("z must show the reader with --no-preview")
+		t.Fatal("z must show the reader with --hide-preview")
 	}
 	m.Update(key("z"))
 	if m.readerOn() {
@@ -86,7 +86,7 @@ func TestNoPreviewStartsHiddenButAllowsToggle(t *testing.T) {
 	}
 	m.Update(tea.WindowSizeMsg{Width: 200, Height: 30})
 	if !m.showNav() || m.readerOn() {
-		t.Fatal("--no-preview must not hide the sidebar on wide screens")
+		t.Fatal("--hide-preview must not hide the sidebar on wide screens")
 	}
 }
 

@@ -15,6 +15,27 @@ import (
 	"github.com/sadmachine/asanamate/internal/state"
 )
 
+func TestDefaultViewOnlyAppliesWithoutProjectState(t *testing.T) {
+	cfg := config.Default()
+	cfg.List.DefaultView = config.DefaultView{Filter: "is:done", GroupBy: "section", Sort: config.Sort{By: "due", Direction: "desc"}}
+	m, st := testModel(t, cfg)
+	want := state.View{Filter: "is:done", GroupBy: "section", Sort: cfg.List.DefaultView.Sort}
+	if got := m.currentView(); got != want {
+		t.Fatalf("default view = %+v, want %+v", got, want)
+	}
+	m.viewProject = &asana.Ref{GID: "123", Name: "Work"}
+	m.restoreView()
+	if got := m.currentView(); got != want {
+		t.Fatalf("project default = %+v, want %+v", got, want)
+	}
+	saved := state.View{Filter: "is:open", GroupBy: "assignee", Sort: config.Sort{By: "title", Direction: "asc"}}
+	st.SetView("123", saved)
+	m.restoreView()
+	if got := m.currentView(); got != saved {
+		t.Fatalf("saved project view = %+v, want %+v", got, saved)
+	}
+}
+
 func TestSavedViewSaveAndRecall(t *testing.T) {
 	for _, noPreview := range []bool{false, true} {
 		t.Run(map[bool]string{false: "narrow", true: "list-only"}[noPreview], func(t *testing.T) {

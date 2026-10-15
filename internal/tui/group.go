@@ -118,7 +118,7 @@ func dueBucket(dueOn *string, today time.Time) string {
 func (m *Model) groupings() []string {
 	names := append([]string{""}, builtinFields...)
 	names = append(names, m.deps.Config.List.Fields...)
-	names = append(names, m.deps.Config.List.GroupBy)
+	names = append(names, m.deps.Config.List.DefaultView.GroupBy)
 	for _, t := range m.tasks {
 		for _, f := range t.CustomFields {
 			names = append(names, f.Name)

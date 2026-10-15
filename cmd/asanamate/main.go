@@ -23,11 +23,11 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/sadmachine/asanamate/internal/action"
 	"github.com/sadmachine/asanamate/internal/agents"
 	"github.com/sadmachine/asanamate/internal/asana"
 	"github.com/sadmachine/asanamate/internal/browser"
-	"github.com/sadmachine/asanamate/internal/ccmux"
 	"github.com/sadmachine/asanamate/internal/config"
 	"github.com/sadmachine/asanamate/internal/feed"
 	"github.com/sadmachine/asanamate/internal/filter"
@@ -46,9 +46,9 @@ var version = "dev"
 const usage = `usage:
   asanamate [--hide-preview] [--exit-on-action]    open the TUI (--hide-preview: preview initially hidden;
                                                    --exit-on-action: quit before background actions)
-  --no-preview                                    deprecated alias for --hide-preview
   asanamate list [--project <gid>] [--filter <query>] [--format tsv|jsonl]
-                                                   print tickets (tsv: gid, section, due, title, url)
+                                                   print tickets (default filter: list.default_view.filter;
+                                                   tsv: gid, section, due, title, url)
   asanamate show [--format md|json] <gid>          print one ticket
   asanamate setup                                  create the config file
   asanamate config                                 edit the config file in $VISUAL or $EDITOR
@@ -118,9 +118,6 @@ func run(args []string) int {
 		err = runShow(args[1:])
 	case "doctor":
 		err = runDoctor(args[1:])
-	case "hook": // hidden: keeps Codex hooks set up before asanamate-ccmux working; remove in v0.3.0
-		ccmux.RunHook(args[1:], os.Stdin)
-		return 0
 	default:
 		if name != "" && !strings.HasPrefix(name, "-") {
 			fmt.Fprint(os.Stderr, usage)
@@ -428,7 +425,6 @@ func runTUI(args []string) error {
 	fs := flag.NewFlagSet("asanamate", flag.ContinueOnError)
 	var hidePreview bool
 	fs.BoolVar(&hidePreview, "hide-preview", false, "start with the preview hidden (z toggles it)")
-	fs.BoolVar(&hidePreview, "no-preview", false, "deprecated alias for --hide-preview")
 	exitOnAction := fs.Bool("exit-on-action", false, "quit before running background actions, as exit mode does")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -436,7 +432,11 @@ func runTUI(args []string) error {
 	if fs.NArg() > 0 {
 		return fmt.Errorf("unexpected arguments %v\n%s", fs.Args(), usage)
 	}
-	cfg, err := loadConfig()
+	configPath, err := config.Path()
+	if err != nil {
+		return err
+	}
+	cfg, err := loadOrMigrate(configPath, os.Stdin, os.Stdout, term.IsTerminal(os.Stdin.Fd()) && term.IsTerminal(os.Stdout.Fd()))
 	if err != nil {
 		return err
 	}
@@ -456,14 +456,10 @@ func runTUI(args []string) error {
 	if err != nil {
 		return err
 	}
-	configPath, err := config.Path()
-	if err != nil {
-		return err
-	}
-	if name := st.Display.Theme; name != "" {
-		// A saved theme whose file is gone falls back to theme.name.
-		if themed, err := cfg.WithTheme(config.ThemesDir(configPath), name); err == nil {
-			cfg = themed
+	if st.LegacyDisplay != (state.LegacyDisplay{}) {
+		cfg, err = migrateDisplay(configPath, st)
+		if err != nil {
+			return err
 		}
 	}
 	m := tui.New(tui.Deps{
@@ -520,7 +516,7 @@ func reducedMotion(cfg config.Config) bool {
 func runList(args []string) error {
 	fs := flag.NewFlagSet("list", flag.ContinueOnError)
 	project := fs.String("project", "", "project gid (default: My Tasks)")
-	query := fs.String("filter", "", "filter query (default: default_filter from the config)")
+	query := fs.String("filter", "", "filter query (default: list.default_view.filter from the config)")
 	format := fs.String("format", listing.FormatTSV, "tsv or jsonl")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -542,7 +538,7 @@ func runList(args []string) error {
 	filterSet := false
 	fs.Visit(func(f *flag.Flag) { filterSet = filterSet || f.Name == "filter" })
 	if !filterSet {
-		*query = cfg.DefaultFilter
+		*query = cfg.List.DefaultView.Filter
 	}
 	tasks, err := ticket.List(context.Background(), client, cfg.Workspace, *project)
 	if err != nil {
@@ -606,6 +602,14 @@ func runDoctor(args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	row(w, "config", "ok: "+path)
+	settingsPath := config.SettingsPath(path)
+	if _, err := os.Stat(settingsPath); errors.Is(err, os.ErrNotExist) {
+		row(w, "settings", "defaults (no file)")
+	} else if err != nil {
+		return err
+	} else {
+		row(w, "settings", "ok: "+settingsPath)
+	}
 	row(w, "actions", fmt.Sprintf("ok: %d in %s", len(cfg.Actions), config.ActionsDir(path)))
 	row(w, "state", "ok: "+stateDir)
 	client := checkAsana(ctx, w, cfg.Workspace)
@@ -615,7 +619,6 @@ func runDoctor(args []string) error {
 	} else {
 		row(w, "branch_field", strconv.Quote(cfg.BranchField))
 	}
-	checkLegacyCodexHook(w)
 	checkFeeds(ctx, w, cfg.Feed.Commands)
 	var list []agents.Agent
 	if !cfg.AgentsEnabled() {
@@ -758,21 +761,6 @@ func checkFeeds(ctx context.Context, w io.Writer, feeds []string) {
 			items = "1 item"
 		}
 		row(w, "feed", fmt.Sprintf("ok: %s: %s, %s today%s", source, reply.Source, items, strings.TrimSuffix(", "+reply.Summary, ", ")))
-	}
-}
-
-// checkLegacyCodexHook warns while Codex's hooks still run
-// `asanamate hook codex`, which only forwards to asanamate-ccmux until
-// v0.3.0. It says nothing otherwise.
-func checkLegacyCodexHook(w io.Writer) {
-	home, err := ccmux.CodexHome()
-	if err != nil {
-		return
-	}
-	if legacy, err := ccmux.LegacyCodexHook(home); err != nil {
-		row(w, "codex_hook", "warning: "+err.Error())
-	} else if legacy {
-		row(w, "codex_hook", "warning: runs `asanamate hook codex`, which v0.3.0 removes; run `asanamate-ccmux setup` to replace it")
 	}
 }
 

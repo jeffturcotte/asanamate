@@ -18,7 +18,7 @@ import (
 
 func TestMarkdownCodeBlocks(t *testing.T) {
 	for _, theme := range []string{"dark", "light", "one-dark", "one-light"} {
-		cfg := config.Config{Theme: config.Theme{Name: theme}}
+		cfg := config.Config{Theme: config.Theme{Name: "ansi-" + theme}}
 		if theme != "dark" && theme != "light" {
 			path := filepath.Join(t.TempDir(), "config.toml")
 			if err := os.Mkdir(config.ThemesDir(path), 0o700); err != nil {
@@ -31,7 +31,10 @@ func TestMarkdownCodeBlocks(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(config.ThemesDir(path), theme+".toml"), data, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(path, []byte("workspace = \"1\"\n[theme]\nname = \""+theme+"\"\n"), 0o600); err != nil {
+			if err := os.WriteFile(path, []byte("workspace = \"1\"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := config.SaveSetting(path, "theme.name", theme); err != nil {
 				t.Fatal(err)
 			}
 			cfg, err = config.Load(path)
@@ -80,7 +83,7 @@ func TestMarkdownCodeBlocks(t *testing.T) {
 func TestCodeWrapMarkerOnlyOnContinuations(t *testing.T) {
 	for _, symbols := range []string{config.SymbolsUnicode, config.SymbolsNerd, config.SymbolsASCII} {
 		for _, theme := range []string{"dark", "light"} {
-			m, _ := testModel(t, config.Config{Theme: config.Theme{Name: theme}, Symbols: symbols})
+			m, _ := testModel(t, config.Config{Theme: config.Theme{Name: "ansi-" + theme}, Symbols: symbols})
 			m.sym = newSymbols(symbols, nil, false)
 			out := m.renderBody("```\n    "+strings.Repeat("word ", 12)+"\n    next original line\n\n    last line\n```", 30)
 			marker := symbolSets[symbols].codeWrap
@@ -113,7 +116,7 @@ func TestCommentCodeIsLiteralAndMonochrome(t *testing.T) {
 	for _, tag := range []string{"pre", "code"} {
 		md := ticket.HTMLToMarkdown("<body><" + tag + ">" + code + "</" + tag + "></body>")
 		for _, theme := range []string{"dark", "light"} {
-			m, _ := testModel(t, config.Config{Theme: config.Theme{Name: theme}})
+			m, _ := testModel(t, config.Config{Theme: config.Theme{Name: "ansi-" + theme}})
 			out := m.renderBody(md, 80)
 			for _, line := range strings.Split(strings.ReplaceAll(code, "&lt;tag&gt;", "<tag>"), "\n") {
 				if !strings.Contains(ansi.Strip(out), line) {
@@ -136,7 +139,7 @@ func TestMarkdownProseUnchanged(t *testing.T) {
 		for _, bare := range []bool{true, false} {
 			style := *styles.DefaultStyles[theme]
 			// The built-in themes recolor only inline code.
-			code := config.Config{Theme: config.Theme{Name: theme}}.Palette(true).Colors.Markdown.Code.FG
+			code := config.Config{Theme: config.Theme{Name: "ansi-" + theme}}.Palette(true).Colors.Markdown.Code.FG
 			style.Code.Color = &code
 			if bare {
 				style.Document.Margin = new(uint)
@@ -150,7 +153,7 @@ func TestMarkdownProseUnchanged(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			m, _ := testModel(t, config.Config{Theme: config.Theme{Name: theme}})
+			m, _ := testModel(t, config.Config{Theme: config.Theme{Name: "ansi-" + theme}})
 			if got := m.glamour(md, 40, bare); got != want {
 				t.Fatalf("%s bare=%v: prose rendering changed", theme, bare)
 			}
@@ -175,7 +178,7 @@ func TestMarkdownListHangingIndent(t *testing.T) {
 				{"quote", "> - hello " + strings.Repeat("continuation ", 8), "• hello"},
 			} {
 				t.Run(fmt.Sprintf("%s/%v/%s", theme, bare, tt.name), func(t *testing.T) {
-					m, _ := testModel(t, config.Config{Theme: config.Theme{Name: theme}})
+					m, _ := testModel(t, config.Config{Theme: config.Theme{Name: "ansi-" + theme}})
 					out := ansi.Strip(m.glamour(tt.markdown, 32, bare))
 					column, continuations := -1, 0
 					for _, line := range strings.Split(out, "\n") {

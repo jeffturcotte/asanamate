@@ -5,6 +5,49 @@ workflow copies a version's section to the top of its GitHub release notes,
 so links here are absolute. Steps for changes not yet released wait under
 `## Unreleased`, which becomes the version's heading when it is tagged.
 
+## Unreleased
+
+This breaking release moves settings into `settings.toml` next to `config.toml`.
+The TUI offers migration at startup on a terminal; scripts report the pending
+changes. You can also run `asanamate config update`. It keeps values, resets
+comments to the current templates, and saves timestamped backups of files it
+rewrites. Existing `settings.toml` values win over values from `config.toml`.
+Settings last saved in the TUI migrate silently from state and take precedence,
+because those are the values you were seeing.
+
+| Old key in config.toml | New key in settings.toml |
+|---|---|
+| `theme.name` | `theme.name` |
+| `theme.dark` | `theme.auto.dark` |
+| `theme.light` | `theme.auto.light` |
+| `list.separator` | `list.separator` |
+| `list.header.spacing` | `list.header.spacing` |
+| `list.selection.style` | `list.selection.style` |
+| `list.refresh_interval` | `list.refresh_interval` |
+| `reader.view` | `reader.view` |
+| `layout.focus.dim` | `layout.focus.dim` |
+
+In all three theme keys, `"dark"` becomes `"ansi-dark"` and `"light"` becomes
+`"ansi-light"`. Theme files keep `base = "dark"` or `base = "light"`.
+See [Themes](https://github.com/sadmachine/asanamate#themes).
+
+The starting view stays in `config.toml`, grouped under `list.default_view`.
+Per-project views and columns remain in state and keep their saved values.
+
+| Old key | New key in config.toml |
+|---|---|
+| `default_filter` | `list.default_view.filter` |
+| `list.group_by` | `list.default_view.group_by` |
+| `list.sort.by` | `list.default_view.sort.by` |
+| `list.sort.direction` | `list.default_view.sort.direction` |
+
+`--no-preview` is removed; use `--hide-preview`.
+The hidden `asanamate hook` subcommand is removed. If `asanamate doctor` on
+v0.2.x warned about `codex_hook`, run `asanamate-ccmux setup` **before upgrading**.
+Otherwise Codex keeps calling a command that no longer exists. The adapter's
+`asanamate-ccmux hook codex` command is unchanged; see
+[Agents](https://github.com/sadmachine/asanamate#agents-optional).
+
 ## v0.2.1
 
 New default keys: `i` jumps to the next NEW ticket in the list, and `ctrl+d`

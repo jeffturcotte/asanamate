@@ -20,7 +20,7 @@ import (
 
 func TestPinTogglePersistsAndKeepsSelection(t *testing.T) {
 	for _, reader := range []bool{false, true} {
-		m, _ := testModel(t, config.Config{DefaultFilter: "is:open"})
+		m, _ := testModel(t, config.Config{List: config.List{DefaultView: config.DefaultView{Filter: "is:open"}}})
 		path := filepath.Join(t.TempDir(), state.FileName)
 		st, err := state.Load(path)
 		if err != nil {
@@ -51,7 +51,7 @@ func TestPinTogglePersistsAndKeepsSelection(t *testing.T) {
 }
 
 func TestPinsIgnoreFilterAndViewingRemainsIndependent(t *testing.T) {
-	m, st := testModel(t, config.Config{DefaultFilter: "is:open"})
+	m, st := testModel(t, config.Config{List: config.List{DefaultView: config.DefaultView{Filter: "is:open"}}})
 	st.PinnedTasks = map[string][]string{"": {doneTask.GID, sideTask.GID}}
 	m.Update(tasksMsg{tasks: []asana.Task{openTask, doneTask, sideTask}})
 	m.filterInput.SetValue("name:nothing")
@@ -166,7 +166,7 @@ func TestLoadTasksFetchesMissingPinsAndReportsFailures(t *testing.T) {
 	if msg.err != nil || len(msg.tasks) != 1 || len(msg.pins) != 1 || !msg.pins[0].Completed || !slices.Equal(fetched, []string{"2", "3"}) || !strings.Contains(msg.warning, "3:") {
 		t.Fatalf("load: tasks = %+v, pins = %+v, fetched = %v, warning = %q, err = %v", msg.tasks, msg.pins, fetched, msg.warning, msg.err)
 	}
-	m, st := testModel(t, config.Config{DefaultFilter: "is:open"})
+	m, st := testModel(t, config.Config{List: config.List{DefaultView: config.DefaultView{Filter: "is:open"}}})
 	st.PinnedTasks = map[string][]string{"p": {"2", "3"}}
 	m.viewProject = &asana.Ref{GID: "p"}
 	m.Update(msg)

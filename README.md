@@ -297,7 +297,7 @@ key press.
 | `V` | recall or manage saved views |
 | `]` / `[` | apply the next/previous saved view, in name order |
 | `ctrl+s` | save the current filter, grouping, and sorting under a name |
-| `s` | settings: separators, header spacing, reader view, auto-update interval, selection style, dim unfocused panes, theme, and project list columns; changes persist between sessions |
+| `s` | settings: separators, header spacing, reader view, auto-update interval, selection style, dim unfocused panes, and theme save in `settings.toml`; list columns save per project in state |
 | `o` | open the ticket in the browser |
 | `y` | copy the selected ticket's link to the clipboard (requires terminal OSC 52 support) |
 | `Y` | copy the targeted comment as Markdown in the cards reader (requires terminal OSC 52 support); does nothing on other targets |
@@ -408,7 +408,7 @@ Space-separated terms, all of which must match:
 - `-term` negates a term; `"double quotes"` group words
 
 Example: `is:open section:"in progress" -tag:blocked`. Set the startup filter
-with `default_filter`.
+with `list.default_view.filter`.
 
 ### Saved views
 
@@ -527,9 +527,6 @@ commands = ["asanamate-hrvst"]
 
 ## List-only mode and scripting
 
-`--no-preview` remains a deprecated alias for `--hide-preview`. See the
-[deprecated features list](docs/deprecated.md) for compatibility and removal plans.
-
 - `asanamate --hide-preview` starts with the preview hidden, whatever
   `[layout]` says; `z` shows or hides it for the session. It is handy in a small
   popup or a tmux sidebar: pick a ticket, press `space` or `a`, and run an
@@ -547,7 +544,7 @@ commands = ["asanamate-hrvst"]
   quits, then runs the action, so a popup closes once the action finishes.
   `foreground` actions still return to the list.
 - `asanamate list` prints tickets for other tools. The default is My Tasks with
-  `default_filter` applied.
+  `list.default_view.filter` applied.
   - `--project <gid>` lists a project instead. The gid is the number after
     `/project/` in the project's URL.
   - `--filter "<query>"` overrides the filter. `--filter ""` shows everything.
@@ -570,44 +567,38 @@ asanamate list | fzf --delimiter '\t' --with-nth 2,4 --preview 'asanamate show {
 Upgrade steps for each release, such as moved settings and new adapter
 binaries, are in [docs/migrations.md](docs/migrations.md) and at the top of
 each [release's notes](https://github.com/sadmachine/asanamate/releases).
-Run `asanamate config update` after upgrading; it moves renamed settings and
-keeps your values.
+The TUI offers to update old configs at startup when stdin and stdout are terminals.
+You can also run `asanamate config update` by hand. Both keep your values and
+save timestamped backups before rewriting config and settings files. Other commands
+report every pending change without prompting.
 
 ## Configuration
 
 `~/.config/asanamate/config.toml` (or `$XDG_CONFIG_HOME/asanamate/config.toml`).
-Changes to `config.toml`, theme files, and action files take effect the next
-time asanamate starts; actions saved with the action builder (`A`) apply at
-once. Run `asanamate doctor` to check a change without starting the TUI.
+Hand edits to `config.toml`, `settings.toml`, theme files, and action files take
+effect the next time asanamate starts. Settings saved in the TUI and actions
+saved with the action builder (`A`) apply at once. Run `asanamate doctor` to check a change without starting the TUI.
 
 | Key | Default | Meaning |
 |---|---|---|
 | `workspace` | set by setup | Asana workspace gid |
-| `theme.name` | `"auto"` | color theme: `auto` (follow the terminal background), a built-in preset, or a file in `themes/`; the `s` settings menu overrides it and the override persists. See [Themes](#themes) |
-| `theme.dark` / `theme.light` | `"dark"` / `"light"` | themes `auto` uses on dark and light backgrounds |
 | `colors.*` | the theme's | per-role overrides on top of the theme: a color (`0`–`255`, `#rgb`, or `#rrggbb`) or a style table `{ fg, bg, bold, italic, underline, faint, reverse }`; see [Themes](#themes) |
-| `default_filter` | `"is:open"` | filter applied at startup |
+| `list.default_view.filter` | `"is:open"` | starting filter, until the project has its own saved view; also the default for `asanamate list` |
 | `confirm_writes` | `true` | write-back subcommands ask before writing |
 | `layout.reader` | `true` | start with the reader beside the list; `z` shows or hides it for the session; `--hide-preview` starts with it hidden. See [Layout](#layout) |
 | `layout.list_width` | `0` | fix the list pane at this many columns (at least 30), borders included, and give the reader the rest; the reader hides when fewer than 30 columns remain for it; `0` sizes the list automatically. See [Layout](#layout) |
-| `layout.focus.dim` | `true` | draw every pane but the focused one faint; the `s` settings menu overrides it and the override persists. See [Layout](#layout) |
 | `layout.focus.resize` | `true` | give the focused pane the room: the list fits its titles while it (or the views or Feed panel) has focus, and shrinks to short titles while the reader has it; does nothing while `layout.list_width` is set. See [Layout](#layout) |
 | `list.layout` | `"single"` | `single` (one line per ticket) or `multi` (title, then fields on a second line) |
-| `list.refresh_interval` | `"30s"` | automatic list reload interval, at least `1s`; durations such as `"15s"` or `"1m"`; `R` or the `s` settings menu overrides it and the override persists, `ctrl+s` applies it; the statusline shows the interval, and an automatic reload marks the list border yellow instead of opening the loading modal |
-| `list.fields` | `["section", "due"]` | default values shown with the title, in aligned columns (`single` layout); `s`, then `c` overrides columns per project; due dates show relative to today and are colored by urgency; a column with one value in each group (such as the grouped field) leaves the rows and shows that value once in the group header, or after the count when the list is ungrouped |
+| `list.fields` | `["section", "due"]` | default values shown with the title, in aligned columns (`single` layout); `s`, then `c` overrides columns per project; projects whose columns were set in the TUI keep their own; due dates show relative to today and are colored by urgency; a column with one value in each group (such as the grouped field) leaves the rows and shows that value once in the group header, or after the count when the list is ungrouped |
 | `branch_field` | `""` | custom field holding the ticket's git branch (`$ASANAMATE_BRANCH`); empty uses the ticket's ID field, else the title slug |
 | `agents.command` | unset (off) | opt-in agent tracking, such as `"asanamate-ccmux"`; see [Agents](#agents-optional) |
 | `symbols` | `unicode` on UTF-8, else `ascii` | `unicode`, `nerd`, or `ascii` for ticket markers and agent states |
 | `reduced_motion` | OS setting | `true` shows static agent symbols instead of the spinner |
-| `list.separator` | `false` | frame each ticket with lines above and below; neighbours share one; the `s` settings menu toggles it and the choice persists |
-| `list.group_by` | `""` (ungrouped) | starting grouping: any `list.fields` name; `b` picks another |
-| `list.sort.by` | `""` (Asana order) | starting sort: any list field or `title`; `B` picks a field and direction; applies within groups or across an ungrouped list |
-| `list.sort.direction` | `"asc"` | `asc` (earliest dates / A–Z) or `desc` (latest dates / Z–A); missing values always last |
+| `list.default_view.group_by` | `""` (ungrouped) | starting grouping, until the project has its own saved view: any `list.fields` name; `b` picks another |
+| `list.default_view.sort.by` | `""` (Asana order) | starting sort, until the project has its own saved view: any list field or `title`; `B` picks a field and direction; applies within groups or across an ungrouped list |
+| `list.default_view.sort.direction` | `"asc"` | `asc` (earliest dates / A–Z) or `desc` (latest dates / Z–A); missing values always last |
 | `list.header.style` | `"rule"` | group headers: `rule` (`── Label (n) ───`) or `bar` (reversed bar) |
-| `list.header.spacing` | `false` | `true` adds a blank line above and below each group header; the `s` settings menu toggles it and the choice persists |
 | `list.new.section` | `false` | in My Tasks, list tickets with a `NEW` badge first, under a **New** header; a ticket you open stays there until you move away. See [Keys](#keys) |
-| `list.selection.style` | `"marker"` | selected ticket: `marker` (bold title with a left `▌`) or `bar` (reversed row; agent badges swap colors); press `s`, then `l` to toggle it and persist the choice |
-| `reader.view` | `"cards"` | reader's starting view: `cards` (details card, titled sections, one box per comment) or `markdown` (the rendered ticket Markdown); `v` switches and the choice persists |
 | `images.mode` | `"auto"` | kitty graphics: `auto`, `kitty` (force on), or `off` |
 | `images.inline` | `false` | cards view: draw images in descriptions and comments in place of their links (needs `images.mode` on and a terminal with kitty Unicode placeholders, such as kitty or Ghostty) |
 | `activity.refresh_interval` | `"2m"` | background Activity scan interval, at least `1s`; `"0"` turns background scans off, and Activity then scans when opened. See [Activity](#activity) |
@@ -626,6 +617,28 @@ once. Run `asanamate doctor` to check a change without starting the TUI.
 | `time_tracking.id` / `time_tracking.command` | unset (off) | provider ID for saved choices and command implementing the [time tracking JSON protocol](docs/extensions.md#time-tracking) |
 | `time_tracking.prompt_after` | `[]` | TUI edits that open the log time form once they succeed: `"assign"` (to someone else) and `"complete"`; `esc` skips it. See [Time tracking](#time-tracking-optional) |
 | `project_links.command` | unset (off) | command implementing the [project links JSON protocol](docs/extensions.md#project-links); its links preselect the repo picker and time form |
+
+### settings.toml
+
+`settings.toml` lives next to `config.toml`. A missing file uses defaults.
+Edit it by hand or press `s` in the TUI. Each app write rereads the file,
+keeps every other value, and rewrites it with the standard header. Custom
+comments below the header are lost. Hand edits are not reloaded while running;
+they take effect at the next start or the next app write.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `theme.name` | `"auto"` | `auto`, `ansi-dark`, `ansi-light`, or a file in `themes/`; `s`, then `t` opens the theme picker. See [Themes](#themes) |
+| `theme.auto.dark` | `"ansi-dark"` | theme for a dark terminal background when `theme.name = "auto"` |
+| `theme.auto.light` | `"ansi-light"` | theme for a light terminal background when `theme.name = "auto"` |
+| `list.separator` | `false` | frame tickets with shared separator lines; `s`, then `s` toggles |
+| `list.header.spacing` | `false` | blank lines around group headers; `s`, then `h` toggles |
+| `list.selection.style` | `"marker"` | `marker` or `bar`; `s`, then `l` toggles |
+| `list.refresh_interval` | `"30s"` | automatic list reload interval, at least `1s`; `R` or `s`, then `i` saves a duration such as `"15s"` or `"1m"` with `ctrl+s` |
+| `reader.view` | `"cards"` | `cards` or `markdown`; `v` or `s`, then `v` switches and saves |
+| `layout.focus.dim` | `true` | draw unfocused panes faint; `s`, then `d` toggles |
+
+### List fields and views
 
 The title is always shown. `list.fields` picks the other columns and their
 order: the built-ins `section`, `due`, `assignee`, `initials` (the assignee's
@@ -649,13 +662,13 @@ Asana ID, so renames and duplicate names do not change which value is shown.
 An unavailable selected field stays in the picker so it can be removed; its
 column has no value on tasks where the field is absent.
 
-`list.group_by` takes the same names and puts a `Value (count)` header above
-each group. Groups keep Asana's order (first seen), with tickets missing
+`list.default_view.group_by` takes the same names and puts a `Value (count)`
+header above each group. Groups keep Asana's order (first seen), with tickets missing
 the value last. `due` groups into Overdue, Today, Tomorrow, Next 7 days, Later,
 and No due date.
 
-`list.sort.by` sorts tickets within each group without changing group order,
-or the whole list when ungrouped. Press `B` to pick a field and direction,
+`list.default_view.sort.by` sorts tickets within each group without changing
+group order, or the whole list when ungrouped. Press `B` to pick a field and direction,
 or choose one from the wide terminal's Sort by section. Due dates sort
 chronologically; other fields sort alphabetically, ignoring case. Equal
 values keep Asana order. Missing or invalid due dates sort last in both
@@ -693,7 +706,8 @@ command = "sesh list -z"
 
 `[theme] name` picks a built-in theme, a theme file, or
 `auto`, which asks the terminal for its background color and uses
-`theme.dark` or `theme.light`. The defaults `dark` and `light` use ANSI color
+`theme.auto.dark` or `theme.auto.light` in `settings.toml`. The defaults
+`ansi-dark` and `ansi-light` use ANSI color
 numbers, so they follow your terminal's color scheme. These 20 additional
 presets ship as separate TOML files in release archives and the source
 checkout. The installation steps run `install-themes.sh`, which copies them
@@ -726,14 +740,22 @@ Sonokai's MIT license ships alongside the theme files as `LICENSE.sonokai`.
 To try themes without restarting, open settings with `s` and press `t`. The
 theme picker lists every built-in theme and file in `themes/` beside a preview
 of the highlighted one; `enter` applies it at once and keeps it for later
-sessions, over `theme.name`.
+sessions in `settings.toml` as `theme.name`.
 
-For a fixed preset, set `name = "tokyo-night"` in `[theme]`. To switch with
-the terminal background:
+For a fixed preset in `settings.toml`:
+
+```toml
+[theme]
+name = "tokyo-night"
+```
+
+To switch with the terminal background in `settings.toml`:
 
 ```toml
 [theme]
 name = "auto"
+
+[theme.auto]
 dark = "one-dark"
 light = "one-light"
 ```
@@ -744,9 +766,9 @@ theme for the closest appearance. Palette references live in each standard
 theme file under the repository's `themes/` directory. Standard themes are
 not embedded in the binary; selecting one requires its installed file.
 
-A theme file is `themes/<name>.toml` next to `config.toml`; the names `dark`,
-`light`, and `auto` are reserved. Edit a standard file directly or copy it
-under another name. Setup and `asanamate config update` write
+A theme file is `themes/<name>.toml` next to `config.toml`; the names
+`auto`, `ansi-dark`, `ansi-light`, `dark`, and `light` are reserved. Edit a
+standard file directly or copy it under another name. Setup and `asanamate config update` write
 `themes/example.toml.example` to start from:
 
 ```toml

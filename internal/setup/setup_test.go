@@ -192,7 +192,7 @@ func TestTemplateOptionsStayTopLevel(t *testing.T) {
 // The Harvest provider moved out of asanamate in v0.2.0: Merge rewrites the
 // old command to asanamate-hrvst, keeping its flags and every other value.
 func TestMergeMovesHarvestProvider(t *testing.T) {
-	updated, _, err := Merge("workspace = \"1\"\nsymbols = \"nerd\"\n[time_tracking]\nid = \"hrvst\"\ncommand = \"asanamate time-provider hrvst --task-id 456\"\n")
+	updated, _, _, err := Merge("workspace = \"1\"\nsymbols = \"nerd\"\n[time_tracking]\nid = \"hrvst\"\ncommand = \"asanamate time-provider hrvst --task-id 456\"\n")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,19 +203,19 @@ func TestMergeMovesHarvestProvider(t *testing.T) {
 	if strings.Contains(updated, "time-provider") {
 		t.Fatalf("old command left behind:\n%s", updated)
 	}
-	again, _, err := Merge(updated)
+	again, _, _, err := Merge(updated)
 	if err != nil || again != updated {
 		t.Fatalf("second merge changed config: err = %v", err)
 	}
 }
 
 func TestMergeMovesReleasedKeys(t *testing.T) {
-	updated, _, err := Merge("workspace = \"1\"\ntheme = \"light\"\naccent_color = \"2\"\n[list.header]\nstyle = \"bar\"\ncolor = \"3\"\n[list.pinned]\ncolor = \"208\"\n")
+	updated, _, settings, err := Merge("workspace = \"1\"\ntheme = \"light\"\naccent_color = \"2\"\n[list.header]\nstyle = \"bar\"\ncolor = \"3\"\n[list.pinned]\ncolor = \"208\"\n")
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := loadString(t, updated)
-	if cfg.Theme.Name != "light" || cfg.Colors.Accent.FG != "2" || cfg.Colors.Header.FG != "3" || cfg.Colors.Pinned.FG != "208" || cfg.List.Header.Style != "bar" {
+	cfg := loadString(t, updated, settings)
+	if cfg.Theme.Name != "ansi-light" || cfg.Colors.Accent.FG != "2" || cfg.Colors.Header.FG != "3" || cfg.Colors.Pinned.FG != "208" || cfg.List.Header.Style != "bar" {
 		t.Fatalf("cfg = %+v\n%s", cfg, updated)
 	}
 	if strings.Contains(updated, "accent_color") || strings.Contains(updated, "[list.pinned]") {
@@ -224,7 +224,7 @@ func TestMergeMovesReleasedKeys(t *testing.T) {
 }
 
 func TestMergeMovesEmptyPinnedToAccent(t *testing.T) {
-	updated, _, err := Merge("workspace = \"1\"\naccent_color = \"6\"\n[list.pinned]\ncolor = \"\"\n")
+	updated, _, _, err := Merge("workspace = \"1\"\naccent_color = \"6\"\n[list.pinned]\ncolor = \"\"\n")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +234,7 @@ func TestMergeMovesEmptyPinnedToAccent(t *testing.T) {
 }
 
 func TestMergeMovesDisplayFilterAndRepo(t *testing.T) {
-	updated, _, err := Merge(`workspace = "1"
+	updated, _, _, err := Merge(`workspace = "1"
 [display]
 symbols = "nerd"
 reduced_motion = false
@@ -250,15 +250,15 @@ branch_field = "Branch Name"
 		t.Fatal(err)
 	}
 	cfg := loadString(t, updated)
-	if cfg.Symbols != "nerd" || cfg.ReducedMotion == nil || *cfg.ReducedMotion || cfg.DefaultFilter != "is:open project:Work" || cfg.RepoSource.Root != "" || cfg.RepoSource.Command != "sesh list -z" || cfg.BranchField != "Branch Name" || !reflect.DeepEqual(cfg.List.Fields, []string{"section", "Branch Name", "due"}) {
+	if cfg.Symbols != "nerd" || cfg.ReducedMotion == nil || *cfg.ReducedMotion || cfg.List.DefaultView.Filter != "is:open project:Work" || cfg.RepoSource.Root != "" || cfg.RepoSource.Command != "sesh list -z" || cfg.BranchField != "Branch Name" || !reflect.DeepEqual(cfg.List.Fields, []string{"section", "Branch Name", "due"}) {
 		t.Fatalf("cfg = %+v\n%s", cfg, updated)
 	}
-	for _, old := range []string{"[display]", "[repo]", "\nfilter = "} {
+	for _, old := range []string{"[display]", "[repo]", "default_filter = "} {
 		if strings.Contains(updated, old) {
 			t.Fatalf("old key %q left behind:\n%s", old, updated)
 		}
 	}
-	again, _, err := Merge(updated)
+	again, _, _, err := Merge(updated)
 	if err != nil || again != updated {
 		t.Fatalf("second merge changed config: err = %v", err)
 	}
@@ -267,7 +267,7 @@ branch_field = "Branch Name"
 // The ccmux preset became the asanamate-ccmux adapter; the rest of [agents]
 // stays as set.
 func TestMergeRewritesAgentsPreset(t *testing.T) {
-	updated, _, err := Merge("workspace = \"1\"\n[agents]\npreset = \"ccmux\"\n[agents.states]\nworking = [\"busy\"]\n[agents.symbols]\nwaiting = \"!!\"\n")
+	updated, _, _, err := Merge("workspace = \"1\"\n[agents]\npreset = \"ccmux\"\n[agents.states]\nworking = [\"busy\"]\n[agents.symbols]\nwaiting = \"!!\"\n")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +278,7 @@ func TestMergeRewritesAgentsPreset(t *testing.T) {
 	if strings.Contains(updated, "preset") {
 		t.Fatalf("agents.preset left behind:\n%s", updated)
 	}
-	again, _, err := Merge(updated)
+	again, _, _, err := Merge(updated)
 	if err != nil || again != updated {
 		t.Fatalf("second merge changed config: err = %v", err)
 	}
@@ -286,14 +286,14 @@ func TestMergeRewritesAgentsPreset(t *testing.T) {
 		"[agents]\npreset = \"ccmux\"\ncommand = \"x\"\n": "agents.preset and agents.command are both set",
 		"[agents]\npreset = \"tmux\"\n":                   `agents.preset "tmux" has no replacement`,
 	} {
-		if _, _, err := Merge("workspace = \"1\"\n" + body); err == nil || !strings.Contains(err.Error(), want) {
+		if _, _, _, err := Merge("workspace = \"1\"\n" + body); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%q: err = %v", body, err)
 		}
 	}
 }
 
 func TestMergeKeepsStyleTables(t *testing.T) {
-	updated, _, err := Merge("workspace = \"1\"\n[colors]\naccent = { fg = \"4\", bold = false }\nauthors = [\"1\", { fg = \"2\", italic = true }]\n")
+	updated, _, _, err := Merge("workspace = \"1\"\n[colors]\naccent = { fg = \"4\", bold = false }\nauthors = [\"1\", { fg = \"2\", italic = true }]\n")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -332,9 +332,9 @@ func TestRunWritesThemeExample(t *testing.T) {
 		t.Fatal(err)
 	}
 	os.WriteFile(filepath.Join(config.ThemesDir(path), "mine.toml"), data, 0o600)
-	body, _ := os.ReadFile(path)
-	body = []byte(strings.Replace(string(body), "name = \"auto\"", "name = \"mine\"", 1))
-	os.WriteFile(path, body, 0o600)
+	if err := config.SaveSetting(path, "theme.name", "mine"); err != nil {
+		t.Fatal(err)
+	}
 	cfg, err := config.Load(path)
 	if err != nil || cfg.Palette(true).Colors.Accent.FG != "#7aa2f7" {
 		t.Fatalf("accent = %+v, err = %v", cfg.Palette(true).Colors.Accent, err)
@@ -352,11 +352,20 @@ func runSetup(t *testing.T) string {
 }
 
 // loadString loads body as a config file.
-func loadString(t *testing.T, body string) config.Config {
+func loadString(t *testing.T, body string, settings ...map[string]any) config.Config {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
+	}
+	if len(settings) > 0 {
+		data, err := config.EncodeSettings(settings[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := config.WriteSettings(path, data); err != nil {
+			t.Fatal(err)
+		}
 	}
 	cfg, err := config.Load(path)
 	if err != nil {
@@ -380,7 +389,7 @@ func TestTemplateListsEveryBinding(t *testing.T) {
 }
 
 func TestMergeKeepsKeyOverrides(t *testing.T) {
-	updated, added, err := Merge("workspace = \"1\"\n[keys.main]\nquit = [\"Q\"]\n")
+	updated, added, _, err := Merge("workspace = \"1\"\n[keys.main]\nquit = [\"Q\"]\n")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -461,7 +470,10 @@ func TestThemeInstallerKeepsEditsAndAddsMissingFiles(t *testing.T) {
 	if got, err := os.ReadFile(filepath.Join(dir, "one-dark.toml")); err != nil || string(got) != custom {
 		t.Fatalf("reinstall must keep theme edits: %q, err = %v", got, err)
 	}
-	if err := os.WriteFile(path, []byte("workspace = \"1\"\n[theme]\nname = \"auto\"\ndark = \"one-dark\"\nlight = \"one-light\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("workspace = \"1\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := config.WriteSettings(path, []byte("[theme]\nname = \"auto\"\n[theme.auto]\ndark = \"one-dark\"\nlight = \"one-light\"\n")); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := config.Load(path)

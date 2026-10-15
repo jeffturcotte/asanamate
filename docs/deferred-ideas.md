@@ -118,21 +118,11 @@ reads raw bytes from the terminal, outside Bubble Tea. Its keys are fixed:
 `shift+tab`, kitty protocol sequences) need a decoder, such as ultraviolet's,
 before they can be bound there.
 
-## Saved display state overrides config
+## Settings follow-ups
 
-**Now:** Toggles from the settings menu and a few keys (separator, header
-spacing, reader view, refresh interval) save to `state.Display`, and saved
-values win over `config.toml` (`internal/tui/model.go`, `New`). After a
-toggle, editing those keys in `config.toml` does nothing, and nothing tells
-the user why.
-
-**Idea:** Pick one rule. Either a config change resets the saved value (store
-the config value next to it and compare at startup), or settings changes write
-to `config.toml` itself, or `asanamate doctor` reports which config keys are
-overridden by saved state.
-
-**Watch out for:** Writing to `config.toml` from the TUI must keep comments
-and the user's layout, which `Merge` already knows how to do.
+- Add theme picker actions to use the highlighted theme as the dark or light
+  member of `theme.auto`.
+- Add `asanamate config settings` to open `settings.toml` in the user's editor.
 
 ## Views panel layout
 

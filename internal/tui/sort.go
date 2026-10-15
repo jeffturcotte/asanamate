@@ -68,7 +68,7 @@ func sortLabel(sort config.Sort) string {
 }
 
 func (m *Model) sortings() []string {
-	return uniqueFold(append(append([]string{"", "title"}, m.groupings()...), m.deps.Config.List.Sort.By, m.sortBy.By))
+	return uniqueFold(append(append([]string{"", "title"}, m.groupings()...), m.deps.Config.List.DefaultView.Sort.By, m.sortBy.By))
 }
 
 // openSortPicker offers the same fields as grouping, plus title, in both directions.

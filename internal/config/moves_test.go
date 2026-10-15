@@ -47,7 +47,6 @@ color = "6"
 	want := decode(t, `workspace = "1"
 symbols = "nerd"
 reduced_motion = false
-default_filter = "is:open project:Work"
 branch_field = "Branch Name"
 [repo_source]
 root = "~/projects"
@@ -62,6 +61,8 @@ viewing = "5"
 selection = "6"
 [list]
 layout = "multi"
+[list.default_view]
+filter = "is:open project:Work"
 [list.header]
 style = "bar"
 `)

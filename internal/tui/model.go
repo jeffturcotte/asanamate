@@ -78,8 +78,8 @@ type Deps struct {
 	// ExitOnAction runs background actions as exit actions, so asanamate
 	// quits first. It suits popups, which close when asanamate exits.
 	ExitOnAction bool
-	// LightBackground picks theme.light for the auto theme; false picks
-	// theme.dark.
+	// LightBackground picks theme.auto.light for the auto theme; false picks
+	// theme.auto.dark.
 	LightBackground bool
 }
 
@@ -171,20 +171,20 @@ func New(d Deps) *Model {
 		deps: d,
 		listState: listState{
 			filterInput:    in,
-			separator:      *cmp.Or(d.State.Display.Separator, &d.Config.List.Separator),
-			spacing:        *cmp.Or(d.State.Display.HeaderSpacing, &d.Config.List.Header.Spacing),
+			separator:      d.Config.List.Separator,
+			spacing:        d.Config.List.Header.Spacing,
 			selectionStyle: d.Config.List.Selection.Style,
 		},
 		readerState: readerState{
 			reader:     viewport.New(),
-			readerView: cmp.Or(d.State.Display.ReaderView, d.Config.Reader.View),
+			readerView: d.Config.Reader.View,
 			renderers:  map[rendererKey]*markdownRenderer{},
 			details:    map[string]ticket.Ticket{},
 			images:     map[string]*inlineImage{},
 			imageSeq:   rand.IntN(imageIDs),
 		},
 		lastAction:      -1,
-		focusDim:        *cmp.Or(d.State.Display.FocusDim, &d.Config.Layout.Focus.Dim),
+		focusDim:        d.Config.Layout.Focus.Dim,
 		lightBackground: d.LightBackground,
 		projectFields:   map[string]map[string]bool{},
 		projectCatalogs: map[string][]asana.Ref{},
@@ -194,9 +194,6 @@ func New(d Deps) *Model {
 		readerHidden:    d.NoPreview || !d.Config.Layout.Reader,
 	}
 	m.setPalette(d.Config.Palette(!d.LightBackground))
-	if saved := d.State.Display.SelectionStyle; saved == config.StyleMarker || saved == config.StyleBar {
-		m.selectionStyle = saved
-	}
 	for _, p := range d.State.Projects {
 		m.projects = append(m.projects, asana.Project{GID: p.GID, Name: p.Name})
 	}
@@ -205,9 +202,6 @@ func New(d Deps) *Model {
 	m.feed = newFeedPanel(d.Config.Feed)
 	m.restoreView()
 	m.refreshInterval, _ = config.ParseRefreshInterval(cmp.Or(d.Config.List.RefreshInterval, config.Default().List.RefreshInterval))
-	if saved, err := config.ParseRefreshInterval(d.State.Display.RefreshInterval); err == nil {
-		m.refreshInterval = saved
-	}
 	return m
 }
 
@@ -940,11 +934,11 @@ func (m *Model) pickedProject(ref *asana.Ref) tea.Cmd {
 }
 
 // restoreView applies the viewed project's last used grouping, sort, and filter, else
-// the configured group_by, sort, and default_filter.
+// the configured list.default_view.
 func (m *Model) restoreView() {
 	v, ok := m.deps.State.View(gidOf(m.viewProject))
 	if !ok {
-		v = state.View{GroupBy: strings.TrimSpace(m.deps.Config.List.GroupBy), Sort: m.deps.Config.List.Sort, Filter: m.deps.Config.DefaultFilter}
+		v = state.View{GroupBy: strings.TrimSpace(m.deps.Config.List.DefaultView.GroupBy), Sort: m.deps.Config.List.DefaultView.Sort, Filter: m.deps.Config.List.DefaultView.Filter}
 	}
 	m.groupBy, m.sortBy = v.GroupBy, v.Sort
 	m.filterInput.SetValue(v.Filter)

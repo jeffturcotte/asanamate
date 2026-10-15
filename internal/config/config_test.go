@@ -48,7 +48,7 @@ command = "less \"$ASANAMATE_TICKET_MD\""
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Theme != (Theme{Name: ThemeAuto, Dark: "dark", Light: "light"}) || cfg.Images.Mode != "auto" || cfg.Images.Inline || cfg.DefaultFilter != "is:open" || !cfg.ConfirmWrites {
+	if cfg.Theme != (Theme{Name: ThemeAuto, Auto: AutoThemes{Dark: "ansi-dark", Light: "ansi-light"}}) || cfg.Images.Mode != "auto" || cfg.Images.Inline || cfg.List.DefaultView.Filter != "is:open" || !cfg.ConfirmWrites {
 		t.Fatalf("defaults not applied: %+v", cfg)
 	}
 	if cfg.Actions[0].Mode != ModeForeground {
@@ -227,20 +227,17 @@ func TestListConfig(t *testing.T) {
 		t.Fatalf("custom: %+v, err = %v", cfg.List, err)
 	}
 	for name, body := range map[string]string{
-		"bad layout":    "[list]\nlayout = \"grid\"\n",
-		"bad view":      "[reader]\nview = \"grid\"\n",
-		"neg width":     "[reader]\nmax_text_width = -1\n",
-		"neg latest":    "[reader.comments]\nlatest = -1\n",
-		"neg preview":   "[reader.comments]\npreview_lines = -1\n",
-		"title field":   "[list]\nfields = [\"Title\"]\n",
-		"empty field":   "[list]\nfields = [\" \"]\n",
-		"title group":   "[list]\ngroup_by = \"title\"\n",
-		"bad header":    "[list.header]\nstyle = \"box\"\n",
-		"int spacing":   "[list.header]\nspacing = 1\n",
-		"int new":       "[list.new]\nsection = 1\n",
-		"bad selection": "[list.selection]\nstyle = \"rule\"\n",
-		"bad accent":    "[colors]\naccent = \"blue\"\n",
-		"bad more":      "[colors]\nmore = { bg = \"cyan\" }\n",
+		"bad layout":  "[list]\nlayout = \"grid\"\n",
+		"neg width":   "[reader]\nmax_text_width = -1\n",
+		"neg latest":  "[reader.comments]\nlatest = -1\n",
+		"neg preview": "[reader.comments]\npreview_lines = -1\n",
+		"title field": "[list]\nfields = [\"Title\"]\n",
+		"empty field": "[list]\nfields = [\" \"]\n",
+		"title group": "[list.default_view]\ngroup_by = \"title\"\n",
+		"bad header":  "[list.header]\nstyle = \"box\"\n",
+		"int new":     "[list.new]\nsection = 1\n",
+		"bad accent":  "[colors]\naccent = \"blue\"\n",
+		"bad more":    "[colors]\nmore = { bg = \"cyan\" }\n",
 	} {
 		if _, err := Load(writeFile(t, "workspace = \"1\"\n"+body)); err == nil {
 			t.Errorf("%s: expected an error", name)
@@ -278,7 +275,7 @@ func TestRefreshIntervalConfig(t *testing.T) {
 	}
 	for _, value := range []string{"1s", "15s", "1m", "1m30s"} {
 		t.Run(value, func(t *testing.T) {
-			cfg, err := Load(writeFile(t, "workspace = \"1\"\n[list]\nrefresh_interval = \""+value+"\"\n"))
+			cfg, err := Load(writeSettingsFixture(t, "workspace = \"1\"\n", "[list]\nrefresh_interval = \""+value+"\"\n"))
 			if err != nil || cfg.List.RefreshInterval != value {
 				t.Fatalf("interval = %q, err = %v", cfg.List.RefreshInterval, err)
 			}
@@ -286,7 +283,7 @@ func TestRefreshIntervalConfig(t *testing.T) {
 	}
 	for _, value := range []string{"", "15", "0s", "-1s", "500ms", "999999999999999999999h"} {
 		t.Run("invalid "+value, func(t *testing.T) {
-			_, err := Load(writeFile(t, "workspace = \"1\"\n[list]\nrefresh_interval = \""+value+"\"\n"))
+			_, err := Load(writeSettingsFixture(t, "workspace = \"1\"\n", "[list]\nrefresh_interval = \""+value+"\"\n"))
 			if err == nil || !strings.Contains(err.Error(), "list.refresh_interval") {
 				t.Fatalf("want dotted config key in error, got %v", err)
 			}
@@ -559,10 +556,10 @@ func TestListSortConfig(t *testing.T) {
 		bad        string
 	}{
 		{name: "default", want: Sort{Direction: "asc"}},
-		{name: "due", body: "[list.sort]\nby = \"due\"\n", want: Sort{By: "due", Direction: "asc"}},
-		{name: "custom descending", body: "[list.sort]\nby = \"Priority\"\ndirection = \"desc\"\n", want: Sort{By: "Priority", Direction: "desc"}},
-		{name: "bad direction", body: "[list.sort]\ndirection = \"sideways\"\n", bad: "list.sort.direction"},
-		{name: "bad name", body: "[list.sort]\nby = \"due\\n\"\n", bad: "list.sort.by"},
+		{name: "due", body: "[list.default_view.sort]\nby = \"due\"\n", want: Sort{By: "due", Direction: "asc"}},
+		{name: "custom descending", body: "[list.default_view.sort]\nby = \"Priority\"\ndirection = \"desc\"\n", want: Sort{By: "Priority", Direction: "desc"}},
+		{name: "bad direction", body: "[list.default_view.sort]\ndirection = \"sideways\"\n", bad: "list.default_view.sort.direction"},
+		{name: "bad name", body: "[list.default_view.sort]\nby = \"due\\n\"\n", bad: "list.default_view.sort.by"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg, err := Load(writeFile(t, "workspace = \"1\"\n"+tc.body))
@@ -570,8 +567,8 @@ func TestListSortConfig(t *testing.T) {
 				if err == nil || !strings.Contains(err.Error(), tc.bad) {
 					t.Fatalf("error = %v, want %s", err, tc.bad)
 				}
-			} else if err != nil || cfg.List.Sort != tc.want {
-				t.Fatalf("sort = %v, err = %v, want %v", cfg.List.Sort, err, tc.want)
+			} else if err != nil || cfg.List.DefaultView.Sort != tc.want {
+				t.Fatalf("sort = %v, err = %v, want %v", cfg.List.DefaultView.Sort, err, tc.want)
 			}
 		})
 	}
@@ -625,7 +622,7 @@ func TestLayoutConfig(t *testing.T) {
 	if err != nil || cfg.Layout != (Layout{Reader: true, Focus: Focus{Dim: true, Resize: true}}) {
 		t.Fatalf("default: %+v, err = %v", cfg.Layout, err)
 	}
-	cfg, err = Load(writeFile(t, "workspace = \"1\"\n[layout]\nreader = false\nlist_width = 60\n[layout.focus]\ndim = false\nresize = false\n"))
+	cfg, err = Load(writeSettingsFixture(t, "workspace = \"1\"\n[layout]\nreader = false\nlist_width = 60\n[layout.focus]\nresize = false\n", "layout.focus.dim = false\n"))
 	if err != nil || cfg.Layout != (Layout{ListWidth: 60}) {
 		t.Fatalf("set: %+v, err = %v", cfg.Layout, err)
 	}

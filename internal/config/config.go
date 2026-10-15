@@ -54,13 +54,12 @@ const (
 // ErrNotConfigured means the config file does not exist yet.
 var ErrNotConfigured = errors.New("asanamate is not configured; run `asanamate setup`")
 
-// Config is the contents of config.toml.
+// Config combines config.toml and settings.toml.
 type Config struct {
 	Workspace string `toml:"workspace"`
 	// Theme selects the color theme; Colors overrides its roles.
 	Theme         Theme      `toml:"theme"`
 	Colors        Colors     `toml:"colors"`
-	DefaultFilter string     `toml:"default_filter"`
 	ConfirmWrites bool       `toml:"confirm_writes"`
 	BranchField   string     `toml:"branch_field"`
 	Symbols       string     `toml:"symbols"`
@@ -189,18 +188,25 @@ type Focus struct {
 // List configures how tickets appear in the list. The title is always shown;
 // Fields are extra values: section, due, assignee, initials, project, tags,
 // completed, or any custom field name. Separator frames each ticket with lines; neighbours share one.
-// GroupBy groups tickets under a header per value of one such field; "" is ungrouped.
+// Projects whose columns were set in the TUI keep their own.
 type List struct {
 	// RefreshInterval is the automatic list reload interval, at least one second.
-	RefreshInterval string     `toml:"refresh_interval"`
-	Layout          string     `toml:"layout"`
-	Fields          []string   `toml:"fields"`
-	Separator       bool       `toml:"separator"`
-	GroupBy         string     `toml:"group_by"`
-	Sort            Sort       `toml:"sort"`
-	Header          Header     `toml:"header"`
-	Selection       Selection  `toml:"selection"`
-	New             NewTickets `toml:"new"`
+	RefreshInterval string   `toml:"refresh_interval"`
+	Layout          string   `toml:"layout"`
+	Fields          []string `toml:"fields"`
+	Separator       bool     `toml:"separator"`
+	// DefaultView applies until a project has its own saved view.
+	DefaultView DefaultView `toml:"default_view"`
+	Header      Header      `toml:"header"`
+	Selection   Selection   `toml:"selection"`
+	New         NewTickets  `toml:"new"`
+}
+
+// DefaultView is the starting filter, grouping, and sort for a project.
+type DefaultView struct {
+	Filter  string `toml:"filter"`
+	GroupBy string `toml:"group_by"`
+	Sort    Sort   `toml:"sort"`
 }
 
 // Sort orders tickets within each group, or the whole ungrouped list.
@@ -340,15 +346,15 @@ type Action struct {
 // Default returns the values used for keys the config file omits.
 func Default() Config {
 	return Config{
-		Theme:         Theme{Name: ThemeAuto, Dark: "dark", Light: "light"},
-		DefaultFilter: "is:open", ConfirmWrites: true,
-		TimeTracking: TimeTracking{},
-		ProjectLinks: ProjectLinks{},
-		Actions:      nil,
-		Layout:       Layout{Reader: true, Focus: Focus{Dim: true, Resize: true}},
+		Theme:         Theme{Name: ThemeAuto, Auto: AutoThemes{Dark: "ansi-dark", Light: "ansi-light"}},
+		ConfirmWrites: true,
+		TimeTracking:  TimeTracking{},
+		ProjectLinks:  ProjectLinks{},
+		Actions:       nil,
+		Layout:        Layout{Reader: true, Focus: Focus{Dim: true, Resize: true}},
 		List: List{
 			RefreshInterval: "30s",
-			Sort:            Sort{By: "", Direction: "asc"},
+			DefaultView:     DefaultView{Filter: "is:open", Sort: Sort{Direction: "asc"}},
 			Layout:          LayoutSingle, Fields: []string{"section", "due"},
 			Header: Header{Style: StyleRule}, Selection: Selection{Style: StyleMarker},
 		},
@@ -370,34 +376,54 @@ func Load(path string) (Config, error) {
 	if err != nil {
 		return cfg, err
 	}
+	settings, err := os.ReadFile(SettingsPath(path))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return cfg, err
+	}
+	return LoadData(path, data, settings)
+}
+
+// LoadData validates candidate file contents before setup changes either file.
+// Themes and actions resolve relative to path, as in Load.
+func LoadData(path string, data, settings []byte) (Config, error) {
+	cfg := Default()
 	var raw map[string]any
-	if _, err := toml.Decode(string(data), &raw); err == nil {
-		if mv, ok := movedFrom(raw); ok {
-			return cfg, fmt.Errorf("%s: %s moved to %s in v0.2.0; run `asanamate config update`", path, mv.From, mv.To)
-		}
-		if mv, _, ok := commandMovedFrom(raw); ok {
-			return cfg, fmt.Errorf("%s: %s: %s moved to %s in v0.2.0; run `asanamate config update`", path, mv.Key, mv.From, mv.To)
-		}
-		if _, ok := getPath(raw, agentsPreset); ok {
-			return cfg, fmt.Errorf("%s: %s was replaced by agents.command in v0.2.0; run `asanamate config update`", path, agentsPreset)
-		}
+	if _, err := toml.Decode(string(data), &raw); err != nil {
+		return cfg, fmt.Errorf("%s: %w", path, err)
+	}
+	if changes := PendingUpdates(raw); len(changes) > 0 {
+		return cfg, &UpdateNeeded{Path: path, Changes: changes}
 	}
 	md, err := toml.Decode(string(data), &cfg)
 	if err != nil {
 		return cfg, fmt.Errorf("%s: %w", path, err)
 	}
-	if undecoded := md.Undecoded(); len(undecoded) > 0 {
-		return cfg, fmt.Errorf("%s: unknown keys: %v", path, undecoded)
+	if keys := md.Undecoded(); len(keys) > 0 {
+		return cfg, fmt.Errorf("%s: unknown keys: %v", path, keys)
+	}
+	values, err := decodeSettings(SettingsPath(path), settings)
+	if err != nil {
+		return cfg, err
+	}
+	if _, err := toml.Decode(string(settings), &cfg); err != nil {
+		return cfg, fmt.Errorf("%s: %w", SettingsPath(path), err)
 	}
 	if err := cfg.validate(); err != nil {
-		return cfg, fmt.Errorf("%s: %w", path, err)
+		source := path
+		for _, key := range SettingKeys {
+			if _, ok := getPath(values, key); ok && strings.HasPrefix(err.Error(), key) {
+				source = SettingsPath(path)
+				break
+			}
+		}
+		return cfg, fmt.Errorf("%s: %w", source, err)
 	}
 	cfg.Keys = compactKeys(cfg.Keys)
 	if cfg.Keymap, err = keymap.Resolve(cfg.Keys); err != nil {
 		return cfg, fmt.Errorf("%s: %w", path, err)
 	}
 	if cfg.Themes, err = loadThemes(ThemesDir(path), cfg.Theme); err != nil {
-		return cfg, fmt.Errorf("%s: %w", path, err)
+		return cfg, fmt.Errorf("%s: %w", SettingsPath(path), err)
 	}
 	cfg.Actions, err = loadActions(ActionsDir(path))
 	return cfg, err
@@ -529,13 +555,13 @@ func (c Config) validate() error {
 			return errors.New("the title is always shown; remove it from list.fields")
 		}
 	}
-	if strings.EqualFold(strings.TrimSpace(c.List.GroupBy), "title") {
-		return errors.New("list.group_by can't be the title; use a field such as section or due")
+	if strings.EqualFold(strings.TrimSpace(c.List.DefaultView.GroupBy), "title") {
+		return errors.New("list.default_view.group_by can't be the title; use a field such as section or due")
 	}
-	if strings.ContainsFunc(c.List.Sort.By, unicode.IsControl) {
-		return errors.New("list.sort.by must not contain control characters")
+	if strings.ContainsFunc(c.List.DefaultView.Sort.By, unicode.IsControl) {
+		return errors.New("list.default_view.sort.by must not contain control characters")
 	}
-	if err := oneOf("list.sort.direction", c.List.Sort.Direction, "asc", "desc"); err != nil {
+	if err := oneOf("list.default_view.sort.direction", c.List.DefaultView.Sort.Direction, "asc", "desc"); err != nil {
 		return err
 	}
 	if err := c.Colors.validate("colors"); err != nil {

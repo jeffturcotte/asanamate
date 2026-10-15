@@ -150,7 +150,7 @@ func TestListViewGroups(t *testing.T) {
 		return asana.Task{GID: gid, Name: name, AssigneeSection: &asana.Ref{Name: section}}
 	}
 	tasks := []asana.Task{sec("1", "A", "Doing"), sec("2", "B", "Next"), sec("3", "C", "Doing")}
-	m, _ := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle, Separator: true, GroupBy: "section"}})
+	m, _ := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle, Separator: true, DefaultView: config.DefaultView{GroupBy: "section"}}})
 	m.Update(tasksMsg{tasks: tasks})
 	got := listLines(m, 24, 10)
 	want := []string{
@@ -197,7 +197,7 @@ func TestSharedColumnValuesMoveToHeaders(t *testing.T) {
 	}
 	fields := []string{"section", "due"}
 	t.Run("grouped by the column", func(t *testing.T) {
-		m, _ := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle, Fields: fields, GroupBy: "section", Header: config.Header{Style: config.StyleRule}}})
+		m, _ := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle, Fields: fields, DefaultView: config.DefaultView{GroupBy: "section"}, Header: config.Header{Style: config.StyleRule}}})
 		m.Update(tasksMsg{tasks: tasks})
 		got := strings.Join(listLines(m, 40, 6), "\n")
 		if strings.Count(got, "Inbox") != 1 || !strings.Contains(got, "── Inbox (2) ──") || !strings.Contains(got, "today") {
@@ -205,7 +205,7 @@ func TestSharedColumnValuesMoveToHeaders(t *testing.T) {
 		}
 	})
 	t.Run("one value per group", func(t *testing.T) {
-		m, _ := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle, Fields: fields, GroupBy: "due", Header: config.Header{Style: config.StyleRule}}})
+		m, _ := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle, Fields: fields, DefaultView: config.DefaultView{GroupBy: "due"}, Header: config.Header{Style: config.StyleRule}}})
 		m.Update(tasksMsg{tasks: append(slices.Clone(tasks[:2]), asana.Task{GID: "4", Name: "D", AssigneeSection: sec("Inbox"), DueOn: strp("2026-09-30")})})
 		got := strings.Join(listLines(m, 40, 6), "\n")
 		row := slices.IndexFunc(strings.Split(got, "\n"), func(l string) bool { return strings.Contains(l, "□  D") })
@@ -228,7 +228,7 @@ func TestSharedColumnValuesMoveToHeaders(t *testing.T) {
 		}
 	})
 	t.Run("one ticket per group", func(t *testing.T) {
-		m, _ := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle, Fields: fields, GroupBy: "due"}})
+		m, _ := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle, Fields: fields, DefaultView: config.DefaultView{GroupBy: "due"}}})
 		m.Update(tasksMsg{tasks: []asana.Task{tasks[0], tasks[2]}})
 		if got := strings.Join(listLines(m, 40, 4), "\n"); strings.Count(got, "Inbox") != 1 || !strings.Contains(got, "Later") {
 			t.Fatalf("single-ticket groups keep their columns:\n%s", got)
@@ -237,7 +237,7 @@ func TestSharedColumnValuesMoveToHeaders(t *testing.T) {
 }
 
 func TestGroupPicker(t *testing.T) {
-	m, _ := testModel(t, config.Config{List: config.List{Fields: []string{"Section", "Status"}, GroupBy: "section"}})
+	m, _ := testModel(t, config.Config{List: config.List{Fields: []string{"Section", "Status"}, DefaultView: config.DefaultView{GroupBy: "section"}}})
 	m.Update(tasksMsg{tasks: []asana.Task{
 		{GID: "1", AssigneeSection: &asana.Ref{Name: "Later"}, CustomFields: []asana.CustomField{{Name: "Priority"}}},
 		{GID: "2", AssigneeSection: &asana.Ref{Name: "Today"}},
@@ -285,12 +285,12 @@ func TestSelectionMarker(t *testing.T) {
 
 func TestHeaderStyles(t *testing.T) {
 	tasks := []asana.Task{{GID: "1", Name: "A", AssigneeSection: &asana.Ref{Name: "Doing"}}}
-	rule, _ := testModel(t, config.Config{List: config.List{GroupBy: "section", Header: config.Header{Style: config.StyleRule}}, Colors: config.Colors{Header: config.Style{FG: "5"}}})
+	rule, _ := testModel(t, config.Config{List: config.List{DefaultView: config.DefaultView{GroupBy: "section"}, Header: config.Header{Style: config.StyleRule}}, Colors: config.Colors{Header: config.Style{FG: "5"}}})
 	rule.Update(tasksMsg{tasks: tasks})
 	if got := listLines(rule, 20, 2)[0]; got != "── Doing (1) ───────" {
 		t.Fatalf("rule header = %q", got)
 	}
-	bar, _ := testModel(t, config.Config{Colors: config.Colors{Accent: config.Style{FG: "2"}, Header: config.Style{FG: "#ff0000"}}, List: config.List{GroupBy: "section"}})
+	bar, _ := testModel(t, config.Config{Colors: config.Colors{Accent: config.Style{FG: "2"}, Header: config.Style{FG: "#ff0000"}}, List: config.List{DefaultView: config.DefaultView{GroupBy: "section"}}})
 	bar.Update(tasksMsg{tasks: tasks})
 	if bar.headerStyle.GetForeground() != lipgloss.Color("#ff0000") {
 		t.Fatalf("header color = %v", bar.headerStyle.GetForeground())
@@ -310,7 +310,7 @@ func TestViewingHeaderColor(t *testing.T) {
 			t.Run(style+"/"+color, func(t *testing.T) {
 				bold := true
 				cfg := config.Default()
-				cfg.List.GroupBy = "section"
+				cfg.List.DefaultView.GroupBy = "section"
 				cfg.List.Header.Style = style
 				cfg.Colors.Header = config.Style{FG: "2"}
 				cfg.Colors.Viewing = config.Style{FG: color}
@@ -526,7 +526,7 @@ func TestDueGroupsShowUrgency(t *testing.T) {
 		{GID: "3", Name: "Far", DueOn: strp("2026-10-20")},
 		{GID: "4", Name: "Undated"},
 	}
-	m, _ := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle, GroupBy: "due"}})
+	m, _ := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle, DefaultView: config.DefaultView{GroupBy: "due"}}})
 	m.Update(tasksMsg{tasks: tasks})
 	if got := m.groupStyle(dueOverdue).GetForeground(); got != errorStyle.GetForeground() {
 		t.Fatalf("Overdue header = %v, want the error color", got)

@@ -36,23 +36,47 @@ func Update(o Options, yes bool) error {
 	if err != nil {
 		return err
 	}
-	updated, added, err := Merge(string(old))
+	updated, added, moved, err := Merge(string(old))
 	if err != nil {
 		return fmt.Errorf("fix the config before updating it: %w", err)
 	}
-	if err := checkLoads(o.ConfigPath, updated); err != nil {
+	settingsPath := config.SettingsPath(o.ConfigPath)
+	oldSettings, err := os.ReadFile(settingsPath)
+	missing := errors.Is(err, os.ErrNotExist)
+	if err != nil && !missing {
+		return err
+	}
+	existing, err := config.ReadSettings(o.ConfigPath)
+	if err != nil {
+		return err
+	}
+	if missing {
+		var defaults map[string]any
+		if _, err := toml.Decode(string(config.DefaultSettings()), &defaults); err != nil {
+			return err
+		}
+		overlay(defaults, moved)
+		moved = defaults
+	}
+	overlay(moved, existing) // Existing settings are the user's current choices.
+	settings, err := config.EncodeSettings(moved)
+	if err != nil {
+		return err
+	}
+	if _, err := config.LoadData(o.ConfigPath, []byte(updated), settings); err != nil {
 		return fmt.Errorf("fix the config before updating it: %w", err)
 	}
-	if updated == string(old) {
+	configChanged := updated != string(old)
+	settingsChanged := missing || string(settings) != string(oldSettings)
+	if !configChanged && !settingsChanged {
 		fmt.Fprintln(o.Out, "Config is already up to date.")
 		return writeFiles(config.ThemesDir(o.ConfigPath), themeFiles)
 	}
 	if len(added) > 0 {
 		fmt.Fprintf(o.Out, "New settings with their defaults: %s\n", strings.Join(added, ", "))
 	}
-	backup := backupPath(o.ConfigPath)
 	if !yes {
-		ok, err := prompt.Confirm(o.In, o.Out, fmt.Sprintf("Rewrite %s with the current template, keeping your values (previous file saved to %s)?", o.ConfigPath, backup))
+		ok, err := prompt.Confirm(o.In, o.Out, fmt.Sprintf("Rewrite %s and %s with the current templates, keeping your values and saving timestamped backups?", o.ConfigPath, settingsPath))
 		if err != nil {
 			return err
 		}
@@ -60,18 +84,83 @@ func Update(o Options, yes bool) error {
 			return errors.New("update cancelled; config unchanged")
 		}
 	}
-	if err := writePrivate(backup, old); err != nil {
-		return err
+	backup := backupPath(o.ConfigPath)
+	if configChanged {
+		if err := backupPrivate(backup, old); err != nil {
+			return err
+		}
 	}
-	if err := writePrivate(o.ConfigPath, []byte(updated)); err != nil {
-		return err
+	if settingsChanged && !missing {
+		backup := backupPath(settingsPath)
+		if err := backupPrivate(backup, oldSettings); err != nil {
+			return err
+		}
+		fmt.Fprintf(o.Out, "Previous settings saved as %s.\n", backup)
+	}
+	if settingsChanged {
+		if err := config.WriteSettings(o.ConfigPath, settings); err != nil {
+			return err
+		}
+	}
+	if configChanged {
+		if err := replacePrivate(o.ConfigPath, []byte(updated)); err != nil {
+			var rollback error
+			if settingsChanged {
+				if missing {
+					rollback = os.Remove(settingsPath)
+				} else {
+					rollback = config.WriteSettings(o.ConfigPath, oldSettings)
+				}
+			}
+			return errors.Join(err, rollback)
+		}
+		fmt.Fprintf(o.Out, updateSummary, o.ConfigPath, backup)
+	} else {
+		fmt.Fprintf(o.Out, "Updated %s.\n", settingsPath)
 	}
 	if err := writeFiles(config.ThemesDir(o.ConfigPath), themeFiles); err != nil {
 		return err
 	}
-	fmt.Fprintf(o.Out, updateSummary, o.ConfigPath, backup)
 	_, err = config.Load(o.ConfigPath)
 	return err
+}
+
+// overlay copies values from newer, retaining other nested keys in older.
+func overlay(older, newer map[string]any) {
+	for key, value := range newer {
+		dst, dstTable := older[key].(map[string]any)
+		src, srcTable := value.(map[string]any)
+		if dstTable && srcTable {
+			overlay(dst, src)
+		} else {
+			older[key] = value
+		}
+	}
+}
+
+func backupPrivate(path string, data []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	_, writeErr := f.Write(data)
+	return errors.Join(writeErr, f.Close())
+}
+
+func replacePrivate(path string, data []byte) error {
+	f, err := os.CreateTemp(filepath.Dir(path), ".config-*.toml")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), path)
 }
 
 const updateSummary = `Updated %s; your values are kept.
@@ -81,24 +170,22 @@ defaults, so copy any of your own back from the backup.
 
 // Merge renders the current template with the values set in old: template
 // keys take the user's value when set (commented-out keys are uncommented),
-// and tables the template doesn't define, such as agents, are appended. It returns the new file and the template keys old didn't set.
-func Merge(old string) (string, []string, error) {
+// and tables the template doesn't define, such as agents, are appended. It
+// returns the new config, new default keys, and settings extracted from old.
+func Merge(old string) (string, []string, map[string]any, error) {
 	var user map[string]any
 	md, err := toml.Decode(old, &user)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
-	if err := config.ApplyMoves(user); err != nil {
-		return "", nil, err
+	moved, err := config.ApplyUpdates(user)
+	if err != nil {
+		return "", nil, nil, err
 	}
-	config.ApplyCommandMoves(user)
 	gid, _ := user["workspace"].(string)
 	name := gid
 	if m := workspaceName.FindStringSubmatch(old); m != nil {
 		name = m[1]
-	}
-	if err := config.MoveAgentsPreset(user); err != nil {
-		return "", nil, err
 	}
 	var out, added []string
 	used := map[string]bool{} // dotted keys taken from the user's file
@@ -119,7 +206,7 @@ func Merge(old string) (string, []string, error) {
 			if v, ok := lookupOK(user, key); ok {
 				v, err := formatValue(v)
 				if err != nil {
-					return "", nil, fmt.Errorf("%s: %w", dotted, err)
+					return "", nil, nil, fmt.Errorf("%s: %w", dotted, err)
 				}
 				out = append(out, m[2]+" = "+v)
 				used[dotted] = true
@@ -138,7 +225,7 @@ func Merge(old string) (string, []string, error) {
 		v := user[k]
 		if t, ok := v.(map[string]any); ok && live[k] {
 			if err := checkUsed(t, []string{k}, used); err != nil {
-				return "", nil, err
+				return "", nil, nil, err
 			}
 			continue
 		}
@@ -146,22 +233,22 @@ func Merge(old string) (string, []string, error) {
 			continue
 		}
 		if !isTable(v) {
-			return "", nil, fmt.Errorf("the template has no place for %s", k)
+			return "", nil, nil, fmt.Errorf("the template has no place for %s", k)
 		}
 		if err := writeTable(&b, md, []string{k}, v); err != nil {
-			return "", nil, err
+			return "", nil, nil, err
 		}
 	}
 
 	result := b.String()
 	var got map[string]any
 	if _, err := toml.Decode(result, &got); err != nil {
-		return "", nil, fmt.Errorf("updated config is not valid TOML: %w", err)
+		return "", nil, nil, fmt.Errorf("updated config is not valid TOML: %w", err)
 	}
 	if !contains(got, user) {
-		return "", nil, errors.New("updated config would change your values; config unchanged")
+		return "", nil, nil, errors.New("updated config would change your values; config unchanged")
 	}
-	return result, added, nil
+	return result, added, moved, nil
 }
 
 // backupPath names a backup of path stamped with the current time, such as
@@ -190,27 +277,6 @@ func lookupOK(m map[string]any, key []string) (any, bool) {
 		}
 	}
 	return v, true
-}
-
-// checkLoads loads body as if it were the config at path: from a temporary
-// file in the same directory, so actions and themes resolve the same way.
-func checkLoads(path, body string) error {
-	f, err := os.CreateTemp(filepath.Dir(path), ".config-*.toml")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name())
-	if _, err := f.WriteString(body); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	if _, err := config.Load(f.Name()); err != nil {
-		return errors.New(strings.ReplaceAll(err.Error(), f.Name(), path))
-	}
-	return nil
 }
 
 // checkUsed errors on a key in a template table that the template has no line for.

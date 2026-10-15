@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -34,7 +35,11 @@ func testModel(t *testing.T, cfg config.Config) (*Model, *state.State) {
 	if cfg.Layout == (config.Layout{}) {
 		cfg.Layout = config.Default().Layout
 	}
-	m := New(Deps{Config: cfg, State: st, StateDir: t.TempDir()})
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte("workspace = \"1\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := New(Deps{ConfigPath: path, Config: cfg, State: st, StateDir: t.TempDir()})
 	m.now = func() time.Time { return testToday }
 	// New sets package state from cfg; restore the defaults so tests that
 	// never call New see them.
@@ -55,7 +60,7 @@ var (
 )
 
 func TestTasksFilteredByDefault(t *testing.T) {
-	m, _ := testModel(t, config.Config{DefaultFilter: "is:open"})
+	m, _ := testModel(t, config.Config{List: config.List{DefaultView: config.DefaultView{Filter: "is:open"}}})
 	_, cmd := m.Update(tasksMsg{tasks: []asana.Task{openTask, doneTask}})
 	if len(m.visible) != 1 || m.visible[0].GID != "1" || m.loading {
 		t.Fatalf("visible = %+v, loading = %v", m.visible, m.loading)
@@ -105,7 +110,7 @@ func TestReloadReselectsTicket(t *testing.T) {
 }
 
 func TestFilterTyping(t *testing.T) {
-	m, _ := testModel(t, config.Config{DefaultFilter: "is:open"})
+	m, _ := testModel(t, config.Config{List: config.List{DefaultView: config.DefaultView{Filter: "is:open"}}})
 	m.Update(tasksMsg{tasks: []asana.Task{openTask, doneTask, sideTask}})
 	m.Update(key("/"))
 	for _, r := range " footer" {
@@ -147,7 +152,7 @@ func TestPickingProjectRecordsRecent(t *testing.T) {
 }
 
 func TestSwitchingBackToDueGroupedMyTasksRendersStaleProjectRows(t *testing.T) {
-	m, st := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle, GroupBy: "due"}})
+	m, st := testModel(t, config.Config{List: config.List{Layout: config.LayoutSingle, DefaultView: config.DefaultView{GroupBy: "due"}}})
 	m.Update(tasksMsg{tasks: []asana.Task{openTask}})
 
 	project := &asana.Ref{GID: "p", Name: "Project"}
