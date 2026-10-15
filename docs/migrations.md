@@ -5,7 +5,7 @@ workflow copies a version's section to the top of its GitHub release notes,
 so links here are absolute. Steps for changes not yet released wait under
 `## Unreleased`, which becomes the version's heading when it is tagged.
 
-## Unreleased
+## v0.3.0
 
 This breaking release moves settings into `settings.toml` next to `config.toml`.
 The TUI offers migration at startup on a terminal; scripts report the pending
