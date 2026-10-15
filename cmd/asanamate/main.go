@@ -452,20 +452,26 @@ func runTUI(args []string) error {
 	if err != nil {
 		return err
 	}
+	if name := st.Display.Theme; name != "" {
+		// A saved theme whose file is gone falls back to theme.name.
+		if themed, err := cfg.WithTheme(config.ThemesDir(configPath), name); err == nil {
+			cfg = themed
+		}
+	}
 	m := tui.New(tui.Deps{
-		ConfigPath:    configPath,
-		Config:        cfg,
-		State:         st,
-		Client:        client,
-		StateDir:      stateDir,
-		CacheDir:      cacheDir,
-		Images:        kitty.Supported(cfg.Images.Mode, os.Getenv, kitty.TmuxPassthrough),
-		InTmux:        os.Getenv("TMUX") != "",
-		NoPreview:     hidePreview,
-		ExitOnAction:  *exitOnAction,
-		Symbols:       cfg.SymbolSet(os.Getenv),
-		ReducedMotion: reducedMotion(cfg),
-		Palette:       cfg.Palette(darkBackground(cfg)),
+		ConfigPath:      configPath,
+		Config:          cfg,
+		State:           st,
+		Client:          client,
+		StateDir:        stateDir,
+		CacheDir:        cacheDir,
+		Images:          kitty.Supported(cfg.Images.Mode, os.Getenv, kitty.TmuxPassthrough),
+		InTmux:          os.Getenv("TMUX") != "",
+		NoPreview:       hidePreview,
+		ExitOnAction:    *exitOnAction,
+		Symbols:         cfg.SymbolSet(os.Getenv),
+		ReducedMotion:   reducedMotion(cfg),
+		LightBackground: !darkBackground(cfg),
 	})
 	if _, err := tea.NewProgram(m).Run(); err != nil {
 		return err

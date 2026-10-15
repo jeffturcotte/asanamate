@@ -53,6 +53,8 @@ type picker struct {
 	links      bool // choose opens the item's link; copy returns a copy result
 	checked    map[int]bool
 	err        string
+	// preview draws the highlighted item, or nil for none, beside the list.
+	preview func(it *pickItem, width, height int) string
 }
 
 // newPicker returns a picker that calls onPick with the choice.
@@ -260,7 +262,24 @@ func (p *picker) moveItem(down bool) {
 	p.refilter()
 }
 
+// minPreviewWidth is the narrowest modal that shows a picker's preview.
+const minPreviewWidth = 56
+
 func (p *picker) view(width, height int, accent lipgloss.Style) string {
+	if p.preview == nil || width < minPreviewWidth {
+		return p.listView(width, height, accent)
+	}
+	paneW := width / 2
+	var it *pickItem
+	if p.cursor < len(p.matches) {
+		it = &p.items[p.matches[p.cursor]]
+	}
+	list := p.listView(width-paneW-2, height, accent)
+	return lipgloss.JoinHorizontal(lipgloss.Top, list, "  ", p.preview(it, paneW, height))
+}
+
+// listView draws the title, search, list, and key hints.
+func (p *picker) listView(width, height int, accent lipgloss.Style) string {
 	var b strings.Builder
 	b.WriteString(accent.Render(ansi.Truncate(p.title, width, "…")) + "\n")
 	if !p.keySelect && p.searching {

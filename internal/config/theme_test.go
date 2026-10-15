@@ -302,3 +302,45 @@ blue = "#445566"
 		}
 	}
 }
+
+func TestThemeNamesListsBuiltinsThenFiles(t *testing.T) {
+	path := writeFile(t, "workspace = \"1\"\n")
+	if names, err := ThemeNames(ThemesDir(path)); err != nil || strings.Join(names, ",") != "auto,dark,light" {
+		t.Fatalf("missing dir: names = %v, err = %v", names, err)
+	}
+	writeTheme(t, path, "nord", "base = \"dark\"\n")
+	writeTheme(t, path, "dracula", "base = \"dark\"\n")
+	writeTheme(t, path, "Bad Name", "base = \"dark\"\n")
+	for _, extra := range []string{"example.toml.example", "nord.toml.2026-10-14--11-42-21.bak"} {
+		if err := os.WriteFile(filepath.Join(ThemesDir(path), extra), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	names, err := ThemeNames(ThemesDir(path))
+	if err != nil || strings.Join(names, ",") != "auto,dark,light,dracula,nord" {
+		t.Fatalf("names = %v, err = %v", names, err)
+	}
+}
+
+func TestWithThemeSwitchesTheme(t *testing.T) {
+	path := writeFile(t, "workspace = \"1\"\n[theme]\nname = \"dark\"\n[colors]\nok = \"9\"\n")
+	writeTheme(t, path, "day", "base = \"light\"\n[colors]\naccent = \"#123456\"\n")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	day, err := cfg.WithTheme(ThemesDir(path), "day")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := day.Palette(true)
+	if day.Theme.Name != "day" || p.Base != "light" || p.Colors.Accent.FG != "#123456" || p.Colors.OK.FG != "9" {
+		t.Fatalf("theme = %+v, palette = %+v", day.Theme, p)
+	}
+	if cfg.Theme.Name != "dark" {
+		t.Fatal("WithTheme changed the original config")
+	}
+	if _, err := cfg.WithTheme(ThemesDir(path), "gone"); err == nil || !strings.Contains(err.Error(), `no theme "gone"`) {
+		t.Fatalf("err = %v", err)
+	}
+}

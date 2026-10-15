@@ -78,9 +78,9 @@ type Deps struct {
 	// ExitOnAction runs background actions as exit actions, so asanamate
 	// quits first. It suits popups, which close when asanamate exits.
 	ExitOnAction bool
-	// Palette is the resolved theme. Zero resolves Config's theme for a dark
-	// background.
-	Palette config.Palette
+	// LightBackground picks theme.light for the auto theme; false picks
+	// theme.dark.
+	LightBackground bool
 }
 
 // Model is the Bubble Tea model for asanamate.
@@ -98,6 +98,7 @@ type Model struct {
 	feed            feedPanel
 	focusDim        bool             // panes without focus draw faint; starts at layout.focus.dim
 	palette         config.Palette   // resolved theme, for Markdown
+	lightBackground bool             // terminal background, for the auto theme
 	bindings        []binding        // [keys.main] with their handlers
 	accentStyle     lipgloss.Style   // reader headings
 	headerStyle     lipgloss.Style   // group headers
@@ -166,12 +167,6 @@ func New(d Deps) *Model {
 	if keys == nil {
 		keys = keymap.Default()
 	}
-	p := d.Palette
-	if p.Base == "" {
-		p = d.Config.Palette(true)
-	}
-	applyPalette(p)
-	c := p.Colors
 	m := &Model{
 		deps: d,
 		listState: listState{
@@ -190,12 +185,7 @@ func New(d Deps) *Model {
 		},
 		lastAction:      -1,
 		focusDim:        *cmp.Or(d.State.Display.FocusDim, &d.Config.Layout.Focus.Dim),
-		palette:         p,
-		accentStyle:     lipStyle(c.Accent),
-		headerStyle:     lipStyle(c.Header),
-		pinnedStyle:     lipStyle(c.Pinned),
-		viewingStyle:    lipStyle(c.Viewing),
-		markerStyle:     lipStyle(c.Selection),
+		lightBackground: d.LightBackground,
 		projectFields:   map[string]map[string]bool{},
 		projectCatalogs: map[string][]asana.Ref{},
 		sym:             newSymbols(d.Symbols, d.Config.Agents.Symbols, d.ReducedMotion),
@@ -203,6 +193,7 @@ func New(d Deps) *Model {
 		now:             time.Now,
 		readerHidden:    d.NoPreview || !d.Config.Layout.Reader,
 	}
+	m.setPalette(d.Config.Palette(!d.LightBackground))
 	if saved := d.State.Display.SelectionStyle; saved == config.StyleMarker || saved == config.StyleBar {
 		m.selectionStyle = saved
 	}
@@ -245,6 +236,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.gotFeed(msg)
 	case gitMsg:
 		m.gotGit(msg)
+	case tea.BackgroundColorMsg:
+		m.lightBackground = !msg.IsDark()
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.layout()

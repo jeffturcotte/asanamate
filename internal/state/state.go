@@ -82,6 +82,8 @@ type Display struct {
 	ReaderView      string `toml:"reader_view,omitempty"`
 	RefreshInterval string `toml:"refresh_interval,omitempty"`
 	FocusDim        *bool  `toml:"focus_dim,omitempty"`
+	// Theme is the theme picked in the TUI, over theme.name.
+	Theme string `toml:"theme,omitempty"`
 }
 
 // View is a list grouping, sort, and filter; "" GroupBy is ungrouped.
