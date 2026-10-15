@@ -15,7 +15,7 @@ import (
 	"github.com/yuin/goldmark/util"
 )
 
-var commentMarkdown = goldmark.New(goldmark.WithExtensions(extension.Strikethrough))
+var commentMarkdown = goldmark.New(goldmark.WithExtensions(extension.Strikethrough, extension.Table))
 
 // CommentHTML renders Markdown using only tags supported by Asana stories.
 // Code and links never expand mentions. Raw HTML stays literal. images maps
@@ -85,6 +85,15 @@ func CommentHTML(markdown string, users []asana.Ref, images map[string]string) (
 			wrap(n, tag, mentions)
 		case *extensionast.Strikethrough:
 			wrap(n, "s", mentions)
+		case *extensionast.Table:
+			wrap(n, "table", mentions)
+		case *extensionast.TableHeader, *extensionast.TableRow:
+			wrap(n, "tr", mentions)
+			return
+		case *extensionast.TableCell:
+			// Asana supports td cells, but not th or alignment attributes.
+			wrap(n, "td", mentions)
+			return
 		case *ast.Heading:
 			wrap(n, "strong", mentions)
 		case *ast.Blockquote:

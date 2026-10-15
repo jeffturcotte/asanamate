@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/sadmachine/asanamate/internal/asana"
+	"github.com/sadmachine/asanamate/internal/ticket"
 )
 
 func TestCommentMarkdown(t *testing.T) {
@@ -41,6 +42,11 @@ func TestCommentMarkdown(t *testing.T) {
 		{"> - one\n> - two", "<body><blockquote>- one\n- two</blockquote></body>", 0},
 		{"- one\n\n  ```\n  x\n  ```", "<body><ul><li>one\n\n<code>x\n</code></li></ul></body>", 0},
 		{"- > quoted", "<body><ul><li>quoted</li></ul></body>", 0},
+		{"| Item | Value |\n|---|---|\n| Issuer | UAT |", "<body><table><tr><td>Item</td><td>Value</td></tr><tr><td>Issuer</td><td>UAT</td></tr></table></body>", 0},
+		{"| Name | Value |\n|:---|---:|\n| @Sam Lee | `@Sam Lee` |", "<body><table><tr><td>Name</td><td>Value</td></tr><tr><td><a data-asana-gid=\"1\"/></td><td><code>@Sam Lee</code></td></tr></table></body>", 1},
+		{"| Key | Value |\n|---|---|\n| a\\|b | <script>bad()</script> &amp; [bad](javascript:alert(1)) |", "<body><table><tr><td>Key</td><td>Value</td></tr><tr><td>a|b</td><td>&lt;script&gt;bad()&lt;/script&gt; &amp; bad</td></tr></table></body>", 0},
+		{"Before\n\n| A | B |\n|---|---|\n| one | |\n\nAfter", "<body>Before\n\n<table><tr><td>A</td><td>B</td></tr><tr><td>one</td><td></td></tr></table>\n\nAfter</body>", 0},
+		{"1. Values\n\n   | A | B |\n   |---|---|\n   | **one** | [two](https://example.com) |", "<body><ol><li>Values\n\n<table><tr><td>A</td><td>B</td></tr><tr><td><strong>one</strong></td><td><a href=\"https://example.com\">two</a></td></tr></table></li></ol></body>", 0},
 	}
 	for _, c := range cases {
 		t.Run(c.in, func(t *testing.T) {
@@ -59,6 +65,46 @@ func TestCommentMarkdown(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestCommentMarkdownTableWrites(t *testing.T) {
+	for _, edit := range []bool{false, true} {
+		client, writes := fake(t)
+		service := Service{Client: client}
+		const markdown = "| Item | Value |\n|---|---|\n| Issuer | UAT |"
+		const want = "<body><table><tr><td>Item</td><td>Value</td></tr><tr><td>Issuer</td><td>UAT</td></tr></table></body>"
+		method, path := "POST", "/tasks/1/stories"
+		var err error
+		if edit {
+			method, path = "PUT", "/stories/9"
+			err = service.EditComment(ctx, "9", markdown)
+		} else {
+			err = service.Comment(ctx, "1", markdown)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(*writes) != 1 || (*writes)[0].method != method || (*writes)[0].path != path || (*writes)[0].body["html_text"] != want || (*writes)[0].body["text"] != nil {
+			t.Fatalf("edit=%v: writes = %+v", edit, *writes)
+		}
+	}
+}
+
+func TestCommentMarkdownTableRoundTrip(t *testing.T) {
+	for _, body := range []string{
+		`<body><table><tr><td>Item</td><td>Value</td></tr><tr><td>Issuer</td><td>UAT</td></tr></table></body>`,
+		`<body><table><tr><td>Item</td><td>Value</td></tr><tr><td>a|b</td><td><code>x</code></td></tr></table></body>`,
+		`<body><table><tr><td><strong>Item</strong></td><td>Value</td></tr><tr><td><a data-asana-gid="123"/></td><td><img data-asana-gid="456"/></td></tr></table></body>`,
+	} {
+		markdown := ticket.CommentMarkdown(asana.Story{HTMLText: body})
+		got, _ := CommentHTML(markdown, nil, nil)
+		if got != body {
+			t.Errorf("table changed after editing: got %q, want %q (Markdown %q)", got, body, markdown)
+		}
+		if display := ticket.HTMLToMarkdown(body); !strings.HasPrefix(display, "|") || strings.Contains(display, "<table") {
+			t.Errorf("reader loses table: %q", display)
+		}
 	}
 }
 

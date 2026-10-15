@@ -1314,7 +1314,9 @@ terminal available (for example, a background action), a write that needs
 confirmation is refused.
 
 Comments from the CLI or TUI accept Markdown: `**bold**`, `*italic*`,
-`~~strikethrough~~`, inline code, fenced code blocks, links, lists, and blockquotes.
+`~~strikethrough~~`, inline code, fenced code blocks, links, lists, blockquotes,
+and pipe tables. Tables become native Asana tables, with the Markdown header
+as the first row; column alignment is not preserved.
 Put code fences on their own lines:
 
 ````markdown
@@ -1338,8 +1340,7 @@ COMMENT
 ```
 
 Code and link text do not expand `@Full Name` mentions. Raw HTML stays literal.
-Asana comments do not support headings or tables: headings become bold and
-table syntax stays text. Lists inside quotes and code blocks or quotes inside
+Headings become bold. Lists inside quotes and code blocks or quotes inside
 lists are flattened to supported formatting.
 
 A local image, `![](~/Desktop/shot.png)`, is attached to the task and shown
