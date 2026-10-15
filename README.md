@@ -341,7 +341,7 @@ Press `e`, then `m` for **Edit multiple** to stage several details on one ticket
 The modal lists assignee, due date, completion, each project's section, editable
 custom fields, project membership, the local branch, and an optional comment.
 Pick a detail to change it; each picker returns to the same draft. `*` marks a
-pending change. Select **Submit all changes** or press `ctrl+s` to send them.
+pending change. Press `ctrl+s`, shown in the modal's footer, to send them.
 Returning a detail to its original value removes its pending change.
 
 The new-comment editor also offers **Assign to**, **Change section**, and
