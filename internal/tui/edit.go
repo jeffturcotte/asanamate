@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -30,6 +31,8 @@ const (
 	editBranch
 	editComplete
 	editMultiple
+	editTitle
+	editDescription
 )
 
 // myTasks stands for the My Tasks list among a ticket's projects.
@@ -77,6 +80,8 @@ func (m *Model) openEditMenu() {
 	t := m.edit.ticket
 	p := newPicker(pickValue(m.pickedEdit), "Edit: "+ticket.Clean(t.Name), []pickItem{
 		{Label: "Add comment", Key: "c", Value: editComment},
+		{Label: "Edit title", Key: "t", Value: editTitle},
+		{Label: "Edit description", Key: "n", Value: editDescription},
 		{Label: "Move to section", Key: "s", Value: editSection},
 		{Label: "Set custom field", Key: "f", Value: editField},
 		{Label: "Assign", Key: "a", Value: editAssignee},
@@ -95,6 +100,8 @@ func (m *Model) pickedEdit(op editOp) tea.Cmd {
 	m.modal = nil
 	t := m.edit.ticket
 	switch op {
+	case editTitle, editDescription:
+		m.openTextEdit(op)
 	case editComment:
 		m.openCommentComposer(t.Task)
 	case editMultiple:
@@ -140,6 +147,59 @@ func (m *Model) pickedEdit(op editOp) tea.Cmd {
 		return m.toggleComplete()
 	}
 	return nil
+}
+
+// openTextEdit edits the existing title or Markdown description. Unchanged
+// text closes without writing, preserving the original rich text in Asana.
+func (m *Model) openTextEdit(op editOp) {
+	t := m.edit.ticket
+	kind, label, original := "title", "Title", t.Name
+	if op == editDescription {
+		kind, label, original = "description", "Description", t.DescriptionMarkdown()
+	}
+	b := newInputBox(label, "Markdown; empty clears the description")
+	b.area.CharLimit = 0
+	b.area.MaxContentHeight = math.MaxInt
+	if op == editTitle {
+		b.area.Placeholder = "title"
+		b.oneLine = true
+		b.area.KeyMap.InsertNewline.SetEnabled(false)
+	}
+	value := original
+	if c := m.composer; c != nil {
+		value = c.value(kind, "", "", original)
+	}
+	b.area.SetValue(value)
+	if b.area.Value() != value {
+		b.err = "Editor changes tabs/control characters. Review before submitting."
+	}
+	b.onSubmit = func(value string) tea.Cmd {
+		if op == editTitle {
+			if value == "" || strings.ContainsAny(value, "\r\n") {
+				b.err = "title must be nonempty and one line"
+				return nil
+			}
+		} else if len(writeback.LocalImages(value)) > 0 {
+			b.err = "description image uploads are not supported; use links"
+			return nil
+		}
+		if m.composer != nil {
+			return m.stageChange(writeback.Change{Kind: kind, Value: value}, value, strings.TrimSpace(original))
+		}
+		m.input = nil
+		if value == strings.TrimSpace(original) {
+			m.edit, m.status = nil, "unchanged"
+			return nil
+		}
+		svc := m.writer()
+		return m.saveEdit("set "+kind, func(ctx context.Context) error {
+			if op == editTitle {
+				return svc.SetTitle(ctx, t.GID, value)
+			}
+			return svc.SetDescription(ctx, t.GID, value)
+		})
+	}
+	m.input = b
 }
 
 // completeLabel names the edit that toggles t: Complete when open, Reopen

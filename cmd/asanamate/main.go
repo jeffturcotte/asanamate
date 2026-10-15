@@ -55,6 +55,9 @@ const usage = `usage:
   asanamate config update [--yes]                  refresh the config's comments and new defaults,
                                                    keeping your values (old file saved as .<time>.bak)
   asanamate comment [--yes] <gid> <text | ->       comment on a task ("-" reads stdin)
+  asanamate title [--yes] <gid> <title>           replace a task's single-line title
+  asanamate description [--yes] <gid> <markdown | ->
+                                                   replace a description ("-" reads stdin; "" clears it)
   asanamate batch   [--yes] <gid> <changes-json | ->
                                                    validate and submit several task edits
   asanamate edit-comment [--yes] <comment-gid> <text | ->
@@ -97,7 +100,7 @@ func run(args []string) int {
 		err = runConfig(args[1:])
 	case "comment", "edit-comment", "move", "field", "batch":
 		err = writeCommand(name, args[1:])
-	case "assign", "due", "project":
+	case "assign", "due", "project", "title", "description":
 		err = writeCommand(name, args[1:])
 	case "complete", "react":
 		err = writeCommand(name, args[1:])
@@ -209,7 +212,7 @@ func runWrite(name string, args []string, stdin io.Reader, writer func(bool) (wr
 		return err
 	}
 	rest := fs.Args()
-	want := map[string]int{"comment": 2, "edit-comment": 2, "batch": 2, "move": 2, "field": 3, "assign": 2, "due": 2, "project add": 2, "project remove": 2, "react": 2}[name]
+	want := map[string]int{"comment": 2, "edit-comment": 2, "title": 2, "description": 2, "batch": 2, "move": 2, "field": 3, "assign": 2, "due": 2, "project add": 2, "project remove": 2, "react": 2}[name]
 	if name == "complete" {
 		want = 1
 	}
@@ -268,7 +271,9 @@ func runWrite(name string, args []string, stdin io.Reader, writer func(bool) (wr
 		}
 		_, err := svc.Batch(ctx, gid, changes)
 		return err
-	case "comment", "edit-comment":
+	case "title":
+		return svc.SetTitle(ctx, gid, rest[1])
+	case "comment", "edit-comment", "description":
 		text := rest[1]
 		if text == "-" {
 			data, err := io.ReadAll(stdin)
@@ -279,6 +284,9 @@ func runWrite(name string, args []string, stdin io.Reader, writer func(bool) (wr
 		}
 		if name == "edit-comment" {
 			return svc.EditComment(ctx, gid, text)
+		}
+		if name == "description" {
+			return svc.SetDescription(ctx, gid, text)
 		}
 		return svc.Comment(ctx, gid, text)
 	case "move":

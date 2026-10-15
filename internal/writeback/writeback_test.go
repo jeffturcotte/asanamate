@@ -81,6 +81,69 @@ func fake(t *testing.T) (*asana.Client, *[]write) {
 
 var ctx = context.Background()
 
+func TestEditTitleAndDescription(t *testing.T) {
+	c, writes := fake(t)
+	var question string
+	s := Service{Client: c, Confirm: func(p string) (bool, error) { question = p; return true, nil }}
+	if err := s.SetTitle(ctx, "1", "  New title  "); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(question, "Fix login") || !strings.Contains(question, "New title") {
+		t.Fatalf("confirmation = %q", question)
+	}
+	original := ticket.Ticket{Task: asana.Task{HTMLNotes: `<body><strong>Before</strong> <a data-asana-gid="7" data-asana-type="user">Amy</a><img data-asana-gid="123" src="https://expired.test/image"/></body>`}}
+	text := strings.Replace(original.DescriptionMarkdown(), "Before", "After", 1)
+	if err := s.SetDescription(ctx, "1", text); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(question, "Fix login") || !strings.Contains(question, "After") {
+		t.Fatalf("confirmation = %q", question)
+	}
+	if err := s.SetDescription(ctx, "1", ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(*writes) != 3 {
+		t.Fatalf("writes = %+v", *writes)
+	}
+	for _, w := range *writes {
+		if w.method != http.MethodPut || w.path != "/tasks/1" || len(w.body) != 1 {
+			t.Fatalf("must update only the requested field: %+v", w)
+		}
+	}
+	if (*writes)[0].body["name"] != "New title" || (*writes)[2].body["html_notes"] != "<body></body>" {
+		t.Fatalf("writes = %+v", *writes)
+	}
+	html := (*writes)[1].body["html_notes"].(string)
+	for _, want := range []string{"<strong>After</strong>", `<a data-asana-gid="7"/>`, `<img data-asana-gid="123"/>`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("description = %q, missing %q", html, want)
+		}
+	}
+}
+
+func TestEditTitleAndDescriptionRejectBeforeWriting(t *testing.T) {
+	c, writes := fake(t)
+	s := Service{Client: c}
+	for _, title := range []string{"", " \n ", "two\nlines", "two\rlines"} {
+		if err := s.SetTitle(ctx, "1", title); err == nil {
+			t.Errorf("accepted title %q", title)
+		}
+	}
+	if err := s.SetDescription(ctx, "1", "![local](missing.png)"); err == nil {
+		t.Error("silently accepted an unsupported image upload")
+	}
+	s.Confirm = func(string) (bool, error) { return false, nil }
+	if err := s.SetTitle(ctx, "1", "New"); !errors.Is(err, ErrDeclined) {
+		t.Errorf("title decline = %v", err)
+	}
+	if err := s.SetDescription(ctx, "1", ""); !errors.Is(err, ErrDeclined) {
+		t.Errorf("description decline = %v", err)
+	}
+	if len(*writes) != 0 {
+		t.Fatalf("writes = %+v", *writes)
+	}
+}
+
 func TestNeedsConfirm(t *testing.T) {
 	cases := []struct {
 		yes      bool

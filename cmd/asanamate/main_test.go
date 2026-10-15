@@ -46,6 +46,48 @@ func TestCreatePrintsOnlyTheGID(t *testing.T) {
 	}
 }
 
+func TestTitleAndDescriptionCLI(t *testing.T) {
+	for _, tt := range []struct {
+		command, input, stdin, key, want string
+	}{
+		{"title", " New title ", "", "name", "New title"},
+		{"description", "**Details**", "", "html_notes", "<body><strong>Details</strong></body>"},
+		{"description", "-", "**Details**", "html_notes", "<body><strong>Details</strong></body>"},
+		{"description", "", "", "html_notes", "<body></body>"},
+	} {
+		t.Run(tt.command+tt.input, func(t *testing.T) {
+			var bodies []map[string]any
+			base := fakeWriter(t, &bodies)
+			writer := func(yes bool) (writeback.Service, error) {
+				if !yes {
+					t.Error("--yes not forwarded")
+				}
+				return base(yes)
+			}
+			if err := runWrite(tt.command, []string{"--yes", "1", tt.input}, strings.NewReader(tt.stdin), writer); err != nil {
+				t.Fatal(err)
+			}
+			if len(bodies) != 1 || len(bodies[0]) != 1 || bodies[0][tt.key] != tt.want {
+				t.Fatalf("bodies = %+v", bodies)
+			}
+		})
+	}
+}
+
+func TestTitleAndDescriptionCLIRejectsBadArguments(t *testing.T) {
+	for _, name := range []string{"title", "description"} {
+		for _, args := range [][]string{{}, {"1"}, {"1", "text", "extra"}, {"bad", "text"}} {
+			writer := func(bool) (writeback.Service, error) {
+				t.Fatal("invalid arguments loaded writer")
+				return writeback.Service{}, nil
+			}
+			if err := runWrite(name, args, strings.NewReader(""), writer); err == nil {
+				t.Errorf("%s accepted %q", name, args)
+			}
+		}
+	}
+}
+
 func TestCreateRejectsBadArguments(t *testing.T) {
 	for _, args := range [][]string{
 		{},

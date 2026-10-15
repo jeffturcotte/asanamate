@@ -60,6 +60,19 @@ func (s Service) prepareChange(ctx context.Context, t asana.Task, c Change) (fun
 	var write func(context.Context) error
 	label := c.Kind + ": " + c.Value
 	switch c.Kind {
+	case "title":
+		title := strings.TrimSpace(c.Value)
+		if err := validateTitle(title); err != nil {
+			return nil, "", err
+		}
+		label = "Title: " + title
+		write = func(ctx context.Context) error { return s.Client.SetName(ctx, t.GID, title) }
+	case "description":
+		html, err := s.descriptionHTML(ctx, strings.TrimSpace(c.Value))
+		if err != nil {
+			return nil, "", err
+		}
+		write = func(ctx context.Context) error { return s.Client.SetHTMLNotes(ctx, t.GID, html) }
 	case "assign":
 		user := strings.TrimSpace(c.Value)
 		if user != "" {

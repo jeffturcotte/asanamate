@@ -197,12 +197,22 @@ var markdownConverter = newMarkdownConverter()
 // CommentMarkdown prepares a comment for editing. Asana resource links retain
 // their identity as asana:<gid>, including mentions and inline attachments.
 func CommentMarkdown(c asana.Story) string {
-	if strings.TrimSpace(c.HTMLText) == "" {
-		return Clean(c.Text)
+	return editMarkdown(c.HTMLText, c.Text)
+}
+
+// DescriptionMarkdown prepares the description for editing, keeping Asana
+// resource links and inline attachments as asana:<gid> references.
+func (t Ticket) DescriptionMarkdown() string {
+	return editMarkdown(t.HTMLNotes, t.Description())
+}
+
+func editMarkdown(html, fallback string) string {
+	if strings.TrimSpace(html) == "" {
+		return Clean(fallback)
 	}
-	md, err := commentConverter.ConvertString(c.HTMLText)
+	md, err := commentConverter.ConvertString(html)
 	if err != nil {
-		return Clean(c.Text)
+		return Clean(fallback)
 	}
 	return Clean(strings.TrimSpace(md))
 }

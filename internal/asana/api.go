@@ -247,6 +247,16 @@ func (c *Client) SetAssignee(ctx context.Context, taskGID, userGID string) error
 	return c.updateTask(ctx, taskGID, map[string]any{"assignee": assignee})
 }
 
+// SetName replaces a task's title.
+func (c *Client) SetName(ctx context.Context, taskGID, name string) error {
+	return c.updateTask(ctx, taskGID, map[string]any{"name": name})
+}
+
+// SetHTMLNotes replaces a task's rich-text description, including an empty body.
+func (c *Client) SetHTMLNotes(ctx context.Context, taskGID, html string) error {
+	return c.updateTask(ctx, taskGID, map[string]any{"html_notes": html})
+}
+
 // SetDueOn sets a task's due date (YYYY-MM-DD); an empty date clears it.
 func (c *Client) SetDueOn(ctx context.Context, taskGID, date string) error {
 	var dueOn any
