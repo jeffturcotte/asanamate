@@ -40,7 +40,7 @@ func TestThemePickerPreviewsAndPersists(t *testing.T) {
 	m.Update(key("down"))
 	m.Update(key("down"))
 	m.Update(key("down"))
-	if view := ansi.Strip(m.View().Content); !strings.Contains(view, "base must be") {
+	if view := ansi.Strip(m.View().Content); !strings.Contains(view, "base") || !strings.Contains(view, `"blue"`) {
 		t.Fatalf("broken theme should show its error:\n%s", view)
 	}
 	m.Update(key("down"))
