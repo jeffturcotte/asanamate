@@ -88,9 +88,6 @@ func TestOfferCodexHookRepairsStaleHook(t *testing.T) {
 	if state, err := CodexHook(home, "/new/asanamate-ccmux"); err != nil || state != HookStale {
 		t.Fatalf("state = %v, err = %v", state, err)
 	}
-	if legacy, err := LegacyCodexHook(home); err != nil || !legacy {
-		t.Fatalf("legacy = %v, err = %v", legacy, err)
-	}
 	if out := offer("n\n"); !strings.Contains(out, "out of date") {
 		t.Fatalf("decline output = %q", out)
 	}
@@ -135,9 +132,6 @@ func TestOfferCodexHookRepairsStaleHook(t *testing.T) {
 	if state, _ := CodexHook(home, "/new/asanamate-ccmux"); state != HookCurrent {
 		t.Fatalf("state after repair = %v", state)
 	}
-	if legacy, err := LegacyCodexHook(home); err != nil || legacy {
-		t.Fatalf("legacy after repair = %v, err = %v", legacy, err)
-	}
 	if out := offer(""); !strings.Contains(out, "up to date") {
 		t.Fatalf("repaired hook offered again: %q", out)
 	}
@@ -150,9 +144,6 @@ func TestOfferCodexHookSkipsWithoutCodex(t *testing.T) {
 	}
 	if state, err := CodexHook(home, "asanamate-ccmux"); err != nil || state != CodexAbsent {
 		t.Fatalf("state = %v, err = %v", state, err)
-	}
-	if legacy, err := LegacyCodexHook(home); err != nil || legacy {
-		t.Fatalf("legacy = %v, err = %v", legacy, err)
 	}
 	if _, err := os.Stat(home); !os.IsNotExist(err) {
 		t.Fatalf("created %s: %v", home, err)

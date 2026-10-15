@@ -28,7 +28,6 @@ import (
 	"github.com/sadmachine/asanamate/internal/agents"
 	"github.com/sadmachine/asanamate/internal/asana"
 	"github.com/sadmachine/asanamate/internal/browser"
-	"github.com/sadmachine/asanamate/internal/ccmux"
 	"github.com/sadmachine/asanamate/internal/config"
 	"github.com/sadmachine/asanamate/internal/feed"
 	"github.com/sadmachine/asanamate/internal/filter"
@@ -47,7 +46,6 @@ var version = "dev"
 const usage = `usage:
   asanamate [--hide-preview] [--exit-on-action]    open the TUI (--hide-preview: preview initially hidden;
                                                    --exit-on-action: quit before background actions)
-  --no-preview                                    deprecated alias for --hide-preview
   asanamate list [--project <gid>] [--filter <query>] [--format tsv|jsonl]
                                                    print tickets (default filter: list.default_view.filter;
                                                    tsv: gid, section, due, title, url)
@@ -120,9 +118,6 @@ func run(args []string) int {
 		err = runShow(args[1:])
 	case "doctor":
 		err = runDoctor(args[1:])
-	case "hook": // hidden: keeps Codex hooks set up before asanamate-ccmux working; remove in v0.3.0
-		ccmux.RunHook(args[1:], os.Stdin)
-		return 0
 	default:
 		if name != "" && !strings.HasPrefix(name, "-") {
 			fmt.Fprint(os.Stderr, usage)
@@ -430,7 +425,6 @@ func runTUI(args []string) error {
 	fs := flag.NewFlagSet("asanamate", flag.ContinueOnError)
 	var hidePreview bool
 	fs.BoolVar(&hidePreview, "hide-preview", false, "start with the preview hidden (z toggles it)")
-	fs.BoolVar(&hidePreview, "no-preview", false, "deprecated alias for --hide-preview")
 	exitOnAction := fs.Bool("exit-on-action", false, "quit before running background actions, as exit mode does")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -625,7 +619,6 @@ func runDoctor(args []string) error {
 	} else {
 		row(w, "branch_field", strconv.Quote(cfg.BranchField))
 	}
-	checkLegacyCodexHook(w)
 	checkFeeds(ctx, w, cfg.Feed.Commands)
 	var list []agents.Agent
 	if !cfg.AgentsEnabled() {
@@ -768,21 +761,6 @@ func checkFeeds(ctx context.Context, w io.Writer, feeds []string) {
 			items = "1 item"
 		}
 		row(w, "feed", fmt.Sprintf("ok: %s: %s, %s today%s", source, reply.Source, items, strings.TrimSuffix(", "+reply.Summary, ", ")))
-	}
-}
-
-// checkLegacyCodexHook warns while Codex's hooks still run
-// `asanamate hook codex`, which only forwards to asanamate-ccmux until
-// v0.3.0. It says nothing otherwise.
-func checkLegacyCodexHook(w io.Writer) {
-	home, err := ccmux.CodexHome()
-	if err != nil {
-		return
-	}
-	if legacy, err := ccmux.LegacyCodexHook(home); err != nil {
-		row(w, "codex_hook", "warning: "+err.Error())
-	} else if legacy {
-		row(w, "codex_hook", "warning: runs `asanamate hook codex`, which v0.3.0 removes; run `asanamate-ccmux setup` to replace it")
 	}
 }
 

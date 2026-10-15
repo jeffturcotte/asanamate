@@ -527,9 +527,6 @@ commands = ["asanamate-hrvst"]
 
 ## List-only mode and scripting
 
-`--no-preview` remains a deprecated alias for `--hide-preview`. See the
-[deprecated features list](docs/deprecated.md) for compatibility and removal plans.
-
 - `asanamate --hide-preview` starts with the preview hidden, whatever
   `[layout]` says; `z` shows or hides it for the session. It is handy in a small
   popup or a tmux sidebar: pick a ticket, press `space` or `a`, and run an

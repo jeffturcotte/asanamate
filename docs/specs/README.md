@@ -27,7 +27,7 @@ can run in parallel, each on its own branch.
 | [12-startup-config-migration](12-startup-config-migration.md) (done) | The TUI offers `config update` at startup when the config uses moved settings | none | no |
 | [13-settings-file](13-settings-file.md) (done) | Settings the TUI changes move from `config.toml` and state into `settings.toml`; `[theme.auto]` and `ansi-dark`/`ansi-light` | 12 | yes |
 | [14-default-view](14-default-view.md) (done) | `default_filter`, `list.group_by`, and `list.sort` move to `[list.default_view]` | 12, after 13 | yes |
-| [15-remove-deprecated](15-remove-deprecated.md) | Remove the hidden `hook` subcommand and `--no-preview` | none | yes |
+| [15-remove-deprecated](15-remove-deprecated.md) (done) | Remove the hidden `hook` subcommand and `--no-preview` | none | yes |
 
 Specs 12 to 15 ship together as v0.3.0. Tag the release only after all four
 are merged, so users migrate once.

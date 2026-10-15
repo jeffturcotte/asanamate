@@ -79,7 +79,7 @@ func TestListUsesDefaultViewFilter(t *testing.T) {
 	}
 }
 
-func TestDoctorReportsSettings(t *testing.T) {
+func TestDoctorReportsSettingsAndNoLegacyHook(t *testing.T) {
 	path := cliConfig(t, "workspace = \"1\"\n")
 	t.Setenv(config.TokenEnv, "")
 	for _, exists := range []bool{false, true} {
@@ -93,7 +93,7 @@ func TestDoctorReportsSettings(t *testing.T) {
 		if exists {
 			want = config.SettingsPath(path)
 		}
-		if !errors.Is(err, errDoctorBlocking) || !strings.Contains(out, "settings") || !strings.Contains(out, want) {
+		if !errors.Is(err, errDoctorBlocking) || !strings.Contains(out, "settings") || !strings.Contains(out, want) || strings.Contains(out, "codex_hook") {
 			t.Fatalf("doctor = %q, err = %v", out, err)
 		}
 	}

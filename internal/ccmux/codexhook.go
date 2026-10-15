@@ -54,19 +54,6 @@ func CodexHook(codexHome, executable string) (CodexHookState, error) {
 	return codexHookState(hooks, codexHookCommand(executable)), nil
 }
 
-// LegacyCodexHook reports whether codexHome/hooks.json still runs
-// `asanamate hook codex`, which asanamate forwards to the adapter for one
-// release only.
-func LegacyCodexHook(codexHome string) (bool, error) {
-	_, _, hooks, err := readCodexHooks(filepath.Join(codexHome, "hooks.json"))
-	if err != nil {
-		return false, err
-	}
-	legacy := false
-	eachCodexHook(hooks, func(_, cmd string) { legacy = legacy || !strings.Contains(cmd, Name) })
-	return legacy, nil
-}
-
 // OfferCodexHook adds `asanamate-ccmux hook codex` to Codex's hooks.json,
 // after asking, when Codex is installed and the hook is missing. When an
 // asanamate hook runs another path or command (such as the old

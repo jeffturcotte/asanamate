@@ -41,6 +41,13 @@ Per-project views and columns remain in state and keep their saved values.
 | `list.sort.by` | `list.default_view.sort.by` |
 | `list.sort.direction` | `list.default_view.sort.direction` |
 
+`--no-preview` is removed; use `--hide-preview`.
+The hidden `asanamate hook` subcommand is removed. If `asanamate doctor` on
+v0.2.x warned about `codex_hook`, run `asanamate-ccmux setup` **before upgrading**.
+Otherwise Codex keeps calling a command that no longer exists. The adapter's
+`asanamate-ccmux hook codex` command is unchanged; see
+[Agents](https://github.com/sadmachine/asanamate#agents-optional).
+
 ## v0.2.1
 
 New default keys: `i` jumps to the next NEW ticket in the list, and `ctrl+d`
