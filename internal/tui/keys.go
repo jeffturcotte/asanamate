@@ -205,7 +205,7 @@ func handlers() map[string]handler {
 		"create":           {run: do((*Model).openCreate)},
 		"create_subtask":   {run: do((*Model).openCreateSubtask)},
 		"reload":           {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return tea.Batch(m.refreshWithImages(), m.refreshFeed()) }},
-		"reader_view":      {splitOnly: true, run: do(func(m *Model) { m.toggleReaderView(); m.saveDisplay() })},
+		"reader_view":      {splitOnly: true, run: do(func(m *Model) { m.toggleReaderView(); m.saveSetting("reader.view", m.readerView) })},
 		"toggle_reader":    {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.toggleReader() }},
 		"toggle_sidebar":   {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.toggleSidebar() }},
 		"saved_views":      {run: do((*Model).openSavedViews)},

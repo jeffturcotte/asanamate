@@ -23,6 +23,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/sadmachine/asanamate/internal/action"
 	"github.com/sadmachine/asanamate/internal/agents"
 	"github.com/sadmachine/asanamate/internal/asana"
@@ -48,7 +49,8 @@ const usage = `usage:
                                                    --exit-on-action: quit before background actions)
   --no-preview                                    deprecated alias for --hide-preview
   asanamate list [--project <gid>] [--filter <query>] [--format tsv|jsonl]
-                                                   print tickets (tsv: gid, section, due, title, url)
+                                                   print tickets (default filter: list.default_view.filter;
+                                                   tsv: gid, section, due, title, url)
   asanamate show [--format md|json] <gid>          print one ticket
   asanamate setup                                  create the config file
   asanamate config                                 edit the config file in $VISUAL or $EDITOR
@@ -436,7 +438,11 @@ func runTUI(args []string) error {
 	if fs.NArg() > 0 {
 		return fmt.Errorf("unexpected arguments %v\n%s", fs.Args(), usage)
 	}
-	cfg, err := loadConfig()
+	configPath, err := config.Path()
+	if err != nil {
+		return err
+	}
+	cfg, err := loadOrMigrate(configPath, os.Stdin, os.Stdout, term.IsTerminal(os.Stdin.Fd()) && term.IsTerminal(os.Stdout.Fd()))
 	if err != nil {
 		return err
 	}
@@ -456,14 +462,10 @@ func runTUI(args []string) error {
 	if err != nil {
 		return err
 	}
-	configPath, err := config.Path()
-	if err != nil {
-		return err
-	}
-	if name := st.Display.Theme; name != "" {
-		// A saved theme whose file is gone falls back to theme.name.
-		if themed, err := cfg.WithTheme(config.ThemesDir(configPath), name); err == nil {
-			cfg = themed
+	if st.LegacyDisplay != (state.LegacyDisplay{}) {
+		cfg, err = migrateDisplay(configPath, st)
+		if err != nil {
+			return err
 		}
 	}
 	m := tui.New(tui.Deps{
@@ -520,7 +522,7 @@ func reducedMotion(cfg config.Config) bool {
 func runList(args []string) error {
 	fs := flag.NewFlagSet("list", flag.ContinueOnError)
 	project := fs.String("project", "", "project gid (default: My Tasks)")
-	query := fs.String("filter", "", "filter query (default: default_filter from the config)")
+	query := fs.String("filter", "", "filter query (default: list.default_view.filter from the config)")
 	format := fs.String("format", listing.FormatTSV, "tsv or jsonl")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -542,7 +544,7 @@ func runList(args []string) error {
 	filterSet := false
 	fs.Visit(func(f *flag.Flag) { filterSet = filterSet || f.Name == "filter" })
 	if !filterSet {
-		*query = cfg.DefaultFilter
+		*query = cfg.List.DefaultView.Filter
 	}
 	tasks, err := ticket.List(context.Background(), client, cfg.Workspace, *project)
 	if err != nil {
@@ -606,6 +608,14 @@ func runDoctor(args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	row(w, "config", "ok: "+path)
+	settingsPath := config.SettingsPath(path)
+	if _, err := os.Stat(settingsPath); errors.Is(err, os.ErrNotExist) {
+		row(w, "settings", "defaults (no file)")
+	} else if err != nil {
+		return err
+	} else {
+		row(w, "settings", "ok: "+settingsPath)
+	}
 	row(w, "actions", fmt.Sprintf("ok: %d in %s", len(cfg.Actions), config.ActionsDir(path)))
 	row(w, "state", "ok: "+stateDir)
 	client := checkAsana(ctx, w, cfg.Workspace)

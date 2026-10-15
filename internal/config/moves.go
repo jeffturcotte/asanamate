@@ -1,14 +1,13 @@
 package config
 
 import (
-	"fmt"
 	"strings"
 )
 
 // Move is a released key that moved to a new place.
 type Move struct{ From, To string }
 
-// Moves lists the keys v0.2.0 moved. `asanamate config update` applies them,
+// Moves lists released key moves in migration order. `asanamate config update` applies them,
 // and Load names them when an old config still uses them.
 var Moves = []Move{
 	{"theme", "theme.name"},
@@ -23,6 +22,12 @@ var Moves = []Move{
 	{"repo.root", "repo_source.root"},
 	{"repo.command", "repo_source.command"},
 	{"repo.branch_field", "branch_field"},
+	{"theme.dark", "theme.auto.dark"},
+	{"theme.light", "theme.auto.light"},
+	{"default_filter", "list.default_view.filter"},
+	{"list.group_by", "list.default_view.group_by"},
+	{"list.sort.by", "list.default_view.sort.by"},
+	{"list.sort.direction", "list.default_view.sort.direction"},
 }
 
 // CommandMove is a released command that moved: a Key value starting with
@@ -59,41 +64,13 @@ func ApplyCommandMoves(m map[string]any) {
 	}
 }
 
-// movedFrom returns the first move whose old key m still sets. An old key
-// whose value is a table is the new shape (theme), not the old one.
-func movedFrom(m map[string]any) (Move, bool) {
-	for _, mv := range Moves {
-		if v, ok := getPath(m, mv.From); ok && !isTable(v) {
-			return mv, true
-		}
-	}
-	return Move{}, false
-}
-
 // ApplyMoves rewrites a decoded config's moved keys to their new place and
 // drops tables the moves leave empty. In v0.1.0 an empty pinned or viewing
 // color meant "use accent_color"; built-in themes now set those roles, so the
 // accent value is copied instead.
 func ApplyMoves(m map[string]any) error {
-	accent := "4"
-	if v, ok := m["accent_color"].(string); ok && v != "" {
-		accent = v
-	}
-	for {
-		mv, ok := movedFrom(m)
-		if !ok {
-			return nil
-		}
-		if _, ok := getPath(m, mv.To); ok {
-			return fmt.Errorf("%s and %s are both set; keep only %s", mv.From, mv.To, mv.To)
-		}
-		v, _ := getPath(m, mv.From)
-		if (mv.To == "colors.pinned" || mv.To == "colors.viewing") && v == "" {
-			v = accent
-		}
-		deletePath(m, mv.From)
-		setPath(m, mv.To, v)
-	}
+	_, err := updateKeys(m, nil, true)
+	return err
 }
 
 func isTable(v any) bool {

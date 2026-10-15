@@ -128,7 +128,7 @@ func (m *Model) navItems() []navItem {
 		return items
 	}
 	items = append(items, navItem{label: "Group by", right: "b", heading: true})
-	groups := uniqueFold(append(append([]string{""}, m.deps.Config.List.Fields...), m.deps.Config.List.GroupBy, m.groupBy))
+	groups := uniqueFold(append(append([]string{""}, m.deps.Config.List.Fields...), m.deps.Config.List.DefaultView.GroupBy, m.groupBy))
 	for _, g := range groups {
 		items = append(items, navItem{label: cmp.Or(ticket.OneLine(g), "none"), group: &g, active: strings.EqualFold(g, m.groupBy)})
 	}
@@ -141,7 +141,7 @@ func (m *Model) navItems() []navItem {
 	items = appendMore(items, hidden)
 
 	items = append(items, navItem{label: "Sort by", right: "B", heading: true})
-	sorts := uniqueFold(append([]string{"", "due", "assignee", "title"}, m.deps.Config.List.Sort.By, m.sortBy.By))
+	sorts := uniqueFold(append([]string{"", "due", "assignee", "title"}, m.deps.Config.List.DefaultView.Sort.By, m.sortBy.By))
 	for _, by := range sorts {
 		sort := config.Sort{By: by, Direction: cmp.Or(m.sortBy.Direction, "asc")}
 		label := cmp.Or(ticket.OneLine(by), "none")

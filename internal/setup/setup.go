@@ -68,6 +68,13 @@ func Run(ctx context.Context, o Options) error {
 	if err := writePrivate(o.ConfigPath, []byte(Render(workspace, root))); err != nil {
 		return err
 	}
+	if _, err := os.Stat(config.SettingsPath(o.ConfigPath)); errors.Is(err, os.ErrNotExist) {
+		if err := config.WriteSettings(o.ConfigPath, config.DefaultSettings()); err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	}
 	actions := config.ActionsDir(o.ConfigPath)
 	if err := writeFiles(actions, actionFiles); err != nil {
 		return err
@@ -221,10 +228,6 @@ const configTemplate = `# asanamate configuration.
 # Asana workspace: %s
 workspace = %q
 
-# Filter applied at startup. Terms: words, section:, project:, assignee:, tag:,
-# project:<name>[<section>], is:open, is:done. Prefix a term with "-" to negate it; quote multi-word values.
-default_filter = "is:open"
-
 # Ask before "asanamate comment/move/field" writes to Asana.
 # Override per action with confirm_writes, or per call with --yes.
 confirm_writes = true
@@ -240,19 +243,7 @@ branch_field = ""
 # Static agent symbols instead of the spinner. Unset: follow the OS setting.
 # reduced_motion = true
 
-[theme]
-# "auto", "dark", "light", or the name of a file in themes/ (without .toml).
-# Standard files: one-dark, one-light, monokai, tokyo-night, tokyo-day,
-# sonokai, dracula, nord, gruvbox-dark, gruvbox-light, catppuccin-mocha,
-# catppuccin-latte, solarized-dark, solarized-light, rose-pine.
-# Sonokai variants: sonokai-andromeda, sonokai-atlantis, sonokai-maia,
-# sonokai-shusia, sonokai-espresso.
-# Install standard files with install-themes.sh; edit them in themes/.
-# Copy themes/example.toml.example to start your own.
-name = "auto"
-# Themes "auto" uses on dark and light terminal backgrounds.
-dark = "dark"
-light = "light"
+# Theme selection and the auto pair live in settings.toml.
 
 [colors]
 # Overrides on top of the active theme. Each value is a color (an ANSI number
@@ -260,7 +251,7 @@ light = "light"
 #   { fg = "4", bg = "#1a1b26", bold = true, italic = false,
 #     underline = false, faint = false, reverse = false }
 # A bare color sets fg only; fields left out keep the theme's value.
-# Values below are the dark theme's.
+# Values below are ansi-dark's.
 # Reader headings, the focused panel border, NORMAL and VIEWS pills.
 # accent = { fg = "4", bold = true }
 # Unfocused panel and card borders.
@@ -340,46 +331,39 @@ reader = true
 list_width = 0
 
 [layout.focus]
-# Draw every pane but the focused one faint, so focus stands out.
-dim = true
+# Pane dimming lives in settings.toml (layout.focus.dim).
 # Give the focused pane the room: the list fits its titles while it has
 # focus, and shrinks to short titles while the reader has it.
 resize = true
 
 [list]
-# Automatically reload the list at this interval (at least 1s).
-# R changes it for the current session only; use durations such as "15s" or "1m".
-refresh_interval = "30s"
+# Auto-update interval lives in settings.toml (list.refresh_interval); R and settings save it.
 # "single": one line per ticket. "multi": title on line one, fields on line two.
 layout = "single"
 # Values shown with the title (the title is always shown), in this order.
 # Built-ins: section, due, assignee, initials (the assignee's, as a badge),
 # project, tags, completed. Any other name is matched to a custom field, for
 # example "Status" or "Branch Name".
+# Projects whose columns were set in the TUI keep their own.
 fields = ["section", "due"]
-# Frame each ticket with lines above and below (neighbours share one); toggle
-# it in settings (s).
-separator = false
-# Group tickets under a header per value of one field, such as "section" or
-# "due"; press b to pick another. Empty: ungrouped.
+# Separators live in settings.toml (list.separator).
+
+[list.default_view]
+# The view a project starts with, until you change its grouping (b), sort
+# (B), or filter (/) there; asanamate then remembers that project's own view.
+filter = "is:open"
 group_by = ""
 
-[list.sort]
-# Sort within each group, or the whole ungrouped list; B picks another.
-# Any list field or "title". Empty: keep Asana order.
+[list.default_view.sort]
 by = ""
-# "asc": earliest dates / A-Z; "desc": latest dates / Z-A. Missing values last.
 direction = "asc"
 
 [list.header]
 # Group headers: "rule" (── Label (n) ───) or "bar" (reversed bar).
 style = "rule"
-# Blank line above and below each group header; toggle it in settings (s).
-spacing = false
+# Header spacing lives in settings.toml (list.header.spacing).
 
-[list.selection]
-# Selected ticket: "marker" (bold title with a left marker) or "bar" (reversed row).
-style = "marker"
+# Selection style lives in settings.toml (list.selection.style).
 
 [list.new]
 # My Tasks tickets changed since you last viewed them carry a NEW badge.
@@ -388,9 +372,7 @@ style = "marker"
 section = false
 
 [reader]
-# Starting view for the reading pane; press v to switch. "cards": sections
-# and boxed comments. "markdown": the rendered ticket Markdown.
-view = "cards"
+# Reading pane view lives in settings.toml (reader.view).
 # Wrap description and comment text in the cards view at this many columns;
 # 0 wraps at the pane width.
 max_text_width = 0

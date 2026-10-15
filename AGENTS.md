@@ -7,21 +7,24 @@ The config is TOML, decoded into the structs in `internal/config/config.go`.
 - **Shape:** before adding a key, judge whether its concept will grow more
   settings. A growing concept gets its own sub-table, even with one key today
   (`[list.header]` holds `style`, `spacing`, `color`). A standalone setting
-  stays a snake_case key in its parent table (`list.group_by`). When unsure,
+  stays a snake_case key in its parent table (`list.layout`). When unsure,
   ask the user.
 - **Every key change touches:** the struct field and its doc comment,
   `Default()`, `validate()` (errors name the dotted key, such as
   `list.header.style`), the template in `internal/setup/setup.go`, the README
-  config table, and the config tests.
+  config table, and the config tests. A key the TUI can change belongs in
+  `config.SettingKeys` and `settings.toml`, never in state; update the
+  settings template and README settings table too.
 - **Released keys are a public contract:** `Load` rejects unknown keys, and
   `asanamate config update` (`Merge` in `internal/setup/update.go`) fails on
   keys the template lacks, so renaming, moving, or removing a released key, or
   narrowing its accepted values, breaks existing configs. Before the first
   release, change keys freely. After it, add keys and values rather than
   changing them, and make a breaking change only with the user's approval.
-- **Approved breaking changes:** teach `Merge` to move the old key to the new
-  one, mark the commit breaking (`feat!:` plus a `BREAKING CHANGE:` footer
-  naming the old and new keys), add the upgrade steps under `## Unreleased` in
+- **Approved breaking changes:** register each change in the ordered config
+  update pipeline so `PendingUpdates` reports it and `Merge` applies it; the
+  TUI startup prompt then covers it. Mark the commit breaking (`feat!:` plus a
+  `BREAKING CHANGE:` footer naming the old and new keys), add the upgrade steps under `## Unreleased` in
   `docs/migrations.md` (it becomes the release notes' opening section; use
   absolute links), and tell the user the next release tag needs a breaking
   version bump (see Version bumps).
@@ -74,7 +77,8 @@ failed. Release a corrected commit under a new patch version.
 
 When a task changes what lives in `~/.config/asanamate` (a config key or
 value, an action key, a new file, or a new layout), finish the task, then ask
-the user whether to migrate their local config to it. On yes:
+the user whether to migrate their local config to it. Files only the app
+writes, such as state, migrate silently on load. On yes:
 
 - Copy each file you will change to a timestamped sibling first, named
   `<file>.yyyy-mm-dd--hh-mm-ss.bak` (`date +%Y-%m-%d--%H-%M-%S`), such as

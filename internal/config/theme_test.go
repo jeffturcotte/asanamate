@@ -1,6 +1,8 @@
 package config
 
 import (
+	"bytes"
+	"github.com/BurntSushi/toml"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,16 +22,16 @@ func writeTheme(t *testing.T, path, name, body string) {
 }
 
 func TestBuiltinThemesLoad(t *testing.T) {
-	for _, name := range []string{"dark", "light"} {
+	for _, name := range []string{"ansi-dark", "ansi-light"} {
 		th, ok := builtinThemes[name]
-		if !ok || th.Base != name || th.Colors.Accent.FG != "4" || len(th.Colors.Authors) != 6 {
+		if !ok || th.Base != strings.TrimPrefix(name, "ansi-") || th.Colors.Accent.FG != "4" || len(th.Colors.Authors) != 6 {
 			t.Errorf("%s = %+v", name, th)
 		}
 	}
-	if builtinThemes["light"].Colors.Working.FG != "6" || builtinThemes["dark"].Colors.Working.FG != "14" {
+	if builtinThemes["ansi-light"].Colors.Working.FG != "6" || builtinThemes["ansi-dark"].Colors.Working.FG != "14" {
 		t.Error("light theme must use a darker working color")
 	}
-	if builtinThemes["dark"].Colors.More.BG != "208" || builtinThemes["light"].Colors.More.BG != "166" {
+	if builtinThemes["ansi-dark"].Colors.More.BG != "208" || builtinThemes["ansi-light"].Colors.More.BG != "166" {
 		t.Error("themes must give the +N more badge a background")
 	}
 }
@@ -58,7 +60,7 @@ func TestStandardThemesLoadFromFiles(t *testing.T) {
 		{"rose-pine", "dark", "#c4a7e7"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			path := writeFile(t, "workspace = \"1\"\n[theme]\nname = \""+tc.name+"\"\n")
+			path := writeThemeConfig(t, "workspace = \"1\"\n[theme]\nname = \""+tc.name+"\"\n")
 			installThemeFixture(t, path, tc.name)
 			cfg, err := Load(path)
 			if err != nil {
@@ -109,7 +111,7 @@ func TestStandardThemesLoadFromFiles(t *testing.T) {
 }
 
 func TestStandardThemesAutoAndOverrides(t *testing.T) {
-	path := writeFile(t, "workspace = \"1\"\n[theme]\nname = \"auto\"\ndark = \"one-dark\"\nlight = \"one-light\"\n[colors]\npinned = \"#123456\"\n")
+	path := writeThemeConfig(t, "workspace = \"1\"\n[theme]\nname = \"auto\"\n[theme.auto]\ndark = \"one-dark\"\nlight = \"one-light\"\n[colors]\npinned = \"#123456\"\n")
 	installThemeFixture(t, path, "one-dark")
 	installThemeFixture(t, path, "one-light")
 	cfg, err := Load(path)
@@ -134,7 +136,7 @@ func TestStandardThemesAutoAndOverrides(t *testing.T) {
 }
 
 func TestStandardThemeEditsTakeEffect(t *testing.T) {
-	path := writeFile(t, "workspace = \"1\"\n[theme]\nname = \"tokyo-night\"\n")
+	path := writeThemeConfig(t, "workspace = \"1\"\n[theme]\nname = \"tokyo-night\"\n")
 	installThemeFixture(t, path, "tokyo-night")
 	writeTheme(t, path, "tokyo-night", "base = \"light\"\n[colors]\naccent = \"#123456\"\n")
 	cfg, err := Load(path)
@@ -151,7 +153,7 @@ func TestStandardThemeEditsTakeEffect(t *testing.T) {
 }
 
 func TestStandardThemeRequiresLocalFile(t *testing.T) {
-	path := writeFile(t, "workspace = \"1\"\n[theme]\nname = \"one-dark\"\n")
+	path := writeThemeConfig(t, "workspace = \"1\"\n[theme]\nname = \"one-dark\"\n")
 	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), `theme.name: no theme "one-dark"`) {
 		t.Fatalf("standard themes must not be embedded: %v", err)
 	}
@@ -170,7 +172,7 @@ func installThemeFixture(t *testing.T, path, name string) {
 }
 
 func TestPaletteLayersAndFallbacks(t *testing.T) {
-	path := writeFile(t, "workspace = \"1\"\n[theme]\nname = \"night\"\n[colors]\naccent = \"#7aa2f7\"\n[colors.mode]\nread = { bg = \"0\" }\n")
+	path := writeThemeConfig(t, "workspace = \"1\"\n[theme]\nname = \"night\"\n[colors]\naccent = \"#7aa2f7\"\n[colors.mode]\nread = { bg = \"0\" }\n")
 	writeTheme(t, path, "night", "base = \"dark\"\n[colors]\nborder = \"#3b4261\"\npinned = { fg = \"#ff9e64\" }\n[colors.markdown]\nlink = { underline = true }\n")
 	cfg, err := Load(path)
 	if err != nil {
@@ -199,7 +201,7 @@ func TestPaletteLayersAndFallbacks(t *testing.T) {
 }
 
 func TestPaletteAutoPicksByBackground(t *testing.T) {
-	cfg := Config{Theme: Theme{Name: ThemeAuto, Dark: "dark", Light: "light"}}
+	cfg := Config{Theme: Theme{Name: ThemeAuto, Auto: AutoThemes{Dark: "ansi-dark", Light: "ansi-light"}}}
 	if cfg.Palette(true).Base != "dark" || cfg.Palette(false).Base != "light" {
 		t.Fatal("auto must follow the background")
 	}
@@ -212,7 +214,7 @@ func TestThemeFileErrors(t *testing.T) {
 	for name, tc := range map[string]struct{ config, theme, want string }{
 		"missing file": {"[theme]\nname = \"nope\"\n", "", `theme.name: no theme "nope"`},
 		"bad name":     {"[theme]\nname = \"Night Owl\"\n", "", "theme.name must be"},
-		"auto as dark": {"[theme]\ndark = \"auto\"\n", "", `theme.dark can't be "auto"`},
+		"auto as dark": {"[theme.auto]\ndark = \"auto\"\n", "", `theme.auto.dark can't be "auto"`},
 		"bad base":     {"[theme]\nname = \"x\"\n", "base = \"blue\"\n", "base must be"},
 		"missing base": {"[theme]\nname = \"x\"\n", "[colors]\naccent = \"1\"\n", "base must be"},
 		"unknown key":  {"[theme]\nname = \"x\"\n", "base = \"dark\"\n[colors]\naccnt = \"1\"\n", "unknown keys"},
@@ -220,7 +222,7 @@ func TestThemeFileErrors(t *testing.T) {
 		"bad author":   {"[theme]\nname = \"x\"\n", "base = \"dark\"\n[colors]\nauthors = [\"1\", \"x\"]\n", "colors.authors[1]"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			path := writeFile(t, "workspace = \"1\"\n"+tc.config)
+			path := writeThemeConfig(t, "workspace = \"1\"\n"+tc.config)
 			if tc.theme != "" {
 				writeTheme(t, path, "x", tc.theme)
 			}
@@ -233,7 +235,7 @@ func TestThemeFileErrors(t *testing.T) {
 }
 
 func TestThemeFileCannotShadowBuiltin(t *testing.T) {
-	path := writeFile(t, "workspace = \"1\"\n")
+	path := writeThemeConfig(t, "workspace = \"1\"\n")
 	writeTheme(t, path, "dark", "base = \"dark\"\n")
 	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), `"dark" is a built-in theme; rename the file`) {
 		t.Fatalf("err = %v", err)
@@ -241,14 +243,14 @@ func TestThemeFileCannotShadowBuiltin(t *testing.T) {
 }
 
 func TestLoadValidatesBothAutoThemes(t *testing.T) {
-	path := writeFile(t, "workspace = \"1\"\n[theme]\nname = \"auto\"\nlight = \"day\"\n")
-	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), `theme.light: no theme "day"`) {
+	path := writeThemeConfig(t, "workspace = \"1\"\n[theme]\nname = \"auto\"\n[theme.auto]\nlight = \"day\"\n")
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), `theme.auto.light: no theme "day"`) {
 		t.Fatalf("err = %v", err)
 	}
 }
 
 func TestConfigColorsAreValidated(t *testing.T) {
-	_, err := Load(writeFile(t, "workspace = \"1\"\n[colors]\nheader = { fg = \"256\" }\n"))
+	_, err := Load(writeThemeConfig(t, "workspace = \"1\"\n[colors]\nheader = { fg = \"256\" }\n"))
 	if err == nil || !strings.Contains(err.Error(), "colors.header") {
 		t.Fatalf("err = %v", err)
 	}
@@ -260,7 +262,7 @@ func TestAdditionalColorRoles(t *testing.T) {
 	if fallback.Branch.FG != fallback.Viewing.FG || fallback.Branch.Bold != nil || fallback.Asana.Orange.FG != fallback.Pinned.FG || fallback.Asana.Red.FG != fallback.Error.FG || len(fallback.TitleTags) != len(fallback.Authors) {
 		t.Fatalf("unexpected fallback roles: %+v", fallback)
 	}
-	cfg, err := Load(writeFile(t, `workspace = "1"
+	cfg, err := Load(writeThemeConfig(t, `workspace = "1"
 [colors]
 branch = "#112233"
 title_tags = ["#445566"]
@@ -286,7 +288,7 @@ blue = "#445566"
 	}
 	cfg.Colors = Colors{}
 	cfg.Theme.Name = "custom"
-	cfg.Themes = map[string]ThemeFile{"custom": {Base: "dark", Colors: theme.Colors.Over(builtinThemes["dark"].Colors)}}
+	cfg.Themes = map[string]ThemeFile{"custom": {Base: "dark", Colors: theme.Colors.Over(builtinThemes["ansi-dark"].Colors)}}
 	colors = cfg.Palette(true).Colors
 	if len(colors.TitleTags) != 0 || colors.TitleTags == nil || colors.Asana.Blue.FG != "#445566" {
 		t.Fatal("theme override or empty tag palette lost")
@@ -296,7 +298,7 @@ blue = "#445566"
 		{"[colors]\ntitle_tags = [\"bad\"]", "colors.title_tags[0]"},
 		{"[colors.asana]\nred = \"bad\"", "colors.asana.red"},
 	} {
-		_, err := Load(writeFile(t, "workspace = \"1\"\n"+tc.body))
+		_, err := Load(writeThemeConfig(t, "workspace = \"1\"\n"+tc.body))
 		if err == nil || !strings.Contains(err.Error(), tc.key) {
 			t.Fatalf("validation for %s: %v", tc.key, err)
 		}
@@ -304,8 +306,8 @@ blue = "#445566"
 }
 
 func TestThemeNamesListsBuiltinsThenFiles(t *testing.T) {
-	path := writeFile(t, "workspace = \"1\"\n")
-	if names, err := ThemeNames(ThemesDir(path)); err != nil || strings.Join(names, ",") != "auto,dark,light" {
+	path := writeThemeConfig(t, "workspace = \"1\"\n")
+	if names, err := ThemeNames(ThemesDir(path)); err != nil || strings.Join(names, ",") != "auto,ansi-dark,ansi-light" {
 		t.Fatalf("missing dir: names = %v, err = %v", names, err)
 	}
 	writeTheme(t, path, "nord", "base = \"dark\"\n")
@@ -317,13 +319,13 @@ func TestThemeNamesListsBuiltinsThenFiles(t *testing.T) {
 		}
 	}
 	names, err := ThemeNames(ThemesDir(path))
-	if err != nil || strings.Join(names, ",") != "auto,dark,light,dracula,nord" {
+	if err != nil || strings.Join(names, ",") != "auto,ansi-dark,ansi-light,dracula,nord" {
 		t.Fatalf("names = %v, err = %v", names, err)
 	}
 }
 
 func TestWithThemeSwitchesTheme(t *testing.T) {
-	path := writeFile(t, "workspace = \"1\"\n[theme]\nname = \"dark\"\n[colors]\nok = \"9\"\n")
+	path := writeThemeConfig(t, "workspace = \"1\"\n[theme]\nname = \"ansi-dark\"\n[colors]\nok = \"9\"\n")
 	writeTheme(t, path, "day", "base = \"light\"\n[colors]\naccent = \"#123456\"\n")
 	cfg, err := Load(path)
 	if err != nil {
@@ -337,10 +339,31 @@ func TestWithThemeSwitchesTheme(t *testing.T) {
 	if day.Theme.Name != "day" || p.Base != "light" || p.Colors.Accent.FG != "#123456" || p.Colors.OK.FG != "9" {
 		t.Fatalf("theme = %+v, palette = %+v", day.Theme, p)
 	}
-	if cfg.Theme.Name != "dark" {
+	if cfg.Theme.Name != "ansi-dark" {
 		t.Fatal("WithTheme changed the original config")
 	}
 	if _, err := cfg.WithTheme(ThemesDir(path), "gone"); err == nil || !strings.Contains(err.Error(), `no theme "gone"`) {
 		t.Fatalf("err = %v", err)
 	}
+}
+
+// writeThemeConfig separates a theme fixture from config-only color overrides.
+func writeThemeConfig(t *testing.T, body string) string {
+	t.Helper()
+	var raw map[string]any
+	if _, err := toml.Decode(body, &raw); err != nil {
+		t.Fatal(err)
+	}
+	theme, hasTheme := raw["theme"]
+	delete(raw, "theme")
+	var configBody, settings bytes.Buffer
+	if err := toml.NewEncoder(&configBody).Encode(raw); err != nil {
+		t.Fatal(err)
+	}
+	if hasTheme {
+		if err := toml.NewEncoder(&settings).Encode(map[string]any{"theme": theme}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return writeSettingsFixture(t, configBody.String(), settings.String())
 }

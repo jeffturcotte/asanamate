@@ -98,8 +98,7 @@ func (m *Model) setTheme(dir, name string) {
 	m.deps.Config = cfg
 	m.setPalette(cfg.Palette(!m.lightBackground))
 	m.renderDetail(true)
-	m.deps.State.Display.Theme = name
-	m.saveDisplay()
+	m.saveSetting("theme.name", name)
 }
 
 // themePreview draws a mock of the TUI in p's colors, without touching the

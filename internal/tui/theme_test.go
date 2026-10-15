@@ -16,7 +16,6 @@ func TestThemePickerPreviewsAndPersists(t *testing.T) {
 	m, st := testModel(t, config.Default())
 	m.loading = false
 	m.width, m.height = 120, 40
-	m.deps.ConfigPath = filepath.Join(t.TempDir(), "config.toml")
 	dir := config.ThemesDir(m.deps.ConfigPath)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
@@ -55,8 +54,8 @@ func TestThemePickerPreviewsAndPersists(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Display.Theme != "day" {
-		t.Fatalf("saved theme = %q", loaded.Display.Theme)
+	if cfg := reloadSettings(t, m); cfg.Theme.Name != "day" || loaded.LegacyDisplay != (state.LegacyDisplay{}) {
+		t.Fatalf("saved theme = %q; legacy state = %+v", cfg.Theme.Name, loaded.LegacyDisplay)
 	}
 }
 

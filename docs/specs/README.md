@@ -24,9 +24,9 @@ can run in parallel, each on its own branch.
 | [09-activity-background-cache](09-activity-background-cache.md) (done) | Scan Activity in the background, cache it on disk, and show a new-event count | none | no |
 | [10-portability-release](10-portability-release.md) (done, Homebrew pending) | Released as v0.2.0. **Homebrew is still to do** (plan Task 6); see the [implementation plan](10-portability-release-plan.md) | current main baseline | no |
 | [11-feed-panel](11-feed-panel.md) (done) | Feed panel under the list, fed by Asana, agents, local git, and a generic feed protocol | none | no |
-| [12-startup-config-migration](12-startup-config-migration.md) | The TUI offers `config update` at startup when the config uses moved settings | none | no |
-| [13-settings-file](13-settings-file.md) | Settings the TUI changes move from `config.toml` and state into `settings.toml`; `[theme.auto]` and `ansi-dark`/`ansi-light` | 12 | yes |
-| [14-default-view](14-default-view.md) | `default_filter`, `list.group_by`, and `list.sort` move to `[list.default_view]` | 12, after 13 | yes |
+| [12-startup-config-migration](12-startup-config-migration.md) (done) | The TUI offers `config update` at startup when the config uses moved settings | none | no |
+| [13-settings-file](13-settings-file.md) (done) | Settings the TUI changes move from `config.toml` and state into `settings.toml`; `[theme.auto]` and `ansi-dark`/`ansi-light` | 12 | yes |
+| [14-default-view](14-default-view.md) (done) | `default_filter`, `list.group_by`, and `list.sort` move to `[list.default_view]` | 12, after 13 | yes |
 | [15-remove-deprecated](15-remove-deprecated.md) | Remove the hidden `hook` subcommand and `--no-preview` | none | yes |
 
 Specs 12 to 15 ship together as v0.3.0. Tag the release only after all four

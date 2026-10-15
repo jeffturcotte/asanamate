@@ -14,13 +14,17 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// ThemeAuto picks Theme.Dark or Theme.Light from the terminal background.
+// ThemeAuto picks Theme.Auto.Dark or Theme.Auto.Light from the terminal background.
 const ThemeAuto = "auto"
 
-// Theme selects the color theme: a built-in ("dark", "light"), a file in
-// ThemesDir, or ThemeAuto. Dark and Light are the themes ThemeAuto uses.
+// Theme selects a built-in, a file in ThemesDir, or ThemeAuto.
 type Theme struct {
-	Name  string `toml:"name"`
+	Name string     `toml:"name"`
+	Auto AutoThemes `toml:"auto"`
+}
+
+// AutoThemes selects themes for dark and light terminal backgrounds.
+type AutoThemes struct {
 	Dark  string `toml:"dark"`
 	Light string `toml:"light"`
 }
@@ -87,7 +91,7 @@ type MarkdownColors struct {
 }
 
 // ThemeFile is a theme: the dark or light base it starts from and its colors.
-// Only the root dark and light themes omit Base; their name is their base.
+// Only the built-in ansi-dark and ansi-light themes omit Base.
 type ThemeFile struct {
 	Base   string `toml:"base"`
 	Colors Colors `toml:"colors"`
@@ -101,7 +105,7 @@ type Palette struct {
 	Colors Colors
 }
 
-//go:embed themes/dark.toml themes/light.toml
+//go:embed themes/ansi-dark.toml themes/ansi-light.toml
 var builtinThemeFiles embed.FS
 
 // builtinThemes are the embedded themes, by name.
@@ -111,7 +115,7 @@ var themeName = regexp.MustCompile(`^[a-z0-9_-]+$`)
 
 func mustBuiltinThemes() map[string]ThemeFile {
 	themes := map[string]ThemeFile{}
-	for _, name := range []string{"dark", "light"} {
+	for _, name := range []string{"ansi-dark", "ansi-light"} {
 		path := "themes/" + name + ".toml"
 		data, err := builtinThemeFiles.ReadFile(path)
 		if err != nil {
@@ -121,7 +125,7 @@ func mustBuiltinThemes() map[string]ThemeFile {
 		if err != nil {
 			panic(err)
 		}
-		t.Base = name
+		t.Base = strings.TrimPrefix(name, "ansi-")
 		themes[name] = t
 	}
 	return themes
@@ -151,7 +155,7 @@ func ThemesDir(configPath string) string {
 // loadThemes reads every theme file t names from dir, layered over its base.
 // It also refuses files that would shadow a built-in theme.
 func loadThemes(dir string, t Theme) (map[string]ThemeFile, error) {
-	for _, reserved := range []string{"dark", "light", ThemeAuto} {
+	for _, reserved := range []string{"dark", "light", "ansi-dark", "ansi-light", ThemeAuto} {
 		path := filepath.Join(dir, reserved+".toml")
 		if _, err := os.Stat(path); err == nil {
 			return nil, fmt.Errorf("%s: %q is a built-in theme; rename the file", path, reserved)
@@ -159,9 +163,11 @@ func loadThemes(dir string, t Theme) (map[string]ThemeFile, error) {
 	}
 	// nil when only built-ins are used, so Load's result equals Default's.
 	var themes map[string]ThemeFile
-	for _, ref := range []struct{ key, name string }{{"theme.name", t.Name}, {"theme.dark", t.Dark}, {"theme.light", t.Light}} {
+	for _, ref := range []struct{ key, name string }{{"theme.name", t.Name}, {"theme.auto.dark", t.Auto.Dark}, {"theme.auto.light", t.Auto.Light}} {
 		switch {
-		case ref.name == "dark", ref.name == "light", ref.name == ThemeAuto && ref.key == "theme.name":
+		case ref.name == "dark", ref.name == "light":
+			return nil, fmt.Errorf("%s: %q is now %q", ref.key, ref.name, "ansi-"+ref.name)
+		case ref.name == "ansi-dark", ref.name == "ansi-light", ref.name == ThemeAuto && ref.key == "theme.name":
 			continue
 		case ref.name == ThemeAuto:
 			return nil, fmt.Errorf("%s can't be %q", ref.key, ThemeAuto)
@@ -186,7 +192,7 @@ func loadThemes(dir string, t Theme) (map[string]ThemeFile, error) {
 		if err := oneOf("base", file.Base, "dark", "light"); err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
-		file.Colors = file.Colors.Over(builtinThemes[file.Base].Colors)
+		file.Colors = file.Colors.Over(builtinThemes["ansi-"+file.Base].Colors)
 		if themes == nil {
 			themes = map[string]ThemeFile{}
 		}
@@ -198,14 +204,14 @@ func loadThemes(dir string, t Theme) (map[string]ThemeFile, error) {
 // ThemeNames lists ThemeAuto, the built-in themes, then the theme files in
 // dir by name. A missing dir lists no files.
 func ThemeNames(dir string) ([]string, error) {
-	names := []string{ThemeAuto, "dark", "light"}
+	names := []string{ThemeAuto, "ansi-dark", "ansi-light"}
 	entries, err := os.ReadDir(dir)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
 	for _, e := range entries {
 		name, ok := strings.CutSuffix(e.Name(), ".toml")
-		if ok && !e.IsDir() && themeName.MatchString(name) && name != "dark" && name != "light" {
+		if ok && !e.IsDir() && themeName.MatchString(name) && name != "dark" && name != "light" && name != "ansi-dark" && name != "ansi-light" && name != ThemeAuto {
 			names = append(names, name)
 		}
 	}
@@ -225,15 +231,15 @@ func (c Config) WithTheme(dir, name string) (Config, error) {
 	return c, nil
 }
 
-// Palette resolves the active theme. darkBackground picks Theme.Dark or
-// Theme.Light when the theme is ThemeAuto. Names Load has not read fall back
+// Palette resolves the active theme. darkBackground picks Theme.Auto.Dark or
+// Theme.Auto.Light when the theme is ThemeAuto. Names Load has not read fall back
 // to the built-in dark theme, so a zero Config still has colors.
 func (c Config) Palette(darkBackground bool) Palette {
 	name := cmp.Or(c.Theme.Name, ThemeAuto)
 	if name == ThemeAuto {
-		name = cmp.Or(c.Theme.Light, "light")
+		name = cmp.Or(c.Theme.Auto.Light, "ansi-light")
 		if darkBackground {
-			name = cmp.Or(c.Theme.Dark, "dark")
+			name = cmp.Or(c.Theme.Auto.Dark, "ansi-dark")
 		}
 	}
 	t, ok := c.Themes[name]
@@ -241,7 +247,7 @@ func (c Config) Palette(darkBackground bool) Palette {
 		t, ok = builtinThemes[name]
 	}
 	if !ok {
-		t = builtinThemes["dark"]
+		t = builtinThemes["ansi-dark"]
 	}
 	colors := c.Colors.Over(t.Colors)
 	colors.Header = colors.Header.Over(colors.Accent)
