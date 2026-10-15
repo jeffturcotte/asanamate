@@ -189,6 +189,12 @@ func (m *Model) distant(i int) bool {
 	if label, _ := m.retainedSection(i); label != "" || !isDue(m.groupBy) {
 		return false
 	}
+	// A project switch restores the destination's grouping while the source
+	// project's rows remain visible during loading. Those stale rows may not
+	// have group labels for the restored grouping yet.
+	if i < 0 || i >= len(m.groups) {
+		return false
+	}
 	return m.groups[i] == dueLater || m.groups[i] == dueNone
 }
 
