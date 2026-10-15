@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"cmp"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/sadmachine/asanamate/internal/config"
@@ -45,6 +47,10 @@ func (m *Model) openSettings(cursor int) {
 			m.fitList()
 		})},
 		{Label: "Dim unfocused panes", Hint: onOff(m.focusDim), Key: "d", Value: toggle(5, func() { m.focusDim = !m.focusDim })},
+		{Label: "Theme", Hint: cmp.Or(m.deps.Config.Theme.Name, config.ThemeAuto), Key: "t", Value: func() tea.Cmd {
+			m.modal = nil
+			return m.openThemes()
+		}},
 	}
 	items = append(items, pickItem{Label: "Build / edit actions", Key: "a", Value: func() tea.Cmd { m.modal = nil; m.openActionBuilder(); return nil }})
 	items = append(items, pickItem{Label: "List columns for this project", Key: "c", Value: m.openColumns})
@@ -64,6 +70,7 @@ func (m *Model) saveDisplay() {
 		ReaderView:      m.readerView,
 		RefreshInterval: shortDuration(m.refreshInterval),
 		FocusDim:        &focusDim,
+		Theme:           m.deps.State.Display.Theme,
 	}
 	if err := m.deps.State.Save(); err != nil {
 		m.status = "saving settings: " + err.Error()

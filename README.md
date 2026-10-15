@@ -296,7 +296,7 @@ key press.
 | `V` | recall or manage saved views |
 | `]` / `[` | apply the next/previous saved view, in name order |
 | `ctrl+s` | save the current filter, grouping, and sorting under a name |
-| `s` | settings: separators, header spacing, reader view, auto-update interval, selection style, dim unfocused panes, and project list columns; changes persist between sessions |
+| `s` | settings: separators, header spacing, reader view, auto-update interval, selection style, dim unfocused panes, theme, and project list columns; changes persist between sessions |
 | `o` | open the ticket in the browser |
 | `y` | copy the selected ticket's link to the clipboard (requires terminal OSC 52 support) |
 | `Y` | copy the targeted comment as Markdown in the cards reader (requires terminal OSC 52 support); does nothing on other targets |
@@ -582,7 +582,7 @@ once. Run `asanamate doctor` to check a change without starting the TUI.
 | Key | Default | Meaning |
 |---|---|---|
 | `workspace` | set by setup | Asana workspace gid |
-| `theme.name` | `"auto"` | color theme: `auto` (follow the terminal background), a built-in preset, or a file in `themes/`; see [Themes](#themes) |
+| `theme.name` | `"auto"` | color theme: `auto` (follow the terminal background), a built-in preset, or a file in `themes/`; the `s` settings menu overrides it and the override persists. See [Themes](#themes) |
 | `theme.dark` / `theme.light` | `"dark"` / `"light"` | themes `auto` uses on dark and light backgrounds |
 | `colors.*` | the theme's | per-role overrides on top of the theme: a color (`0`–`255`, `#rgb`, or `#rrggbb`) or a style table `{ fg, bg, bold, italic, underline, faint, reverse }`; see [Themes](#themes) |
 | `default_filter` | `"is:open"` | filter applied at startup |
@@ -721,6 +721,11 @@ and keeps existing files, including any edits you made:
 corresponding [upstream Sonokai styles](https://github.com/sainnhe/sonokai).
 For example, set `name = "sonokai-espresso"` in `[theme]` for Espresso.
 Sonokai's MIT license ships alongside the theme files as `LICENSE.sonokai`.
+
+To try themes without restarting, open settings with `s` and press `t`. The
+theme picker lists every built-in theme and file in `themes/` beside a preview
+of the highlighted one; `enter` applies it at once and keeps it for later
+sessions, over `theme.name`.
 
 For a fixed preset, set `name = "tokyo-night"` in `[theme]`. To switch with
 the terminal background:

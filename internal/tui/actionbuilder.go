@@ -26,14 +26,10 @@ type actionBuilder struct {
 }
 
 func (m *Model) openActionBuilder() {
-	path := m.deps.ConfigPath
-	if path == "" {
-		var err error
-		path, err = config.Path()
-		if err != nil {
-			m.status = err.Error()
-			return
-		}
+	path, err := m.configPath()
+	if err != nil {
+		m.status = err.Error()
+		return
 	}
 	dir := config.ActionsDir(path)
 	files, err := config.LoadActionFiles(dir)

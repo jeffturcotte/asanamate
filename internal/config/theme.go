@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -192,6 +193,36 @@ func loadThemes(dir string, t Theme) (map[string]ThemeFile, error) {
 		themes[ref.name] = file
 	}
 	return themes, nil
+}
+
+// ThemeNames lists ThemeAuto, the built-in themes, then the theme files in
+// dir by name. A missing dir lists no files.
+func ThemeNames(dir string) ([]string, error) {
+	names := []string{ThemeAuto, "dark", "light"}
+	entries, err := os.ReadDir(dir)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	for _, e := range entries {
+		name, ok := strings.CutSuffix(e.Name(), ".toml")
+		if ok && !e.IsDir() && themeName.MatchString(name) && name != "dark" && name != "light" {
+			names = append(names, name)
+		}
+	}
+	return names, nil
+}
+
+// WithTheme returns c with Theme.Name set to name and its theme file read
+// from dir, to switch themes without reloading the config.
+func (c Config) WithTheme(dir, name string) (Config, error) {
+	t := c.Theme
+	t.Name = name
+	themes, err := loadThemes(dir, t)
+	if err != nil {
+		return c, err
+	}
+	c.Theme, c.Themes = t, themes
+	return c, nil
 }
 
 // Palette resolves the active theme. darkBackground picks Theme.Dark or
