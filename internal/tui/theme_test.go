@@ -59,3 +59,29 @@ func TestThemePickerPreviewsAndPersists(t *testing.T) {
 		t.Fatalf("saved theme = %q", loaded.Display.Theme)
 	}
 }
+
+func TestThemePreviewFitsItsSpace(t *testing.T) {
+	p := config.Config{}.Palette(true)
+	for _, tc := range []struct {
+		width, height int
+		full          bool
+	}{{30, 13, false}, {79, 30, false}, {80, 21, false}, {80, 22, true}, {106, 40, true}} {
+		view := themePreview(p, tc.width, tc.height)
+		lines := strings.Split(view, "\n")
+		if len(lines) > tc.height {
+			t.Errorf("%dx%d: %d lines", tc.width, tc.height, len(lines))
+		}
+		for _, line := range lines {
+			if w := ansi.StringWidth(line); w > tc.width {
+				t.Errorf("%dx%d: line %d wide: %q", tc.width, tc.height, w, ansi.Strip(line))
+			}
+		}
+		plain := ansi.Strip(view)
+		if full := strings.Contains(plain, "Ticket ") && strings.Contains(plain, "enter act"); full != tc.full {
+			t.Errorf("%dx%d: full = %v, want %v:\n%s", tc.width, tc.height, full, tc.full, plain)
+		}
+		if !strings.Contains(plain, "Tickets") || !strings.Contains(plain, "FILTER") {
+			t.Errorf("%dx%d: missing ticket list or pills:\n%s", tc.width, tc.height, plain)
+		}
+	}
+}

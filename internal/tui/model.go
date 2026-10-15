@@ -1096,6 +1096,9 @@ func (m *Model) body() string {
 	case m.form != nil:
 		content = m.form.view(w, mh, m.accentStyle)
 	case m.modal != nil:
+		if m.modal.preview != nil {
+			w = max(min(m.width-4, 140), 10)
+		}
 		content = m.modal.view(w, mh, m.accentStyle)
 	case m.composer != nil:
 		content = "Loading task details…\n" + hintLine(m.accentStyle, [2]string{keyLabel("picker", "cancel"), "cancel"})
