@@ -270,12 +270,13 @@ func (p *picker) view(width, height int, accent lipgloss.Style) string {
 	if p.preview == nil || width < minPreviewWidth {
 		return p.listView(width, height, accent)
 	}
-	paneW := width / 2
+	listW := max(min(width*2/5, 32), 24)
+	paneW := width - listW - 2
 	var it *pickItem
 	if p.cursor < len(p.matches) {
 		it = &p.items[p.matches[p.cursor]]
 	}
-	list := p.listView(width-paneW-2, height, accent)
+	list := p.listView(listW, height, accent)
 	return lipgloss.JoinHorizontal(lipgloss.Top, list, "  ", p.preview(it, paneW, height))
 }
 
