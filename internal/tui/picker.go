@@ -53,6 +53,7 @@ type picker struct {
 	links      bool // choose opens the item's link; copy returns a copy result
 	checked    map[int]bool
 	err        string
+	extraHints [][2]string // controls handled by the picker's owner
 }
 
 // newPicker returns a picker that calls onPick with the choice.
@@ -358,6 +359,7 @@ func (p *picker) controls(accent lipgloss.Style) string {
 	if p.allowReset {
 		hints = append(hints, [2]string{"ctrl+r", "defaults"})
 	}
+	hints = append(hints, p.extraHints...)
 	cancel := "cancel"
 	if p.searching && !p.keySelect {
 		cancel = "clear search"

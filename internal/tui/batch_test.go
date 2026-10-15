@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/sadmachine/asanamate/internal/asana"
+	"github.com/sadmachine/asanamate/internal/keymap"
 	"github.com/sadmachine/asanamate/internal/writeback"
 )
 
@@ -69,6 +70,39 @@ func TestBatchStagesAllDetailsAndSubmitsWithoutComment(t *testing.T) {
 	send(m, ctrlS)
 	if m.composer != nil || len(*writes) != 2 || !strings.Contains((*writes)[0], `"due_on":"2026-10-20"`) || !strings.Contains((*writes)[1], `"completed":true`) {
 		t.Fatalf("writes = %v, composer = %+v", *writes, m.composer)
+	}
+}
+
+func TestBatchSubmitHotkeyAppearsInFooterWithoutSubmitRow(t *testing.T) {
+	for _, submit := range []string{"ctrl+s", "ctrl+g"} {
+		t.Run(submit, func(t *testing.T) {
+			m, writes := editModel(t)
+			var err error
+			keys, err = keymap.Resolve(map[string]map[string][]string{"input": {"submit": {submit}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			press(m, "e", "m")
+			for _, item := range m.modal.items {
+				if item.Label == "Submit all changes" {
+					t.Fatal("submit still appears as an editable row")
+				}
+			}
+			view := ansi.Strip(m.modal.view(160, 20, m.accentStyle))
+			footer := view[strings.LastIndex(view, "\n")+1:]
+			if !strings.Contains(footer, submit+" submit all changes") {
+				t.Fatalf("footer lacks submit hotkey: %q", footer)
+			}
+			if submit != "ctrl+s" && strings.Contains(footer, "ctrl+s") {
+				t.Fatalf("footer shows the old submit hotkey: %q", footer)
+			}
+			chooseBatch(t, m, "Completed")
+			// Keep another detail selected: submission must not require a submit row.
+			press(m, submit)
+			if m.composer != nil || len(*writes) != 1 || !strings.Contains((*writes)[0], `"completed":true`) {
+				t.Fatalf("submit hotkey did not save the draft: composer = %v, writes = %v", m.composer, *writes)
+			}
+		})
 	}
 }
 

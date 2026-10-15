@@ -110,7 +110,7 @@ func (m *Model) openBatchReview() {
 			value = "(empty)"
 		}
 		items = append(items, pickItem{Label: ticket.OneLine(label), Hint: ticket.OneLine(value), Value: edit,
-			Help: "Edits stay here until Submit all changes or Ctrl+S. * marks a pending change."})
+			Help: "Edits stay here until submitted. * marks a pending change."})
 	}
 	assignee := "(unassigned)"
 	if t.Assignee != nil {
@@ -175,8 +175,8 @@ func (m *Model) openBatchReview() {
 		c.box.area.Focus()
 		return nil
 	}})
-	items = append(items, pickItem{Label: "Submit all changes", Value: m.postComment})
 	p := newPicker(pickValue(func(run func() tea.Cmd) tea.Cmd { return run() }), "Edit multiple: "+ticket.OneLine(t.Name), items)
+	p.extraHints = [][2]string{{keyLabel("input", "submit"), "submit all changes"}}
 	p.stopSearch()
 	p.err = c.box.err
 	if p.err == "" && c.uncertain {
