@@ -11,6 +11,9 @@ import (
 
 func TestBatchValidatesAllChangesBeforeWriting(t *testing.T) {
 	for _, invalid := range []Change{
+		{Kind: "title", Value: ""},
+		{Kind: "title", Value: "two\nlines"},
+		{Kind: "description", Value: "![](local.png)"},
 		{Kind: "field", Target: "f2", Value: "not a number"},
 		{Kind: "field", Target: "f2", Value: "NaN"},
 		{Kind: "move", Project: "p1", Value: "missing"},

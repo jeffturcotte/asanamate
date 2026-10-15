@@ -14,13 +14,15 @@ and coding agents can do what you can. macOS and Linux only.
 - **Read** a ticket's fields, description, subtasks, comments, reactions, and
   attachments, with images inline in kitty-graphics terminals. See
   [Layout](#layout).
-- **Edit** a ticket: comment (with images), move it to a section, assign or
+- **Edit** a ticket: change its title or description, comment (with images),
+  move it to a section, assign or
   unassign it, set its due date or a custom field, add or remove projects, and
   mark it complete or reopen it. Edit your comments or react with an emoji. See
   [Keys](#keys).
 - **Create** a ticket in a project or My Tasks, or a subtask. See
   [Keys](#keys).
-- **Script** every edit and create from the CLI: `asanamate comment`, `edit-comment`, `move`,
+- **Script** every edit and create from the CLI: `asanamate title`, `description`,
+  `comment`, `edit-comment`, `move`,
   `field`, `assign`, `due`, `project`, `complete`, `react`, and `create`. See
   [Writing back to Asana](#writing-back-to-asana).
 - **Act** on a ticket: run your own commands with the ticket as context, such
@@ -46,8 +48,7 @@ and coding agents can do what you can. macOS and Linux only.
 [feeds](docs/extensions.md#feeds).
 [docs/extensions.md](docs/extensions.md) documents each protocol.
 
-**Left to Asana.** asanamate does not rename or delete tickets, change a
-description after creating a ticket, edit or delete comments, set tags,
+**Left to Asana.** asanamate does not delete tickets or comments, set tags,
 followers, or dependencies, or create or change projects and sections.
 
 **Early release.** asanamate is pre-1.0: expect breaking changes, including to
@@ -277,7 +278,7 @@ key press.
 | `space`, `a` | run an action on the selected ticket |
 | `A` | create or edit action files (also available in Settings) |
 | `P` | pin / unpin the selected ticket; pins persist locally per project or My Tasks, above filtered tickets |
-| `e` | edit the selected ticket: add a comment, move it to a section (of a project, or of My Tasks when it is yours), add or remove a project, set a custom field (text, number, date, single- or multi-select, people), assign it, mark it complete or reopen it, or set its branch (saved locally, overrides `branch_field`; empty removes it) |
+| `e` | edit the selected ticket: change its title or description, add a comment, move it to a section (of a project, or of My Tasks when it is yours), add or remove a project, set a custom field (text, number, date, single- or multi-select, people), assign it, mark it complete or reopen it, or set its branch (saved locally, overrides `branch_field`; empty removes it) |
 | `c` | add a comment to the selected ticket, from the list or the reader; in the comment box, `alt+v` pastes a clipboard image (see [Writing back to Asana](#writing-back-to-asana)) |
 | `d` / `m` / `@` | set the due date / move to a section / assign, skipping the `e` menu |
 | `x` | mark the selected ticket complete, or reopen it when it is complete; a ticket the filter now hides stays in Viewing until you move away, so `x` again undoes it |
@@ -1238,6 +1239,8 @@ steer the agent. Be careful combining this with auto-approved tools.
 
 ```sh
 asanamate comment [--yes] <gid> "Opened PR https://..."   # "-" reads stdin
+asanamate title [--yes] <gid> "New title"
+asanamate description [--yes] <gid> "**Updated details**" # "-" reads stdin; "" clears
 asanamate batch [--yes] <gid> '[{"kind":"assign","value":"Ann Lee"},{"kind":"due","value":"2026-10-01"}]'
 asanamate edit-comment [--yes] <comment-gid> "Updated text" # "-" reads stdin
 asanamate move    [--yes] [--project <gid>] <gid> "In Review"
@@ -1256,13 +1259,28 @@ asanamate create  [--yes] [--project <gid> [--section "To Do"] | --parent <gid>]
 The TUI's edits run the same code, so each one is also a command here.
 
 `asanamate batch` takes a JSON array, or `-` to read it from stdin. Each change
-has `kind` and `value`. Kinds are `assign`, `due`, `complete` (`"true"` or
+has `kind` and `value`. Kinds are `title`, `description` (Markdown), `assign`,
+`due`, `complete` (`"true"` or
 `"false"`), `field` (`target` names the field), `move` (`project` selects the
 project, or `"my_tasks"`), `project_add`, and `project_remove` (`target` is the
-project gid). Empty values clear assignee, due date, or a custom field. Every
+project gid). Empty values clear description, assignee, due date, or a custom field. Every
 change is validated before the first write, with one confirmation for the batch.
 Writes run in array order and stop on failure; the error reports how many saved.
 Retry only the remaining changes. Comments use `asanamate comment` separately.
+
+To edit a ticket's title or description in the TUI, press `e`, then `t` for
+**Edit title** or `n` for **Edit description**. Both start with the current
+value; `ctrl+s` saves and `esc` cancels. Titles must be nonempty and one line.
+Descriptions accept Markdown; submitting an empty description clears it.
+Use `ctrl+e` to open the text in `$VISUAL` or `$EDITOR`. Unchanged text is not
+written. Both fields are also available under **Edit multiple**.
+
+Description edits preserve existing mentions and inline images through
+`[name](asana:<gid>)` and `![](asana:<gid>)` links in the editor. Keep these
+links to retain their Asana identity. New `@Full Name` mentions work like
+comments. Description edits do not upload local images; use ordinary links
+for new images. The CLI commands replace the entire title or description,
+with `-` reading a description from stdin and `""` clearing it.
 
 To edit a comment in the TUI, select it in the reader, press `enter`, then
 `e` for **Edit**. If the comment preview is clipped, the first `enter` expands

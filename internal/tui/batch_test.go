@@ -27,6 +27,36 @@ func chooseBatch(t *testing.T, m *Model, label string) {
 	t.Fatalf("batch row %q not found", label)
 }
 
+func TestBatchStagesTitleAndDescription(t *testing.T) {
+	m, writes := editModel(t)
+	press(m, "e", "m")
+	chooseBatch(t, m, "Title")
+	m.input.area.SetValue("New title")
+	send(m, ctrlS)
+	chooseBatch(t, m, "Title")
+	if m.input.area.Value() != "New title" {
+		t.Fatal("staged title was lost")
+	}
+	m.input.area.SetValue("Fix")
+	send(m, ctrlS)
+	if len(m.composer.changes) != 0 {
+		t.Fatal("returning to original title left a change")
+	}
+	chooseBatch(t, m, "Title")
+	m.input.area.SetValue("New title")
+	send(m, ctrlS)
+	chooseBatch(t, m, "Description")
+	m.input.area.SetValue("**Details**")
+	send(m, ctrlS)
+	if len(*writes) != 0 || len(m.composer.changes) != 2 {
+		t.Fatalf("wrote before submission: %v", *writes)
+	}
+	send(m, ctrlS)
+	if m.composer != nil || len(*writes) != 2 || !strings.Contains((*writes)[0], `"name":"New title"`) || !strings.Contains((*writes)[1], `"html_notes":"\u003cbody\u003e\u003cstrong\u003eDetails\u003c/strong\u003e\u003c/body\u003e"`) {
+		t.Fatalf("writes = %v", *writes)
+	}
+}
+
 func TestCommentCombinesAssignmentSectionAndText(t *testing.T) {
 	m, writes := editModel(t)
 	m.viewProject = &asana.Ref{GID: "p1"}

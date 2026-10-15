@@ -409,6 +409,54 @@ func (s Service) confirmTask(ctx context.Context, gid, question string, args ...
 	return s.confirm(fmt.Sprintf(question, append([]any{t.Name}, args...)...))
 }
 
+func validateTitle(title string) error {
+	if title == "" {
+		return errors.New("title is empty")
+	}
+	if strings.ContainsAny(title, "\r\n") {
+		return errors.New("title must be one line")
+	}
+	return nil
+}
+
+// SetTitle replaces the task's title with a nonempty, single-line title.
+func (s Service) SetTitle(ctx context.Context, gid, title string) error {
+	title = strings.TrimSpace(title)
+	if err := validateTitle(title); err != nil {
+		return err
+	}
+	if err := s.confirmTask(ctx, gid, "Rename %q to %q?", title); err != nil {
+		return err
+	}
+	return s.Client.SetName(ctx, gid, title)
+}
+
+// SetDescription replaces the task's description with Markdown; empty clears it.
+// Existing Asana references are preserved. Local image uploads are not supported.
+func (s Service) SetDescription(ctx context.Context, gid, text string) error {
+	text = strings.TrimSpace(text)
+	html, err := s.descriptionHTML(ctx, text)
+	if err != nil {
+		return err
+	}
+	if err := s.confirmTask(ctx, gid, "Replace the description of %q?\n%s\n", text); err != nil {
+		return err
+	}
+	return s.Client.SetHTMLNotes(ctx, gid, html)
+}
+
+func (s Service) descriptionHTML(ctx context.Context, text string) (string, error) {
+	if len(LocalImages(text)) > 0 {
+		return "", errors.New("description image uploads are not supported; keep existing asana:<gid> images or use links")
+	}
+	users, err := s.mentionable(ctx, text)
+	if err != nil {
+		return "", err
+	}
+	html, _ := CommentHTML(text, users, nil)
+	return html, nil
+}
+
 // Assign assigns the task to a workspace user, by full name or gid, or to
 // "me", the token's owner. An empty user unassigns it.
 func (s Service) Assign(ctx context.Context, gid, user string) error {
@@ -526,11 +574,10 @@ type NewTicket struct {
 // unless Assignee names someone else.
 func (s Service) Create(ctx context.Context, nt NewTicket) (asana.Task, error) {
 	task := asana.NewTask{Name: strings.TrimSpace(nt.Name), Project: nt.Project, DueOn: strings.TrimSpace(nt.Due)}
+	if err := validateTitle(task.Name); err != nil {
+		return asana.Task{}, err
+	}
 	switch {
-	case task.Name == "":
-		return asana.Task{}, errors.New("title is empty")
-	case strings.ContainsAny(task.Name, "\r\n"):
-		return asana.Task{}, errors.New("title must be one line")
 	case nt.Parent != "" && nt.Project != "":
 		return asana.Task{}, errors.New("a subtask goes under its parent; pass a parent or a project, not both")
 	case nt.Section != "" && nt.Project == "":

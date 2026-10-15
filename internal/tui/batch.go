@@ -123,6 +123,8 @@ func (m *Model) openBatchReview() {
 	}
 	add("Due date", due, writeback.Change{Kind: "due"}, func() tea.Cmd { return m.beginDraftEdit(editDue) })
 	add("Completed", strconv.FormatBool(t.Completed), writeback.Change{Kind: "complete"}, func() tea.Cmd { return m.beginDraftEdit(editComplete) })
+	add("Title", t.Name, writeback.Change{Kind: "title"}, func() tea.Cmd { return m.beginDraftEdit(editTitle) })
+	add("Description", ticket.Ticket{Task: t}.DescriptionMarkdown(), writeback.Change{Kind: "description"}, func() tea.Cmd { return m.beginDraftEdit(editDescription) })
 	for _, project := range m.sectionTargets(t) {
 		gid := project.GID
 		value := t.SectionIn(gid)
@@ -304,6 +306,10 @@ func (m *Model) applyDraftChanges(changes []writeback.Change) {
 	for _, change := range changes {
 		label := c.labels[changeKey(change)]
 		switch change.Kind {
+		case "title":
+			t.Name = change.Value
+		case "description":
+			t.HTMLNotes, _ = writeback.CommentHTML(change.Value, m.users, nil)
 		case "assign":
 			t.Assignee = nil
 			if change.Value != "" {

@@ -18,6 +18,48 @@ import (
 
 var ctrlS = tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl}
 
+func TestTextEditCancelUnchangedAndInvalid(t *testing.T) {
+	for _, shortcut := range []string{"t", "n"} {
+		m, writes := editModel(t)
+		press(m, "e", shortcut)
+		send(m, ctrlS)
+		if m.input != nil || len(*writes) != 0 {
+			t.Fatalf("unchanged %s wrote or left input open: %v", shortcut, *writes)
+		}
+		press(m, "e", shortcut)
+		m.input.area.SetValue("Changed")
+		press(m, "esc")
+		if m.input != nil || len(*writes) != 0 {
+			t.Fatalf("cancelled %s wrote or left input open: %v", shortcut, *writes)
+		}
+	}
+	for _, value := range []string{"", "two\nlines"} {
+		m, writes := editModel(t)
+		press(m, "e", "t")
+		m.input.area.SetValue(value)
+		send(m, ctrlS)
+		if m.input == nil || m.input.err == "" || len(*writes) != 0 {
+			t.Fatalf("invalid title closed input or wrote: %v", *writes)
+		}
+	}
+}
+
+func TestDescriptionEditKeepsLongText(t *testing.T) {
+	m, writes := editModel(t)
+	text := strings.Repeat("line\n", 200)
+	tk := m.details["1"]
+	tk.HTMLNotes = "<body>" + text + "</body>"
+	m.details["1"] = tk
+	press(m, "e", "n")
+	if m.input == nil || m.input.area.Value() != tk.DescriptionMarkdown() || strings.Count(m.input.area.Value(), "line") != 200 {
+		t.Fatal("description was truncated")
+	}
+	send(m, ctrlS)
+	if len(*writes) != 0 {
+		t.Fatal("unchanged rich text was rewritten")
+	}
+}
+
 // editModel is a model on one ticket of yours, backed by a fake Asana that
 // records every write as "METHOD path body".
 func editModel(t *testing.T) (*Model, *[]string) {
@@ -116,6 +158,33 @@ func TestEditWrites(t *testing.T) {
 		do   func(m *Model)
 		want string
 	}{
+		{"title", func(m *Model) {
+			press(m, "e", "t")
+			if m.input == nil || m.input.area.Value() != "Fix" || !m.input.oneLine {
+				t.Fatal("title editor did not prefill the title")
+			}
+			m.input.area.SetValue("New title")
+			send(m, ctrlS)
+		}, `PUT /tasks/1 {"data":{"name":"New title"}}`},
+		{"description", func(m *Model) {
+			tk := m.details["1"]
+			tk.HTMLNotes = "<body><strong>Before</strong></body>"
+			m.details["1"] = tk
+			press(m, "e", "n")
+			if m.input == nil || m.input.area.Value() != "**Before**" {
+				t.Fatal("description editor did not prefill Markdown")
+			}
+			m.input.area.SetValue("**After**")
+			send(m, ctrlS)
+		}, `PUT /tasks/1 {"data":{"html_notes":"\u003cbody\u003e\u003cstrong\u003eAfter\u003c/strong\u003e\u003c/body\u003e"}}`},
+		{"clear description", func(m *Model) {
+			tk := m.details["1"]
+			tk.HTMLNotes = "<body>Before</body>"
+			m.details["1"] = tk
+			press(m, "e", "n")
+			m.input.area.SetValue("")
+			send(m, ctrlS)
+		}, `PUT /tasks/1 {"data":{"html_notes":"\u003cbody\u003e\u003c/body\u003e"}}`},
 		{"comment", func(m *Model) {
 			press(m, "e", "c")
 			m.input.area.SetValue(" hello ")
