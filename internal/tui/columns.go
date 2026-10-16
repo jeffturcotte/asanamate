@@ -63,11 +63,11 @@ func (m *Model) openColumns() tea.Cmd {
 	if gid := gidOf(m.viewProject); gid != "" {
 		if _, known := m.projectCatalogs[gid]; !known {
 			if m.deps.Client == nil {
-				m.status = "project fields are unavailable; reload and try again"
+				m.setStatus(statusWarning, "project fields are unavailable; reload and try again")
 				return nil
 			}
 			m.modal = nil
-			m.status = "loading project fields…"
+			m.setProgress("loading project fields…")
 			cmd := loadProjectFields(m.deps.Client, gid)
 			return func() tea.Msg {
 				msg := cmd().(projectFieldsMsg)
@@ -204,9 +204,10 @@ func (m *Model) storeColumns(columns []state.Column, reset bool) tea.Cmd {
 	m.modal = nil
 	m.measureColumns()
 	m.fitList()
-	m.status = "columns saved for this project"
+	message := "columns saved for this project"
 	if reset {
-		m.status = "columns reset to list.fields"
+		message = "columns reset to list.fields"
 	}
+	m.setStatus(statusInfo, message)
 	return nil
 }

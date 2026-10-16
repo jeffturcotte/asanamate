@@ -61,6 +61,12 @@ func (m *Model) mode() (name string, pill lipgloss.Style, hints [][2]string) {
 // shows, then the key hints for what has focus, or the latest status message
 // in their place.
 func (m *Model) statusline() string {
+	return m.renderStatusline(true)
+}
+
+// renderStatusline hides the right side while a toast covers it, so a long
+// message cannot peek out from beside the toast. The left side stays in place.
+func (m *Model) renderStatusline(showMessage bool) string {
 	name, pillStyle, hints := m.mode()
 	pill := pillStyle.Render(" " + name + " ")
 	segs := m.listSegs()
@@ -69,11 +75,11 @@ func (m *Model) statusline() string {
 	}
 	left := pill + " " + strings.Join(segs, dimStyle.Render(" │ "))
 
-	status := m.status
+	status, level := m.status, m.statusLevel
 	if len(m.notices) > 0 {
-		status = m.notices[0]
+		status, level = m.notices[0].text, m.notices[0].level
 	}
-	right := titleStyle.Render(ticket.OneLine(status))
+	right := m.renderStatus(level, status)
 	if status == "" {
 		var parts []string
 		for _, h := range hints {
@@ -82,6 +88,9 @@ func (m *Model) statusline() string {
 			}
 		}
 		right = strings.Join(parts, "  ")
+	}
+	if !showMessage {
+		right = ""
 	}
 	gap := m.width - ansi.StringWidth(left) - ansi.StringWidth(right)
 	if gap < 2 {

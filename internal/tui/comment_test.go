@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -241,7 +242,7 @@ func TestCommentCtrlCConfirmsBeforeQuitting(t *testing.T) {
 	_, cmd = m.Update(key("enter"))
 	msg := cmd()
 	_, cmd = m.Update(msg)
-	if _, ok := cmd().(tea.QuitMsg); !ok || savedComment(t, m).Text != "keep" {
+	if !slices.Contains(commandMessages(cmd), tea.Msg(tea.QuitMsg{})) || savedComment(t, m).Text != "keep" {
 		t.Fatal("save-and-quit failed")
 	}
 }

@@ -40,6 +40,9 @@ func testModel(t *testing.T, cfg config.Config) (*Model, *state.State) {
 		t.Fatal(err)
 	}
 	m := New(Deps{ConfigPath: path, Config: cfg, State: st, StateDir: t.TempDir()})
+	m.toastTimer = func(_ time.Duration, msg toastTickMsg) tea.Cmd {
+		return func() tea.Msg { return msg }
+	}
 	m.now = func() time.Time { return testToday }
 	// New sets package state from cfg; restore the defaults so tests that
 	// never call New see them.
@@ -48,6 +51,23 @@ func testModel(t *testing.T, cfg config.Config) (*Model, *state.State) {
 		applyPalette(config.Config{}.Palette(true))
 	})
 	return m, st
+}
+
+// commandMessages inspects command batches without routing timer events back
+// through Model. testModel replaces toast delays with deterministic messages.
+func commandMessages(cmd tea.Cmd) []tea.Msg {
+	if cmd == nil {
+		return nil
+	}
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		var messages []tea.Msg
+		for _, child := range batch {
+			messages = append(messages, commandMessages(child)...)
+		}
+		return messages
+	}
+	return []tea.Msg{msg}
 }
 
 // testToday is a Monday.
@@ -369,8 +389,11 @@ func TestImageViewerStepsThroughImages(t *testing.T) {
 	if m.viewIndex != 1 {
 		t.Fatalf("k on the first image: index = %d, want a wrap to 1", m.viewIndex)
 	}
-	if _, cmd := m.Update(viewerDoneMsg{}); cmd != nil || m.viewIndex != 1 {
-		t.Fatal("a close key must not load another image")
+	_, cmd := m.Update(viewerDoneMsg{})
+	if messages := commandMessages(cmd); len(messages) != 1 || m.viewIndex != 1 {
+		t.Fatal("a close key must only schedule the completion toast")
+	} else if _, ok := messages[0].(toastTickMsg); !ok {
+		t.Fatalf("close requested an image load instead of a toast: %T", messages[0])
 	}
 }
 

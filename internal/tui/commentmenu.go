@@ -82,7 +82,7 @@ func (m *Model) openReactPicker(gid string, c asana.Story) {
 		if !reacted {
 			what = "remove " + ticket.OneLine(emoji)
 		}
-		m.status = what + "…"
+		m.setProgress(what + "…")
 		return saveEdit(gid, what, func(ctx context.Context) error {
 			return svc.React(ctx, story, emoji, reacted)
 		})

@@ -253,7 +253,7 @@ func TestEveryScopeBindingRuns(t *testing.T) {
 		"notice": {
 			"dismiss": func(t *testing.T) {
 				m := splitModel(t)
-				m.showNotice("hello")
+				m.setStatus(statusError, "hello")
 				m.Update(firstKey("notice", "dismiss"))
 				expect(t, len(m.notices) == 0, "dismiss")
 			},

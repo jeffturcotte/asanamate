@@ -182,10 +182,10 @@ func handlers() map[string]handler {
 		"copy_link": {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd {
 			if t, ok := m.selected(); ok {
 				if t.PermalinkURL == "" {
-					m.status = "ticket has no link"
+					m.setStatus(statusWarning, "ticket has no link")
 					return nil
 				}
-				m.status = "link sent to clipboard"
+				m.setStatus(statusInfo, "link sent to clipboard")
 				return tea.SetClipboard(t.PermalinkURL)
 			}
 			return nil
@@ -196,7 +196,7 @@ func handlers() map[string]handler {
 			}
 			if t, ok := m.selectedDetail(); ok {
 				if c := m.selectedComment(t); c != nil {
-					m.status = "comment sent to clipboard"
+					m.setStatus(statusInfo, "comment sent to clipboard")
 					return tea.SetClipboard(ticket.HTMLToMarkdown(c.HTMLText))
 				}
 			}
@@ -404,7 +404,7 @@ func (m *Model) requestProjects(open func() tea.Cmd) tea.Cmd {
 		return tea.Batch(open(), refresh)
 	}
 	m.afterProjects = open
-	m.status = "loading projects…"
+	m.setProgress("loading projects…")
 	return refresh
 }
 

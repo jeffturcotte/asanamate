@@ -127,7 +127,7 @@ func (m *Model) inlineImageLoaded(msg inlineImageMsg) tea.Cmd {
 		return nil
 	}
 	if msg.err != nil {
-		m.status = "inline image: " + msg.err.Error()
+		m.setStatus(statusError, "inline image: "+msg.err.Error())
 		return nil
 	}
 	*img = inlineImage{id: msg.id, cols: msg.cols, rows: msg.rows}

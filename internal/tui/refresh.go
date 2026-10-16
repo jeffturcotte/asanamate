@@ -67,7 +67,7 @@ func (m *Model) openRefreshInterval() {
 		m.refreshInterval = interval
 		m.refreshSeq++
 		m.input = nil
-		m.status = "auto-update: " + shortDuration(interval)
+		m.setStatus(statusInfo, "auto-update: "+shortDuration(interval))
 		m.saveSetting("list.refresh_interval", shortDuration(interval))
 		return m.scheduleRefresh()
 	}

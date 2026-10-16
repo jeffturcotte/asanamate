@@ -21,6 +21,9 @@ type symbolSet struct {
 	barOff     string
 	codeWrap   string // marks a wrapped code-block continuation
 	info       string // leads descriptive modal help
+	statusInfo string // leads informational status
+	warning    string // marks warning status
+	failure    string // marks error status
 	emoji      bool   // the terminal draws emoji, such as comment reactions
 	states     map[agents.State]string
 	spinner    []string          // frames shown for working agents; nil means static
@@ -51,12 +54,12 @@ var braille = []string{"⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"}
 // Each set only sets what it changes: nerd falls back to unicode, unicode to
 // ascii, which defines everything.
 var (
-	asciiSymbols = symbolSet{open: "[ ]", done: "[x]", cursor: ">", robot: "@", barOn: "#", barOff: "-", codeWrap: ">", info: "(i)", icons: map[string]string{iconClock: "(time)", iconProjectColor: "*"}, border: lipgloss.ASCIIBorder(), states: map[agents.State]string{
+	asciiSymbols = symbolSet{open: "[ ]", done: "[x]", cursor: ">", robot: "@", barOn: "#", barOff: "-", codeWrap: ">", info: "(i)", statusInfo: "(i)", warning: "(!)", failure: "(x)", icons: map[string]string{iconClock: "(time)", iconProjectColor: "*"}, border: lipgloss.ASCIIBorder(), states: map[agents.State]string{
 		agents.Waiting: "(!)", agents.Working: "(~)", agents.Completed: "(+)", agents.Idle: "(-)", agents.Unknown: "(?)"}}
-	unicodeSymbols = asciiSymbols.with(symbolSet{open: "□", done: "✓", cursor: "▌", robot: "🤖", barOn: "▰", barOff: "▱", codeWrap: "↪", emoji: true, spinner: braille, icons: map[string]string{iconClock: "◷", iconProjectColor: "●"}, border: lipgloss.RoundedBorder(), states: map[agents.State]string{
+	unicodeSymbols = asciiSymbols.with(symbolSet{open: "□", done: "✓", cursor: "▌", robot: "🤖", barOn: "▰", barOff: "▱", codeWrap: "↪", warning: "⚠", failure: "✖", emoji: true, spinner: braille, icons: map[string]string{iconClock: "◷", iconProjectColor: "●"}, border: lipgloss.RoundedBorder(), states: map[agents.State]string{
 		agents.Waiting: "⚠", agents.Working: "◐", agents.Completed: "●", agents.Idle: "○", agents.Unknown: "?"}})
 	// Nerd Font (Font Awesome) glyphs; needs a Nerd Font.
-	nerdSymbols = unicodeSymbols.with(symbolSet{open: "", done: "", robot: "󰚩", info: "\uf05a", states: map[agents.State]string{
+	nerdSymbols = unicodeSymbols.with(symbolSet{open: "", done: "", robot: "󰚩", info: "\uf05a", statusInfo: "\U000f02fd", warning: "\uf071", failure: "\U000f05d6", states: map[agents.State]string{
 		agents.Waiting: "", agents.Working: "", agents.Completed: "", agents.Idle: "", agents.Unknown: ""},
 		icons: map[string]string{iconView: "\uf01c", iconFilter: "\uf0b0", iconGroup: "\uf03a", iconFolder: "\uf07b", iconDue: "\uf073", iconClock: "\uf017", iconBranch: "\ue725", iconClip: "\uf0c6", iconRepo: "\ue702", iconRefresh: "\uf021", iconBell: "\uf0f3", iconWarning: "\uf071"}})
 )
@@ -74,6 +77,8 @@ func (s symbolSet) with(o symbolSet) symbolSet {
 	s.barOn, s.barOff = cmp.Or(o.barOn, s.barOn), cmp.Or(o.barOff, s.barOff)
 	s.codeWrap = cmp.Or(o.codeWrap, s.codeWrap)
 	s.info = cmp.Or(o.info, s.info)
+	s.statusInfo = cmp.Or(o.statusInfo, s.statusInfo)
+	s.warning, s.failure = cmp.Or(o.warning, s.warning), cmp.Or(o.failure, s.failure)
 	s.emoji = s.emoji || o.emoji
 	s.border = cmp.Or(o.border, s.border)
 	if o.spinner != nil {
