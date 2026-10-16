@@ -133,7 +133,8 @@ command = "asana-sessions asanamate list"
 open = "asana-sessions asanamate open"
 ```
 
-The optional `asana-sessions` command is not bundled or installed by core.
+The optional `asana-sessions` command is not bundled or installed by core; it
+lives in [`packages/asana-sessions`](../packages/asana-sessions/README.md).
 Any external program can implement this contract. Both config strings are
 trusted user-authored shell text; selected metadata never enters those strings.
 
@@ -299,7 +300,9 @@ native exclusion must still protect independently launched conversations.
 The [live feasibility observations](specs/17-provider-feasibility.md) show that
 Claude Code `2.1.301` lacks that exclusion. Under the approved conservative
 revision, Claude discovery/linking remain supported, but the companion's default
-Claude opener must refuse unknown activity until safe resumption is established.
+Claude opener must refuse unknown activity. The companion derives Claude
+`active`/`inactive` from Claude Code's live-session registry and resumes only
+`inactive` conversations.
 This restriction belongs to the provider opener, not a provider-specific branch
 in generic core. A custom host opener must use an explicit native-ID mapping
 and authoritative ownership behavior. The remaining companion feasibility and

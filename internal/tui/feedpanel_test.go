@@ -73,7 +73,7 @@ func TestFeedLinksItemsToTickets(t *testing.T) {
 	now := testToday.Add(-time.Minute)
 	m.Update(feedMsg{reply: feed.Reply{Source: "ci", Items: []feed.Item{
 		{Time: now, Text: "by gid", TicketGID: "2"},
-		{Time: now, Text: "by url", URL: "https://app.asana.com/0/p1/2"},
+		{Time: now, Text: "by url", URL: "https://app.asana.com/0/1/2"},
 		{Time: now, Text: "by branch", Branch: "feat/x"},
 		{Time: now, Text: "by branch and repo", Branch: "feat/x", Repo: "/code/web"},
 		{Time: now, Text: "other repo", Branch: "feat/x", Repo: "/other"},
