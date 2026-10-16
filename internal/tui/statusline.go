@@ -20,6 +20,9 @@ func (m *Model) mode() (name string, pill lipgloss.Style, hints [][2]string) {
 	scroll := [2]string{keyLabel("main", "scroll_down", "scroll_up"), "scroll"}
 	pane := [2]string{keyLabel("main", "next_pane"), "pane"}
 	list := [2]string{keyLabel("main", "focus_list"), "list"}
+	if m.ticketOnly() {
+		pane, list = [2]string{}, [2]string{} // unbound, so hidden
+	}
 	switch {
 	case m.activityOpen:
 		return m.activityMode()
@@ -69,9 +72,14 @@ func (m *Model) statusline() string {
 func (m *Model) renderStatusline(showMessage bool) string {
 	name, pillStyle, hints := m.mode()
 	pill := pillStyle.Render(" " + name + " ")
-	segs := m.listSegs()
-	if m.activityOpen {
+	var segs []string
+	switch {
+	case m.activityOpen:
 		segs = m.activitySegs()
+	case m.ticketOnly():
+		segs = []string{dimStyle.Render(m.refreshLabel())}
+	default:
+		segs = m.listSegs()
 	}
 	left := pill + " " + strings.Join(segs, dimStyle.Render(" │ "))
 

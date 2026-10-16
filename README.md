@@ -552,6 +552,15 @@ commands = ["asanamate-hrvst"]
     by tabs. `--format jsonl` prints one JSON object per task.
 - `asanamate show <gid>` prints one ticket as Markdown. `--format json` prints
   JSON instead.
+- `asanamate read <gid>` opens one ticket in the reader, full screen, with no
+  list, views panel, or pane border. The reader's keys, ticket edits, and
+  actions work as usual; `r` and the auto-update reload only that ticket, and
+  `q` quits. `--exit-on-action` works as it does for the list.
+
+  ```tmux
+  # Popup: review the ticket picked with fzf
+  bind-key R display-popup -E -w 80% -h 80% 'asanamate read "$(asanamate list | fzf | cut -f1)"'
+  ```
 - `asanamate doctor [<gid>]` checks that asanamate is ready to browse and
   which optional features can work, and, for a ticket, why agents link to it
   or not. See [Troubleshooting](#troubleshooting).

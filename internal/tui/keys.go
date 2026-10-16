@@ -12,17 +12,20 @@ import (
 )
 
 // binding is one [keys.main] binding: its catalog entry, its resolved keys,
-// and its handler. splitOnly bindings need the reading pane.
+// and its handler. splitOnly bindings need the reading pane; listOnly ones
+// need the list, so the ticket-only reader lacks them.
 type binding struct {
 	keymap.Binding
 	keys      []string
 	splitOnly bool
+	listOnly  bool
 	run       func(m *Model, msg tea.KeyPressMsg) tea.Cmd
 }
 
 // handler runs a [keys.main] binding.
 type handler struct {
 	splitOnly bool
+	listOnly  bool
 	run       func(m *Model, msg tea.KeyPressMsg) tea.Cmd
 }
 
@@ -40,7 +43,7 @@ func keyBindings() []binding {
 			continue
 		}
 		for _, b := range s.Bindings {
-			out = append(out, binding{Binding: b, keys: keys.Keys("main", b.Name), splitOnly: h[b.Name].splitOnly, run: h[b.Name].run})
+			out = append(out, binding{Binding: b, keys: keys.Keys("main", b.Name), splitOnly: h[b.Name].splitOnly, listOnly: h[b.Name].listOnly, run: h[b.Name].run})
 		}
 	}
 	return out
@@ -140,28 +143,28 @@ func handlers() map[string]handler {
 		"half_page_up":   {run: page(2, true)},
 		"page_down":      {run: page(1, false)},
 		"page_up":        {run: page(1, true)},
-		"focus_views":    {run: do((*Model).focusViews)},
-		"focus_list":     {run: do((*Model).focusList)},
+		"focus_views":    {listOnly: true, run: do((*Model).focusViews)},
+		"focus_list":     {listOnly: true, run: do((*Model).focusList)},
 		"focus_reader":   {splitOnly: true, run: do((*Model).focusReaderPane)},
-		"focus_feed":     {run: do((*Model).focusFeedPanel)},
-		"toggle_feed":    {run: do((*Model).toggleFeed)},
-		"next_pane":      {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.cyclePane(false) }},
-		"prev_pane":      {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.cyclePane(true) }},
+		"focus_feed":     {listOnly: true, run: do((*Model).focusFeedPanel)},
+		"toggle_feed":    {listOnly: true, run: do((*Model).toggleFeed)},
+		"next_pane":      {listOnly: true, run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.cyclePane(false) }},
+		"prev_pane":      {listOnly: true, run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.cyclePane(true) }},
 		"open":           {splitOnly: true, run: (*Model).open},
-		"filter": {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd {
+		"filter": {listOnly: true, run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd {
 			m.filtering, m.filterBefore = true, m.filterInput.Value()
 			m.reader.SetHeight(m.paneHeight())
 			return m.filterInput.Focus()
 		}},
-		"projects": {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd {
+		"projects": {listOnly: true, run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd {
 			return m.requestProjects(func() tea.Cmd { m.openProjectPicker(); return nil })
 		}},
-		"activity":      {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.openActivity() }},
-		"history":       {splitOnly: true, run: do((*Model).openHistory)},
-		"next_new":      {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.nextNew() }},
+		"activity":      {listOnly: true, run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.openActivity() }},
+		"history":       {splitOnly: true, listOnly: true, run: do((*Model).openHistory)},
+		"next_new":      {listOnly: true, run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.nextNew() }},
 		"action":        {run: menu(func(m *Model) func() { return m.openActionMenu })},
 		"repeat_action": {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.requestMenu(m.repeatAction) }},
-		"pin":           {run: (*Model).togglePin},
+		"pin":           {listOnly: true, run: (*Model).togglePin},
 		"edit":          {run: menu(func(m *Model) func() { return m.openEditMenu })},
 		"comment": {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd {
 			return m.requestMenu(func() tea.Cmd { return m.openField(commentKey) })
@@ -202,23 +205,23 @@ func handlers() map[string]handler {
 			}
 			return nil
 		}},
-		"create":           {run: do((*Model).openCreate)},
-		"create_subtask":   {run: do((*Model).openCreateSubtask)},
+		"create":           {listOnly: true, run: do((*Model).openCreate)},
+		"create_subtask":   {listOnly: true, run: do((*Model).openCreateSubtask)},
 		"reload":           {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return tea.Batch(m.refreshWithImages(), m.refreshFeed()) }},
 		"reader_view":      {splitOnly: true, run: do(func(m *Model) { m.toggleReaderView(); m.saveSetting("reader.view", m.readerView) })},
-		"toggle_reader":    {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.toggleReader() }},
-		"toggle_sidebar":   {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.toggleSidebar() }},
-		"saved_views":      {run: do((*Model).openSavedViews)},
-		"save_view":        {run: do((*Model).openSaveView)},
-		"next_saved_view":  {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.cycleSavedView(1) }},
-		"prev_saved_view":  {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.cycleSavedView(-1) }},
+		"toggle_reader":    {listOnly: true, run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.toggleReader() }},
+		"toggle_sidebar":   {listOnly: true, run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.toggleSidebar() }},
+		"saved_views":      {listOnly: true, run: do((*Model).openSavedViews)},
+		"save_view":        {listOnly: true, run: do((*Model).openSaveView)},
+		"next_saved_view":  {listOnly: true, run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.cycleSavedView(1) }},
+		"prev_saved_view":  {listOnly: true, run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.cycleSavedView(-1) }},
 		"refresh_interval": {run: do((*Model).openRefreshInterval)},
 		"repos":            {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.requestProjects(m.openLinks) }},
 		"action_builder":   {run: do((*Model).openActionBuilder)},
 		"settings":         {run: do(func(m *Model) { m.openSettings(0) })},
-		"group_by":         {run: do((*Model).openGroupPicker)},
-		"sort_by":          {run: do((*Model).openSortPicker)},
-		"fit_list":         {run: do((*Model).fitList)},
+		"group_by":         {listOnly: true, run: do((*Model).openGroupPicker)},
+		"sort_by":          {listOnly: true, run: do((*Model).openSortPicker)},
+		"fit_list":         {listOnly: true, run: do((*Model).fitList)},
 		"help":             {run: do(func(m *Model) { m.help = true })},
 		"quit":             {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { m.closeActivity(); return tea.Quit }},
 	}
@@ -257,6 +260,9 @@ func (m *Model) open(tea.KeyPressMsg) tea.Cmd {
 
 // available reports whether b runs in the current layout.
 func (m *Model) available(b binding) bool {
+	if b.listOnly && m.ticketOnly() {
+		return false
+	}
 	if b.Name == "focus_views" {
 		return len(b.keys) > 0 && m.showNav()
 	}
