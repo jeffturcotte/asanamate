@@ -719,34 +719,44 @@ command = "sesh list -z"
 `auto`, which asks the terminal for its background color and uses
 `theme.auto.dark` or `theme.auto.light` in `settings.toml`. The defaults
 `ansi-dark` and `ansi-light` use ANSI color
-numbers, so they follow your terminal's color scheme. These 20 additional
+numbers, so they follow your terminal's color scheme. These 47 additional
 presets ship as separate TOML files in release archives and the source
 checkout. The installation steps run `install-themes.sh`, which copies them
 to `themes/<name>.toml` next to `config.toml`. It respects `XDG_CONFIG_HOME`
 and keeps existing files, including any edits you made:
 
-| Dark presets | Light presets |
-|---|---|
-| `one-dark` | `one-light` |
-| `monokai` | `tokyo-day` |
-| `tokyo-night` | `gruvbox-light` |
-| `sonokai` | `catppuccin-latte` |
-| `dracula` | `solarized-light` |
-| `nord` | |
-| `gruvbox-dark` | |
-| `catppuccin-mocha` | |
-| `solarized-dark` | |
-| `rose-pine` | |
-| `sonokai-andromeda` | |
-| `sonokai-atlantis` | |
-| `sonokai-maia` | |
-| `sonokai-shusia` | |
-| `sonokai-espresso` | |
+| Family | Dark presets | Light presets |
+|---|---|---|
+| One | `one-dark` | `one-light` |
+| Monokai | `monokai` | |
+| Tokyo Night | `tokyo-night`, `tokyo-storm`, `tokyo-moon` | `tokyo-day` |
+| Sonokai | `sonokai`, `sonokai-andromeda`, `sonokai-atlantis`, `sonokai-maia`, `sonokai-shusia`, `sonokai-espresso` | |
+| Dracula | `dracula` | |
+| Nord | `nord` | |
+| Gruvbox | `gruvbox-dark` | `gruvbox-light` |
+| Gruvbox Material | `gruvbox-material-dark` | `gruvbox-material-light` |
+| Catppuccin | `catppuccin-mocha`, `catppuccin-macchiato`, `catppuccin-frappe` | `catppuccin-latte` |
+| Solarized | `solarized-dark` | `solarized-light` |
+| Rosé Pine | `rose-pine`, `rose-pine-moon` | `rose-pine-dawn` |
+| Kanagawa | `kanagawa-wave`, `kanagawa-dragon` | `kanagawa-lotus` |
+| Everforest | `everforest-dark` | `everforest-light` |
+| Nightfox | `nightfox`, `carbonfox` | `dayfox` |
+| GitHub | `github-dark`, `github-dark-high-contrast` | `github-light`, `github-light-high-contrast` |
+| Ayu | `ayu-dark`, `ayu-mirage` | `ayu-light` |
+| Night Owl | `night-owl` | |
+| Flexoki | `flexoki-dark` | `flexoki-light` |
+| Palenight | `palenight` | |
 
 `sonokai` uses Sonokai's default style. The five `sonokai-*` files use the
 corresponding [upstream Sonokai styles](https://github.com/sainnhe/sonokai).
 For example, set `name = "sonokai-espresso"` in `[theme]` for Espresso.
-Sonokai's MIT license ships alongside the theme files as `LICENSE.sonokai`.
+Everforest and Gruvbox Material use their default medium background. The
+`github-*-high-contrast` presets suit low-vision use or bright rooms.
+
+Each theme file's header names the upstream palette it adapts and that
+palette's license. The license texts ship beside the theme files as
+`themes/LICENSE.<family>`, such as `LICENSE.catppuccin` and
+`LICENSE.tokyonight`.
 
 To try themes without restarting, open settings with `s` and press `t`. The
 theme picker lists every built-in theme and file in `themes/` beside a preview

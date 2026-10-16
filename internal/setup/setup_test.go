@@ -452,17 +452,26 @@ func TestThemeInstallerKeepsEditsAndAddsMissingFiles(t *testing.T) {
 	install()
 	path := filepath.Join(root, "asanamate", "config.toml")
 	dir := config.ThemesDir(path)
-	sources, err := filepath.Glob(filepath.Join("..", "..", "themes", "*.toml"))
-	if err != nil || len(sources) == 0 {
-		t.Fatalf("source themes = %v, err = %v", sources, err)
+	// Theme files and the upstream licenses beside them install alike.
+	glob := func(from string) []string {
+		t.Helper()
+		themes, err := filepath.Glob(filepath.Join(from, "*.toml"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		licenses, err := filepath.Glob(filepath.Join(from, "LICENSE*"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return append(themes, licenses...)
 	}
-	files, err := filepath.Glob(filepath.Join(dir, "*.toml"))
-	if err != nil || len(files) != len(sources) {
-		t.Fatalf("installed files = %v, err = %v; want %d", files, err, len(sources))
+	sources := glob(filepath.Join("..", "..", "themes"))
+	if len(sources) == 0 {
+		t.Fatal("no source themes")
 	}
-	license, err := os.ReadFile(filepath.Join(dir, "LICENSE.sonokai"))
-	if err != nil || !strings.Contains(string(license), "Copyright (c) 2020 sainnhe") {
-		t.Fatalf("Sonokai license missing: %v", err)
+	files := glob(dir)
+	if len(files) != len(sources) {
+		t.Fatalf("installed files = %v; want %d", files, len(sources))
 	}
 	for _, file := range files {
 		want, err := os.ReadFile(filepath.Join("..", "..", "themes", filepath.Base(file)))

@@ -1,0 +1,36 @@
+# Catppuccin Frappé palette adapted to asanamate's themed roles.
+# Palette reference: https://github.com/catppuccin/palette/blob/07d02aa110ef9eb7e7427afca5c73ba9cf7f8ebd/palette.json
+# Copyright (c) 2021 Catppuccin. MIT license: LICENSE.catppuccin.
+base = "dark"
+
+[colors]
+accent = { fg = "#8caaee", bold = true }
+border = "#626880"
+muted = { fg = "#a5adce", faint = false }
+highlight = { fg = "#c6d0f5", bg = "#414559", reverse = false }
+ok = "#a6d189"
+warn = "#e5c890"
+error = "#e78284"
+working = "#81c8be"
+pinned = { fg = "#ef9f76", bold = true }
+viewing = { fg = "#ca9ee6", bold = true }
+reacted = { fg = "#c6d0f5", bg = "#414559" }
+new = { fg = "#303446", bg = "#8caaee", bold = true }
+more = { fg = "#303446", bg = "#ef9f76", bold = true }
+authors = ["#8caaee", "#ca9ee6", "#81c8be", "#a6d189", "#e5c890", "#e78284"]
+
+[colors.mode]
+normal = { fg = "#303446", bg = "#8caaee", bold = true }
+filter = { fg = "#303446", bg = "#e5c890", bold = true }
+read = { fg = "#303446", bg = "#81c8be", bold = true }
+edit = { fg = "#303446", bg = "#ca9ee6", bold = true }
+
+[colors.markdown]
+text = "#c6d0f5"
+heading = { fg = "#8caaee", bold = true }
+h1 = { fg = "#303446", bg = "#8caaee", bold = true }
+link = { fg = "#81c8be", underline = true }
+code = { fg = "#a6d189", bg = "#292c3c" }
+code_block = { fg = "#c6d0f5", bg = "#292c3c" }
+quote = { fg = "#a5adce", italic = true }
+rule = "#626880"

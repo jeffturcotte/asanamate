@@ -1,5 +1,6 @@
 # Gruvbox Dark palette adapted to asanamate's themed roles.
-# Palette reference: https://github.com/morhetz/gruvbox
+# Palette reference: https://github.com/gruvbox-community/gruvbox/blob/180ad85971343df68be3422a5630fa84e45a9ab2/colors/gruvbox.vim
+# Copyright (c) 2018 Pavel Pertsev. MIT license: LICENSE.gruvbox.
 base = "dark"
 
 [colors]

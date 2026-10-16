@@ -1,0 +1,36 @@
+# Everforest Light (medium) palette adapted to asanamate's themed roles.
+# Palette reference: https://github.com/sainnhe/everforest/blob/85a86eb62409e3ec88713bff3d1b9d7374e112e4/autoload/everforest.vim
+# Copyright (c) 2019 sainnhe. MIT license: LICENSE.everforest.
+base = "light"
+
+[colors]
+accent = { fg = "#3a94c5", bold = true }
+border = "#a6b0a0"
+muted = { fg = "#829181", faint = false }
+highlight = { fg = "#5c6a72", bg = "#bdc3af", reverse = false }
+ok = "#8da101"
+warn = "#dfa000"
+error = "#f85552"
+working = "#35a77c"
+pinned = { fg = "#f57d26", bold = true }
+viewing = { fg = "#df69ba", bold = true }
+reacted = { fg = "#5c6a72", bg = "#bdc3af" }
+new = { fg = "#fdf6e3", bg = "#3a94c5", bold = true }
+more = { fg = "#fdf6e3", bg = "#f57d26", bold = true }
+authors = ["#3a94c5", "#df69ba", "#35a77c", "#8da101", "#dfa000", "#f85552"]
+
+[colors.mode]
+normal = { fg = "#fdf6e3", bg = "#3a94c5", bold = true }
+filter = { fg = "#fdf6e3", bg = "#dfa000", bold = true }
+read = { fg = "#fdf6e3", bg = "#35a77c", bold = true }
+edit = { fg = "#fdf6e3", bg = "#df69ba", bold = true }
+
+[colors.markdown]
+text = "#5c6a72"
+heading = { fg = "#3a94c5", bold = true }
+h1 = { fg = "#fdf6e3", bg = "#3a94c5", bold = true }
+link = { fg = "#35a77c", underline = true }
+code = { fg = "#8da101", bg = "#efebd4" }
+code_block = { fg = "#5c6a72", bg = "#efebd4" }
+quote = { fg = "#829181", italic = true }
+rule = "#a6b0a0"

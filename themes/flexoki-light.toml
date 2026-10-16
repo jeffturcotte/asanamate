@@ -1,0 +1,36 @@
+# Flexoki Light palette adapted to asanamate's themed roles.
+# Palette reference: https://github.com/kepano/flexoki/blob/8d723bac4a9ac46adfdf99d42155286977aac72a/_generators/src/palette.ts
+# Copyright (c) 2023 Steph Ango. MIT license: LICENSE.flexoki.
+base = "light"
+
+[colors]
+accent = { fg = "#205ea6", bold = true }
+border = "#cecdc3"
+muted = { fg = "#6f6e69", faint = false }
+highlight = { fg = "#100f0f", bg = "#dad8ce", reverse = false }
+ok = "#66800b"
+warn = "#ad8301"
+error = "#af3029"
+working = "#24837b"
+pinned = { fg = "#bc5215", bold = true }
+viewing = { fg = "#5e409d", bold = true }
+reacted = { fg = "#100f0f", bg = "#dad8ce" }
+new = { fg = "#fffcf0", bg = "#205ea6", bold = true }
+more = { fg = "#fffcf0", bg = "#bc5215", bold = true }
+authors = ["#205ea6", "#5e409d", "#24837b", "#66800b", "#ad8301", "#af3029"]
+
+[colors.mode]
+normal = { fg = "#fffcf0", bg = "#205ea6", bold = true }
+filter = { fg = "#fffcf0", bg = "#ad8301", bold = true }
+read = { fg = "#fffcf0", bg = "#24837b", bold = true }
+edit = { fg = "#fffcf0", bg = "#5e409d", bold = true }
+
+[colors.markdown]
+text = "#100f0f"
+heading = { fg = "#205ea6", bold = true }
+h1 = { fg = "#fffcf0", bg = "#205ea6", bold = true }
+link = { fg = "#24837b", underline = true }
+code = { fg = "#66800b", bg = "#f2f0e5" }
+code_block = { fg = "#100f0f", bg = "#f2f0e5" }
+quote = { fg = "#6f6e69", italic = true }
+rule = "#cecdc3"

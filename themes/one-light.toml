@@ -1,5 +1,6 @@
 # One Light palette adapted to asanamate's themed roles.
 # Palette reference: https://github.com/atom/one-light-syntax
+# Copyright (c) 2016 GitHub Inc. MIT license: LICENSE.one.
 base = "light"
 
 [colors]

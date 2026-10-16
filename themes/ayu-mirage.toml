@@ -1,0 +1,36 @@
+# Ayu Mirage palette adapted to asanamate's themed roles.
+# Palette reference: https://unpkg.com/ayu@9.1.0/dist/generated/mirage.js
+# Copyright (c) Konstantin Pschera. MIT license: LICENSE.ayu.
+base = "dark"
+
+[colors]
+accent = { fg = "#73d0ff", bold = true }
+border = "#707a8c"
+muted = { fg = "#6e7c8f", faint = false }
+highlight = { fg = "#cccac2", bg = "#2b4768", reverse = false }
+ok = "#d5ff80"
+warn = "#ffcd66"
+error = "#f28779"
+working = "#95e6cb"
+pinned = { fg = "#ffa659", bold = true }
+viewing = { fg = "#dfbfff", bold = true }
+reacted = { fg = "#cccac2", bg = "#2b4768" }
+new = { fg = "#242936", bg = "#73d0ff", bold = true }
+more = { fg = "#242936", bg = "#ffa659", bold = true }
+authors = ["#73d0ff", "#dfbfff", "#95e6cb", "#d5ff80", "#ffcd66", "#f28779"]
+
+[colors.mode]
+normal = { fg = "#242936", bg = "#73d0ff", bold = true }
+filter = { fg = "#242936", bg = "#ffcd66", bold = true }
+read = { fg = "#242936", bg = "#95e6cb", bold = true }
+edit = { fg = "#242936", bg = "#dfbfff", bold = true }
+
+[colors.markdown]
+text = "#cccac2"
+heading = { fg = "#73d0ff", bold = true }
+h1 = { fg = "#242936", bg = "#73d0ff", bold = true }
+link = { fg = "#95e6cb", underline = true }
+code = { fg = "#d5ff80", bg = "#1f2430" }
+code_block = { fg = "#cccac2", bg = "#1f2430" }
+quote = { fg = "#6e7c8f", italic = true }
+rule = "#707a8c"

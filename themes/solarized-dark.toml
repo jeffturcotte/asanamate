@@ -1,5 +1,6 @@
 # Solarized Dark palette adapted to asanamate's themed roles.
 # Palette reference: https://ethanschoonover.com/solarized/
+# Copyright (c) 2011 Ethan Schoonover. MIT license: LICENSE.solarized.
 base = "dark"
 
 [colors]

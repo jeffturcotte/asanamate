@@ -1,0 +1,36 @@
+# Kanagawa Wave palette adapted to asanamate's themed roles.
+# Palette reference: https://github.com/rebelot/kanagawa.nvim/blob/bb85e4bfc8d89b0e62c8fa53ccdd13d12e2f77b3/lua/kanagawa/colors.lua
+# Copyright (c) 2021 Tommaso Laurenzi. MIT license: LICENSE.kanagawa.
+base = "dark"
+
+[colors]
+accent = { fg = "#7e9cd8", bold = true }
+border = "#54546d"
+muted = { fg = "#727169", faint = false }
+highlight = { fg = "#dcd7ba", bg = "#2d4f67", reverse = false }
+ok = "#98bb6c"
+warn = "#e6c384"
+error = "#e46876"
+working = "#7fb4ca"
+pinned = { fg = "#ffa066", bold = true }
+viewing = { fg = "#957fb8", bold = true }
+reacted = { fg = "#dcd7ba", bg = "#2d4f67" }
+new = { fg = "#1f1f28", bg = "#7e9cd8", bold = true }
+more = { fg = "#1f1f28", bg = "#ffa066", bold = true }
+authors = ["#7e9cd8", "#957fb8", "#7fb4ca", "#98bb6c", "#e6c384", "#e46876"]
+
+[colors.mode]
+normal = { fg = "#1f1f28", bg = "#7e9cd8", bold = true }
+filter = { fg = "#1f1f28", bg = "#e6c384", bold = true }
+read = { fg = "#1f1f28", bg = "#7fb4ca", bold = true }
+edit = { fg = "#1f1f28", bg = "#957fb8", bold = true }
+
+[colors.markdown]
+text = "#dcd7ba"
+heading = { fg = "#7e9cd8", bold = true }
+h1 = { fg = "#1f1f28", bg = "#7e9cd8", bold = true }
+link = { fg = "#7fb4ca", underline = true }
+code = { fg = "#98bb6c", bg = "#181820" }
+code_block = { fg = "#dcd7ba", bg = "#181820" }
+quote = { fg = "#727169", italic = true }
+rule = "#54546d"
