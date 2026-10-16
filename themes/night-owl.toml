@@ -1,0 +1,36 @@
+# Night Owl palette adapted to asanamate's themed roles.
+# Palette reference: https://github.com/sdras/night-owl-vscode-theme/blob/cc291eba7976b20d7c66bde6883c27b902196b07/themes/Night%20Owl-color-theme.json
+# Copyright (c) 2018 Sarah Drasner. MIT license: LICENSE.night-owl.
+base = "dark"
+
+[colors]
+accent = { fg = "#82aaff", bold = true }
+border = "#5f7e97"
+muted = { fg = "#637777", faint = false }
+highlight = { fg = "#d6deeb", bg = "#1d3b53", reverse = false }
+ok = "#22da6e"
+warn = "#ecc48d"
+error = "#ef5350"
+working = "#7fdbca"
+pinned = { fg = "#f78c6c", bold = true }
+viewing = { fg = "#c792ea", bold = true }
+reacted = { fg = "#d6deeb", bg = "#1d3b53" }
+new = { fg = "#011627", bg = "#82aaff", bold = true }
+more = { fg = "#011627", bg = "#f78c6c", bold = true }
+authors = ["#82aaff", "#c792ea", "#7fdbca", "#22da6e", "#ecc48d", "#ef5350"]
+
+[colors.mode]
+normal = { fg = "#011627", bg = "#82aaff", bold = true }
+filter = { fg = "#011627", bg = "#ecc48d", bold = true }
+read = { fg = "#011627", bg = "#7fdbca", bold = true }
+edit = { fg = "#011627", bg = "#c792ea", bold = true }
+
+[colors.markdown]
+text = "#d6deeb"
+heading = { fg = "#82aaff", bold = true }
+h1 = { fg = "#011627", bg = "#82aaff", bold = true }
+link = { fg = "#7fdbca", underline = true }
+code = { fg = "#22da6e", bg = "#021320" }
+code_block = { fg = "#d6deeb", bg = "#021320" }
+quote = { fg = "#637777", italic = true }
+rule = "#5f7e97"

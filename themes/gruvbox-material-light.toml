@@ -1,0 +1,36 @@
+# Gruvbox Material Light (medium, material) palette adapted to asanamate's themed roles.
+# Palette reference: https://github.com/sainnhe/gruvbox-material/blob/11d779b26a9ab2b3db8c22c6ac9fb6e8ed4fea79/autoload/gruvbox_material.vim
+# Copyright (c) 2020 sainnhe. MIT license: LICENSE.gruvbox-material.
+base = "light"
+
+[colors]
+accent = { fg = "#45707a", bold = true }
+border = "#a89984"
+muted = { fg = "#7c6f64", faint = false }
+highlight = { fg = "#654735", bg = "#ddccab", reverse = false }
+ok = "#6c782e"
+warn = "#b47109"
+error = "#c14a4a"
+working = "#4c7a5d"
+pinned = { fg = "#c35e0a", bold = true }
+viewing = { fg = "#945e80", bold = true }
+reacted = { fg = "#654735", bg = "#ddccab" }
+new = { fg = "#fbf1c7", bg = "#45707a", bold = true }
+more = { fg = "#fbf1c7", bg = "#c35e0a", bold = true }
+authors = ["#45707a", "#945e80", "#4c7a5d", "#6c782e", "#b47109", "#c14a4a"]
+
+[colors.mode]
+normal = { fg = "#fbf1c7", bg = "#45707a", bold = true }
+filter = { fg = "#fbf1c7", bg = "#b47109", bold = true }
+read = { fg = "#fbf1c7", bg = "#4c7a5d", bold = true }
+edit = { fg = "#fbf1c7", bg = "#945e80", bold = true }
+
+[colors.markdown]
+text = "#654735"
+heading = { fg = "#45707a", bold = true }
+h1 = { fg = "#fbf1c7", bg = "#45707a", bold = true }
+link = { fg = "#4c7a5d", underline = true }
+code = { fg = "#6c782e", bg = "#f2e5bc" }
+code_block = { fg = "#654735", bg = "#f2e5bc" }
+quote = { fg = "#7c6f64", italic = true }
+rule = "#a89984"

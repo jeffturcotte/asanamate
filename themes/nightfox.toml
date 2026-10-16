@@ -1,0 +1,36 @@
+# Nightfox palette adapted to asanamate's themed roles.
+# Palette reference: https://github.com/EdenEast/nightfox.nvim/blob/4dacd3f0185a2227bdf3b6c0975a8f0bf87cac9a/lua/nightfox/palette/nightfox.lua
+# Copyright (c) 2021 James Simpson. MIT license: LICENSE.nightfox.
+base = "dark"
+
+[colors]
+accent = { fg = "#719cd6", bold = true }
+border = "#39506d"
+muted = { fg = "#738091", faint = false }
+highlight = { fg = "#cdcecf", bg = "#3c5372", reverse = false }
+ok = "#81b29a"
+warn = "#dbc074"
+error = "#c94f6d"
+working = "#63cdcf"
+pinned = { fg = "#f4a261", bold = true }
+viewing = { fg = "#9d79d6", bold = true }
+reacted = { fg = "#cdcecf", bg = "#3c5372" }
+new = { fg = "#192330", bg = "#719cd6", bold = true }
+more = { fg = "#192330", bg = "#f4a261", bold = true }
+authors = ["#719cd6", "#9d79d6", "#63cdcf", "#81b29a", "#dbc074", "#c94f6d"]
+
+[colors.mode]
+normal = { fg = "#192330", bg = "#719cd6", bold = true }
+filter = { fg = "#192330", bg = "#dbc074", bold = true }
+read = { fg = "#192330", bg = "#63cdcf", bold = true }
+edit = { fg = "#192330", bg = "#9d79d6", bold = true }
+
+[colors.markdown]
+text = "#cdcecf"
+heading = { fg = "#719cd6", bold = true }
+h1 = { fg = "#192330", bg = "#719cd6", bold = true }
+link = { fg = "#63cdcf", underline = true }
+code = { fg = "#81b29a", bg = "#131a24" }
+code_block = { fg = "#cdcecf", bg = "#131a24" }
+quote = { fg = "#738091", italic = true }
+rule = "#39506d"

@@ -1,0 +1,36 @@
+# Palenight palette adapted to asanamate's themed roles.
+# Palette reference: https://github.com/drewtempelmeyer/palenight.vim/blob/9e9b102c54b830b72f51917b6b86c3b3b02dcea2/autoload/palenight.vim
+# Copyright (c) 2015 Joshua Dick. MIT license: LICENSE.palenight.
+base = "dark"
+
+[colors]
+accent = { fg = "#82b1ff", bold = true }
+border = "#4b5263"
+muted = { fg = "#697098", faint = false }
+highlight = { fg = "#bfc7d5", bg = "#3e4452", reverse = false }
+ok = "#c3e88d"
+warn = "#ffcb6b"
+error = "#ff5370"
+working = "#89ddff"
+pinned = { fg = "#f78c6c", bold = true }
+viewing = { fg = "#c792ea", bold = true }
+reacted = { fg = "#bfc7d5", bg = "#3e4452" }
+new = { fg = "#292d3e", bg = "#82b1ff", bold = true }
+more = { fg = "#292d3e", bg = "#f78c6c", bold = true }
+authors = ["#82b1ff", "#c792ea", "#89ddff", "#c3e88d", "#ffcb6b", "#ff5370"]
+
+[colors.mode]
+normal = { fg = "#292d3e", bg = "#82b1ff", bold = true }
+filter = { fg = "#292d3e", bg = "#ffcb6b", bold = true }
+read = { fg = "#292d3e", bg = "#89ddff", bold = true }
+edit = { fg = "#292d3e", bg = "#c792ea", bold = true }
+
+[colors.markdown]
+text = "#bfc7d5"
+heading = { fg = "#82b1ff", bold = true }
+h1 = { fg = "#292d3e", bg = "#82b1ff", bold = true }
+link = { fg = "#89ddff", underline = true }
+code = { fg = "#c3e88d", bg = "#333747" }
+code_block = { fg = "#bfc7d5", bg = "#333747" }
+quote = { fg = "#697098", italic = true }
+rule = "#4b5263"
