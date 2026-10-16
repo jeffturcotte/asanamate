@@ -63,6 +63,28 @@ func TestLoadMissingFile(t *testing.T) {
 	}
 }
 
+func TestConversationsConfig(t *testing.T) {
+	if cfg := Default(); cfg.ConversationsEnabled() || cfg.Conversations != (Conversations{}) {
+		t.Fatal("conversations enabled by default")
+	}
+	for _, body := range []string{"", "[conversations]\ncommand = \"\"\nopen = \"\"", "[conversations]\ncommand = \"fixture list\"\nopen = \"fixture open\""} {
+		cfg, err := Load(writeFile(t, "workspace = \"1\"\n"+body))
+		if err != nil || cfg.ConversationsEnabled() != strings.Contains(body, "fixture") {
+			t.Fatalf("config = %+v, error = %v", cfg.Conversations, err)
+		}
+	}
+	for body, want := range map[string]string{
+		"command = \"list\"":                "conversations.open",
+		"open = \"open\"":                   "conversations.command",
+		"command = \"  \"\nopen = \"open\"": "conversations.command",
+		"command = \"list\"\nopen = \"  \"": "conversations.open",
+	} {
+		if _, err := Load(writeFile(t, "workspace = \"1\"\n[conversations]\n"+body)); err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("error = %v, want %s", err, want)
+		}
+	}
+}
+
 func TestLoadRejectsInvalid(t *testing.T) {
 	cases := map[string]string{
 		"unknown key":   "workspace = \"1\"\nworkspaec = \"2\"\n",

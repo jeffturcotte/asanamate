@@ -439,6 +439,14 @@ commands = []
 # [agents.symbols]
 # waiting = "!"
 
+# Optional saved conversation source and foreground opener. Both must be set
+# together; empty commands leave the extension off. This is the generic contract;
+# ticket picker and CLI integration are planned separately (spec 19).
+# See docs/extensions.md for the protocol and provider safety requirements.
+[conversations]
+# command = "asana-sessions asanamate list"
+# open = "asana-sessions asanamate open"
+
 # Optional completed time tracking. The command reads a JSON request from
 # stdin and writes a form spec as JSON. See README for the protocol.
 [time_tracking]

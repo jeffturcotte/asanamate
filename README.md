@@ -592,6 +592,8 @@ saved with the action builder (`A`) apply at once. Run `asanamate doctor` to che
 | `list.fields` | `["section", "due"]` | default values shown with the title, in aligned columns (`single` layout); `s`, then `c` overrides columns per project; projects whose columns were set in the TUI keep their own; due dates show relative to today and are colored by urgency; a column with one value in each group (such as the grouped field) leaves the rows and shows that value once in the group header, or after the count when the list is ungrouped |
 | `branch_field` | `""` | custom field holding the ticket's git branch (`$ASANAMATE_BRANCH`); empty uses the ticket's ID field, else the title slug |
 | `agents.command` | unset (off) | opt-in agent tracking, such as `"asanamate-ccmux"`; see [Agents](#agents-optional) |
+| `conversations.command` | `""` (off) | generic saved-conversation JSON source; requires `conversations.open`; see [extension contract](docs/extensions.md#conversation-history). Native ticket picker and CLI integration are planned in spec 19 |
+| `conversations.open` | `""` (off) | trusted foreground opener reading a private selection snapshot; requires `conversations.command`. The optional provider companion is not bundled |
 | `symbols` | `unicode` on UTF-8, else `ascii` | `unicode`, `nerd`, or `ascii` for ticket markers and agent states |
 | `reduced_motion` | OS setting | `true` shows static agent symbols instead of the spinner |
 | `list.default_view.group_by` | `""` (ungrouped) | starting grouping, until the project has its own saved view: any `list.fields` name; `b` picks another |

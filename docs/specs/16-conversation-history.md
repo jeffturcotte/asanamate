@@ -7,10 +7,12 @@ and resume one even when neither asanamate nor ccmux launched it. Optional
 provider plugins automate linking when a task URL appears in a user prompt.
 The provider's saved conversation metadata is the source of truth.
 
-This is a proposed design, not implemented behavior. Specs 16–19 cover the
-standalone tool and its asanamate integration. Details requiring a provider
-spike are explicitly gated in spec 17; documentation alone is not proof that an
-operation works on an actively running conversation.
+The generic core contract is implemented in `internal/conversations` and
+`internal/action`, with configuration and fixture tests. The standalone tool,
+provider integrations, and ticket UI remain separate tasks in specs 17–19.
+Details requiring a provider spike are explicitly gated in spec 17;
+documentation alone is not proof that an operation works on an actively
+running conversation.
 
 ## Delivery order
 
@@ -27,6 +29,13 @@ checks; the complete integrated feature must pass all four lists. Hook
 automation can be disabled independently of historical discovery and reopening.
 Run spec 17's feasibility gate before implementing this contract; revise
 the proposed contract if the released provider APIs require it.
+
+The [2026-10-16 live observations](17-provider-feasibility.md) found no native
+writer exclusion for Claude Code `2.1.301`. The user approved proceeding with
+the generic core contract under a conservative provider-opener revision:
+Claude discovery/linking remain supported, but the default Claude opener
+refuses unknown activity until safe resumption is established. This is not
+a claim that the companion's full feasibility or release gate has passed.
 
 ## Terms and boundaries
 
@@ -215,6 +224,9 @@ Protocol rules:
   provider is available. A healthy single-provider installation is complete,
   not permanently degraded. An installed provider's unreadable or failed
   lookup makes the result partial. An existing empty history is successful.
+  When no provider is available, the adapter exits nonzero with recovery
+  information on stderr. Core cannot infer availability from an empty array
+  and informational absence of one provider.
 - Diagnostics have bounded, display-safe messages and stable codes:
   `unavailable`, `unsupported_version`, `permission_denied`,
   `metadata_conflict`, `incomplete`, and `provider_error`. Their required
@@ -266,6 +278,10 @@ data, never interpolated shell text. Exit zero means the open operation
 completed normally, including a resumed CLI that exited normally; nonzero
 means failure. Core restores terminal state and reports failure either way.
 
+For the default Claude opener, unknown activity is refused until safe native
+exclusion is established, per the approved revision above. Confirmation alone
+does not establish safe resumption of an independently launched conversation.
+
 For the supplied opener, the asanamate adapter reads this snapshot and calls
 the same engine operation as the standalone CLI. The engine receives a
 validated selection object; it never reads an asanamate environment variable
@@ -285,6 +301,11 @@ host API, but that host's agent ID must be mapped explicitly to the native
 session ID; branch/title equality is insufficient.
 
 ## Acceptance
+
+Core fixture/configuration checks belong to this task. The separately installed
+package condition below remains an integration gate for spec 17; the native
+ticket picker and CLI are owned by spec 19. The approved Claude restriction
+applies to that companion integration.
 
 - A fixture source can drive the complete generic protocol without Claude,
   Codex, Node, ccmux, or an Asana network request.

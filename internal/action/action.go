@@ -21,6 +21,7 @@ import (
 	"github.com/sadmachine/asanamate/internal/agents"
 	"github.com/sadmachine/asanamate/internal/asana"
 	"github.com/sadmachine/asanamate/internal/config"
+	"github.com/sadmachine/asanamate/internal/conversations"
 	"github.com/sadmachine/asanamate/internal/ticket"
 )
 
@@ -28,9 +29,10 @@ const envPrefix = "ASANAMATE_"
 
 // Files are the ticket exports passed to an action.
 type Files struct {
-	JSON     string
-	Markdown string
-	Input    string // text typed for an input action; "" when the action has none
+	JSON         string
+	Markdown     string
+	Input        string // text typed for an input action; "" when the action has none
+	Conversation string // private selected-record snapshot; empty for other actions
 }
 
 // Context is everything an action run knows about.
@@ -43,6 +45,8 @@ type Context struct {
 	Worktree      string
 	ConfirmWrites bool
 	Files         Files
+	// Conversation is the exact saved selection, only for a conversation opener.
+	Conversation *conversations.Record
 	// Preferred holds the gids of the active project's custom fields; it
 	// decides between fields that share a name.
 	Preferred map[string]bool
@@ -134,35 +138,41 @@ func Env(c Context) []string {
 		c.Branch = Branch(t.Task, "", c.BranchField, c.Preferred)
 	}
 	vars := map[string]string{
-		"GID":                t.GID,
-		"TITLE":              t.Name,
-		"URL":                t.PermalinkURL,
-		"SLUG":               Slug(t.Name),
-		"COMPLETED":          strconv.FormatBool(t.Completed),
-		"REPO":               c.Repo,
-		"WORKTREE":           c.Worktree,
-		"TICKET_JSON":        c.Files.JSON,
-		"TICKET_MD":          c.Files.Markdown,
-		"INPUT_FILE":         c.Files.Input,
-		"CONFIRM_WRITES":     "0",
-		"ASSIGNEE":           "",
-		"DUE":                "",
-		"MY_SECTION":         "",
-		"PROJECT":            "",
-		"PROJECT_GID":        "",
-		"SECTION":            "",
-		"BRANCH":             c.Branch,
-		"AGENT_STATUS":       "",
-		"AGENT_STATE":        "",
-		"AGENT_TITLE":        "",
-		"AGENT_TARGETS":      agentTargets(c.Agents),
-		"AGENT_PATH":         "",
-		"AGENT_TARGET":       "",
-		"COMMENT_GID":        "",
-		"COMMENT_TEXT":       "",
-		"COMMENT_AUTHOR":     "",
-		"COMMENT_AUTHOR_GID": "",
-		"COMMENT_DATE":       "",
+		"GID":                   t.GID,
+		"TITLE":                 t.Name,
+		"URL":                   t.PermalinkURL,
+		"SLUG":                  Slug(t.Name),
+		"COMPLETED":             strconv.FormatBool(t.Completed),
+		"REPO":                  c.Repo,
+		"WORKTREE":              c.Worktree,
+		"TICKET_JSON":           c.Files.JSON,
+		"TICKET_MD":             c.Files.Markdown,
+		"INPUT_FILE":            c.Files.Input,
+		"CONFIRM_WRITES":        "0",
+		"ASSIGNEE":              "",
+		"DUE":                   "",
+		"MY_SECTION":            "",
+		"PROJECT":               "",
+		"PROJECT_GID":           "",
+		"SECTION":               "",
+		"BRANCH":                c.Branch,
+		"AGENT_STATUS":          "",
+		"AGENT_STATE":           "",
+		"AGENT_TITLE":           "",
+		"AGENT_TARGETS":         agentTargets(c.Agents),
+		"AGENT_PATH":            "",
+		"AGENT_TARGET":          "",
+		"COMMENT_GID":           "",
+		"COMMENT_TEXT":          "",
+		"COMMENT_AUTHOR":        "",
+		"COMMENT_AUTHOR_GID":    "",
+		"COMMENT_DATE":          "",
+		"CONVERSATION_JSON":     c.Files.Conversation,
+		"CONVERSATION_PROVIDER": "",
+		"CONVERSATION_ID":       "",
+	}
+	if c.Conversation != nil {
+		vars["CONVERSATION_PROVIDER"], vars["CONVERSATION_ID"] = c.Conversation.Provider, c.Conversation.SessionID
 	}
 	if c.Agent != nil {
 		vars["AGENT_STATUS"], vars["AGENT_PATH"], vars["AGENT_TARGET"] = c.Agent.Status, c.Agent.Path, c.Agent.Target
