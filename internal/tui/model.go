@@ -81,6 +81,9 @@ type Deps struct {
 	// LightBackground picks theme.auto.light for the auto theme; false picks
 	// theme.auto.dark.
 	LightBackground bool
+	// Ticket opens only this ticket's reader, full screen, with no list or
+	// views panel.
+	Ticket string
 }
 
 // Model is the Bubble Tea model for asanamate.
@@ -210,14 +213,27 @@ func New(d Deps) *Model {
 	m.feed = newFeedPanel(d.Config.Feed)
 	m.restoreView()
 	m.refreshInterval, _ = config.ParseRefreshInterval(cmp.Or(d.Config.List.RefreshInterval, config.Default().List.RefreshInterval))
+	if m.ticketOnly() {
+		m.loading, m.readerHidden, m.navHidden, m.focusReader = false, false, true, true
+		m.openGID = d.Ticket
+	}
 	return m
 }
+
+// ticketOnly reports whether the TUI shows only Deps.Ticket.
+func (m *Model) ticketOnly() bool { return m.deps.Ticket != "" }
 
 // ExitCommand is the command an exit-mode action left to run after the TUI quits.
 func (m *Model) ExitCommand() *exec.Cmd { return m.exitCmd }
 
 func (m *Model) Init() tea.Cmd {
-	cmd := tea.Batch(loadTasks(m.deps.Client, m.deps.Config.Workspace, m.viewProject, m.pinnedTasks()), m.startSpinner(), m.scheduleRefresh(), m.startActivity(), m.startFeed())
+	var cmd tea.Cmd
+	if m.ticketOnly() {
+		m.setProgress("loading ticket…")
+		cmd = tea.Batch(m.loadDetail(m.deps.Ticket), m.startSpinner(), m.scheduleRefresh())
+	} else {
+		cmd = tea.Batch(loadTasks(m.deps.Client, m.deps.Config.Workspace, m.viewProject, m.pinnedTasks()), m.startSpinner(), m.scheduleRefresh(), m.startActivity(), m.startFeed())
+	}
 	if m.deps.Config.AgentsEnabled() {
 		cmd = tea.Batch(cmd, loadAgents(m.deps.Config.Agents))
 	}
@@ -744,6 +760,9 @@ func (m *Model) reload() tea.Cmd {
 			delete(m.details, gid)
 		}
 	}
+	if m.ticketOnly() {
+		return m.loadDetail(m.deps.Ticket)
+	}
 	m.loading, m.background = true, false
 	return tea.Batch(loadTasks(m.deps.Client, m.deps.Config.Workspace, m.viewProject, m.pinnedTasks()), m.startSpinner())
 }
@@ -989,7 +1008,7 @@ func (m *Model) readerOn() bool {
 // panel, that room is minPaneW columns; otherwise the terminal must be
 // narrowWidth wide.
 func (m *Model) readerShown() bool {
-	if !m.readerOn() {
+	if !m.readerOn() || m.ticketOnly() {
 		return false
 	}
 	fixed := m.fixedListW()

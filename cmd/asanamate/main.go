@@ -50,6 +50,7 @@ const usage = `usage:
                                                    print tickets (default filter: list.default_view.filter;
                                                    tsv: gid, section, due, title, url)
   asanamate show [--format md|json] <gid>          print one ticket
+  asanamate read [--exit-on-action] <gid>          open one ticket's reader, without the list
   asanamate setup                                  create the config file
   asanamate config                                 edit the config file in $VISUAL or $EDITOR
   asanamate config update [--yes]                  refresh the config's comments and new defaults,
@@ -116,6 +117,8 @@ func run(args []string) int {
 		err = runList(args[1:])
 	case "show":
 		err = runShow(args[1:])
+	case "read":
+		err = runRead(args[1:])
 	case "doctor":
 		err = runDoctor(args[1:])
 	default:
@@ -432,6 +435,29 @@ func runTUI(args []string) error {
 	if fs.NArg() > 0 {
 		return fmt.Errorf("unexpected arguments %v\n%s", fs.Args(), usage)
 	}
+	return startTUI(tui.Deps{NoPreview: hidePreview, ExitOnAction: *exitOnAction})
+}
+
+// runRead opens one ticket's reader full screen, without the list.
+func runRead(args []string) error {
+	fs := flag.NewFlagSet("read", flag.ContinueOnError)
+	exitOnAction := fs.Bool("exit-on-action", false, "quit before running background actions, as exit mode does")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("read needs exactly one task gid\n%s", usage)
+	}
+	gid := fs.Arg(0)
+	if !asana.ValidGID(gid) {
+		return fmt.Errorf("task gid must be numeric, got %q", gid)
+	}
+	return startTUI(tui.Deps{Ticket: gid, ExitOnAction: *exitOnAction})
+}
+
+// startTUI fills in d's config, state, and services, runs the TUI, then runs
+// the command an exit-mode action left.
+func startTUI(d tui.Deps) error {
 	configPath, err := config.Path()
 	if err != nil {
 		return err
@@ -462,21 +488,14 @@ func runTUI(args []string) error {
 			return err
 		}
 	}
-	m := tui.New(tui.Deps{
-		ConfigPath:      configPath,
-		Config:          cfg,
-		State:           st,
-		Client:          client,
-		StateDir:        stateDir,
-		CacheDir:        cacheDir,
-		Images:          kitty.Supported(cfg.Images.Mode, os.Getenv, kitty.TmuxPassthrough),
-		InTmux:          os.Getenv("TMUX") != "",
-		NoPreview:       hidePreview,
-		ExitOnAction:    *exitOnAction,
-		Symbols:         cfg.SymbolSet(os.Getenv),
-		ReducedMotion:   reducedMotion(cfg),
-		LightBackground: !darkBackground(cfg),
-	})
+	d.ConfigPath, d.Config, d.State, d.Client = configPath, cfg, st, client
+	d.StateDir, d.CacheDir = stateDir, cacheDir
+	d.Images = kitty.Supported(cfg.Images.Mode, os.Getenv, kitty.TmuxPassthrough)
+	d.InTmux = os.Getenv("TMUX") != ""
+	d.Symbols = cfg.SymbolSet(os.Getenv)
+	d.ReducedMotion = reducedMotion(cfg)
+	d.LightBackground = !darkBackground(cfg)
+	m := tui.New(d)
 	if _, err := tea.NewProgram(m).Run(); err != nil {
 		return err
 	}
