@@ -569,7 +569,7 @@ func (m *Model) updateFeed(name string) tea.Cmd {
 	case it.URL != "" && name == "open":
 		return openURL(it.URL)
 	}
-	m.status = "this item links to no loaded ticket"
+	m.setStatus(statusWarning, "this item links to no loaded ticket")
 	return nil
 }
 

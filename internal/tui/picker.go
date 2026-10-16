@@ -56,6 +56,8 @@ type picker struct {
 	extraHints [][2]string // controls handled by the picker's owner
 	// preview draws the highlighted item, or nil for none, beside the list.
 	preview func(it *pickItem, width, height int) string
+	// listMaxWidth caps the list beside a preview; zero uses 32 columns.
+	listMaxWidth int
 }
 
 // newPicker returns a picker that calls onPick with the choice.
@@ -270,14 +272,18 @@ func (p *picker) view(width, height int, accent lipgloss.Style) string {
 	if p.preview == nil || width < minPreviewWidth {
 		return p.listView(width, height, accent)
 	}
-	listW := max(min(width*2/5, 32), 24)
-	paneW := width - listW - 2
+	listW := max(min(width*2/5, cmp.Or(p.listMaxWidth, 32)), 24)
+	paneW := width - listW - 3 // divider with one space on either side
 	var it *pickItem
 	if p.cursor < len(p.matches) {
 		it = &p.items[p.matches[p.cursor]]
 	}
 	list := p.listView(listW, height, accent)
-	return lipgloss.JoinHorizontal(lipgloss.Top, list, "  ", p.preview(it, paneW, height))
+	preview := p.preview(it, paneW, height)
+	rows := max(lipgloss.Height(list), lipgloss.Height(preview))
+	divider := lipgloss.NewStyle().Foreground(borderColor).Padding(0, 1).
+		Render(strings.Repeat("│\n", rows-1) + "│")
+	return lipgloss.JoinHorizontal(lipgloss.Top, list, divider, preview)
 }
 
 // listView draws the title, search, list, and key hints.

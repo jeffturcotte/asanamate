@@ -43,18 +43,18 @@ func (m *Model) togglePin(_ tea.KeyPressMsg) tea.Cmd {
 		} else {
 			m.deps.State.PinnedTasks[key] = previous
 		}
-		m.status = "saving pins: " + err.Error()
+		m.setStatus(statusError, "saving pins: "+err.Error())
 		return nil
 	}
 	m.viewing = &t
 	if unpin {
 		m.pinExtras = slices.DeleteFunc(m.pinExtras, func(v asana.Task) bool { return v.GID == t.GID })
-		m.status = "ticket unpinned"
+		m.setStatus(statusInfo, "ticket unpinned")
 	} else {
 		if !slices.ContainsFunc(m.tasks, func(v asana.Task) bool { return v.GID == t.GID }) {
 			m.pinExtras = append(m.pinExtras, t)
 		}
-		m.status = "ticket pinned"
+		m.setStatus(statusInfo, "ticket pinned")
 	}
 	m.applyFilter()
 	m.fitList()

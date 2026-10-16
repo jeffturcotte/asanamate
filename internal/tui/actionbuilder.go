@@ -28,13 +28,13 @@ type actionBuilder struct {
 func (m *Model) openActionBuilder() {
 	path, err := m.configPath()
 	if err != nil {
-		m.status = err.Error()
+		m.setStatus(statusError, err.Error())
 		return
 	}
 	dir := config.ActionsDir(path)
 	files, err := config.LoadActionFiles(dir)
 	if err != nil {
-		m.status = err.Error()
+		m.setStatus(statusError, err.Error())
 		return
 	}
 	open := func(file config.ActionFile) tea.Cmd {
@@ -47,10 +47,11 @@ func (m *Model) openActionBuilder() {
 			}
 			m.deps.Config.Actions = actions
 			m.lastAction = -1 // filename order may have changed
-			m.status = "Saved " + file.Name
+			message := "Saved " + file.Name
 			if file.Original != nil {
-				m.status += " (original kept in actions/*.bak)"
+				message += " (original kept in actions/*.bak)"
 			}
+			m.setStatus(statusInfo, message)
 			return nil
 		}
 		b.showAction()

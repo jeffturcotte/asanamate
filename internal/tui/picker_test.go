@@ -348,3 +348,37 @@ func TestLinkPickerCopies(t *testing.T) {
 		t.Fatalf("enter = %+v, want open", res)
 	}
 }
+
+func TestPickerPreviewHasFullHeightDivider(t *testing.T) {
+	for _, rows := range []int{2, 9} {
+		p := newPicker(nil, "History", items(strings.Repeat("Message ", 12)))
+		p.preview = func(_ *pickItem, width, height int) string {
+			return strings.Repeat("Detail\n", rows-1) + "Detail"
+		}
+		for _, width := range []int{40, 56, 100, 140} {
+			view := ansi.Strip(p.view(width, 12, lipgloss.NewStyle()))
+			column := -1
+			for _, line := range strings.Split(view, "\n") {
+				if ansi.StringWidth(line) > width {
+					t.Fatalf("width %d: split view overflows: %q", width, line)
+				}
+				index := strings.IndexRune(line, '│')
+				if width < minPreviewWidth {
+					if index >= 0 {
+						t.Fatal("single-pane picker must not show a divider")
+					}
+					continue
+				}
+				if index < 0 {
+					t.Fatalf("width %d: divider missing from row: %q", width, line)
+				}
+				if column < 0 {
+					column = ansi.StringWidth(line[:index])
+				}
+				if ansi.StringWidth(line[:index]) != column {
+					t.Fatal("divider must line up across both panes' full height")
+				}
+			}
+		}
+	}
+}

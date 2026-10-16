@@ -297,7 +297,7 @@ key press.
 | `V` | recall or manage saved views |
 | `]` / `[` | apply the next/previous saved view, in name order |
 | `ctrl+s` | save the current filter, grouping, and sorting under a name |
-| `s` | settings: separators, header spacing, reader view, auto-update interval, selection style, dim unfocused panes, and theme save in `settings.toml`; list columns save per project in state |
+| `s` | settings: separators, header spacing, reader view, auto-update interval, selection style, dim unfocused panes, and theme save in `settings.toml`; list columns save per project in state; `n` opens session status history |
 | `o` | open the ticket in the browser |
 | `y` | copy the selected ticket's link to the clipboard (requires terminal OSC 52 support) |
 | `Y` | copy the targeted comment as Markdown in the cards reader (requires terminal OSC 52 support); does nothing on other targets |
@@ -818,11 +818,11 @@ pink = "#f76c7c"
 
 | Role | Used for |
 |---|---|
-| `accent` | reader headings, focused panel border, NORMAL and VIEWS pills |
+| `accent` | informational status messages, reader headings, focused panel border, NORMAL and VIEWS pills |
 | `border` | unfocused panel and card borders |
 | `muted` | secondary text: distant due dates, list fields, and tickets in the Later and No due date groups |
 | `highlight` | bar selection and the views panel cursor |
-| `ok`, `warn`, `error` | status messages, due-date urgency, Today and Overdue group headers, positive time logged today (`ok`), and applied filter text (`warn`) |
+| `ok`, `warn`, `error` | warning and error status messages (`warn`, `error`), due-date urgency, Today and Overdue group headers, positive time logged today (`ok`), and applied filter text (`warn`) |
 | `working` | working coding agents |
 | `header`, `selection` | group headers, selection marker |
 | `pinned`, `viewing` | Pinned and Viewing section headers |
@@ -835,6 +835,28 @@ pink = "#f76c7c"
 | `authors` | comment authors' dots and gutters and `initials` badges, cycled |
 | `mode.normal`, `mode.filter`, `mode.read`, `mode.edit` | statusline mode pills |
 | `markdown.text`, `.heading`, `.h1`, `.link`, `.code`, `.code_block`, `.quote`, `.rule` | reading pane Markdown, on top of glamour's dark or light style |
+
+Status messages begin with an information, warning, or error icon, following
+the selected `symbols` set. Informational messages include progress and success
+updates; warnings report unavailable choices or partial results; errors report
+failed operations. These use the existing `accent`, `warn`, and `error` colors.
+
+Info and warning messages briefly appear in a bordered toast covering the bottom
+right of the statusline: 4 seconds for info, 6 seconds for warnings. A new
+message replaces the toast. The border briefly highlights unless reduced motion
+is enabled; the toast never takes focus or moves the panes. Routine progress
+stays in the statusline. The latest message remains there after the toast closes
+and while navigating.
+
+Errors open an acknowledgment modal. Unrelated errors wait until the current
+editor or picker closes; errors belonging to an editor stay inline. Repeated
+identical background failures do not reopen a modal until that source recovers.
+
+Open Settings (`s`), then Status history (`n`) to search the latest 100 messages
+from this session, newest first, with timestamps and severity. Consecutive
+identical messages share an entry with a repeat count. Selecting an entry copies
+its full text to the clipboard. Progress is excluded. History stays in memory
+and is discarded when the app exits; it is not written to `actions.log` or state.
 
 ### Time tracking (optional)
 

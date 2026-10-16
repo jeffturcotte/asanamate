@@ -34,7 +34,7 @@ func (m *Model) openLinks() tea.Cmd {
 		names[gid] = cmp.Or(name, "unavailable project")
 	}
 	if len(missing) > 0 {
-		m.status = "loading projects…"
+		m.setProgress("loading projects…")
 		return loadLinkNames(m.deps.Client, missing)
 	}
 	refs := make([]asana.Ref, 0, len(names))
@@ -111,7 +111,7 @@ func (m *Model) openLinkRepoPicker(msg candidatesMsg) {
 		if path == "" {
 			m.modal = nil
 			m.saveLink(target, "")
-			m.status = "unlinked " + name
+			m.setStatus(statusInfo, "unlinked "+name)
 			return nil
 		}
 		resolved, ok := m.resolvePicked(path)
@@ -119,7 +119,7 @@ func (m *Model) openLinkRepoPicker(msg candidatesMsg) {
 			return nil
 		}
 		m.saveLink(target, resolved)
-		m.status = "linked " + name + " to " + resolved
+		m.setStatus(statusInfo, "linked "+name+" to "+resolved)
 		return nil
 	}), lead...)
 }

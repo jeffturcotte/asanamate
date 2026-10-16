@@ -163,7 +163,7 @@ func TestCopyCommentOnlyOnTarget(t *testing.T) {
 			if cmd == nil {
 				t.Fatal("comment target did not request clipboard write")
 			}
-			if got, want := cmd(), tea.SetClipboard(tt.want)(); got != want {
+			if got, want := commandMessages(cmd), tea.SetClipboard(tt.want)(); !slices.Contains(got, want) {
 				t.Fatalf("clipboard message = %#v, want %#v", got, want)
 			}
 			if m.status != "comment sent to clipboard" {

@@ -136,7 +136,7 @@ func drain(m *Model, cmd tea.Cmd) {
 		return
 	}
 	switch msg := cmd().(type) {
-	case nil, tasksMsg, spinnerTickMsg:
+	case nil, tasksMsg, spinnerTickMsg, toastTickMsg:
 	case tea.BatchMsg:
 		for _, c := range msg {
 			drain(m, c)

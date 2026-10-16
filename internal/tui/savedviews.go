@@ -98,7 +98,7 @@ func (m *Model) openSavedViews() {
 func (m *Model) applySavedView(name string) tea.Cmd {
 	v, exists := m.deps.State.SavedViews[name]
 	if !exists {
-		m.status = "saved view not found: " + ticket.OneLine(name)
+		m.setStatus(statusWarning, "saved view not found: "+ticket.OneLine(name))
 		return nil
 	}
 	m.savedView = name
@@ -106,7 +106,7 @@ func (m *Model) applySavedView(name string) tea.Cmd {
 	m.filterInput.SetValue(v.Filter)
 	m.viewing = nil
 	m.groupBy, m.sortBy = v.GroupBy, v.Sort
-	m.status = "view: " + ticket.OneLine(name)
+	m.setStatus(statusInfo, "view: "+ticket.OneLine(name))
 	return m.listViewChanged()
 }
 
@@ -115,7 +115,7 @@ func (m *Model) applySavedView(name string) tea.Cmd {
 func (m *Model) cycleSavedView(dir int) tea.Cmd {
 	items := m.savedViewItems()
 	if len(items) == 0 {
-		m.status = "no saved views"
+		m.setStatus(statusInfo, "no saved views")
 		return nil
 	}
 	i := slices.IndexFunc(items, func(it pickItem) bool { return it.Value == m.savedView })
@@ -201,15 +201,15 @@ func (m *Model) storeSavedView(name string, v *state.View) tea.Cmd {
 		} else {
 			delete(s.Views, gid)
 		}
-		m.status = "saving state: " + err.Error()
+		m.setStatus(statusError, "saving state: "+err.Error())
 		return nil
 	}
-	m.status = "saved view: " + ticket.OneLine(name)
+	m.setStatus(statusInfo, "saved view: "+ticket.OneLine(name))
 	if v == nil {
 		if m.savedView == name {
 			m.savedView = ""
 		}
-		m.status = "deleted view: " + ticket.OneLine(name)
+		m.setStatus(statusInfo, "deleted view: "+ticket.OneLine(name))
 	} else {
 		m.savedView = name
 	}

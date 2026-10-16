@@ -152,7 +152,9 @@ func (m *Model) closeActivity() {
 
 func (m *Model) saveActivity() {
 	if err := m.activity.cache.Save(); err != nil {
-		m.status = "Activity cache: " + ticket.OneLine(err.Error())
+		m.setBackgroundError("activity cache", "Activity cache: "+ticket.OneLine(err.Error()))
+	} else {
+		delete(m.backgroundErrors, "activity cache")
 	}
 }
 
@@ -513,7 +515,7 @@ func (m *Model) handleActivityKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	case "copy_link":
 		if e, ok := a.selected(); ok {
-			m.status = "link sent to clipboard"
+			m.setStatus(statusInfo, "link sent to clipboard")
 			return tea.SetClipboard(e.Task.PermalinkURL)
 		}
 	case "projects":
