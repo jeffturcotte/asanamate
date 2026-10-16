@@ -79,8 +79,10 @@ from spec 17. The UI labels the action
 map a saved thread to a window, tmux pane, or Paseo agent.
 
 The default opener refuses a known active session and explains how to return
-to its owning host. Unknown activity requires the explicit choice specified
-in spec 17. A custom `conversations.open` may focus a host only when that
+to its owning host. Unknown activity follows spec 17: require an explicit
+choice only where safe native exclusion exists; the approved conservative
+Claude revision refuses unknown activity until safe resumption is established.
+A custom `conversations.open` may focus a host only when that
 integration has an authoritative native-ID mapping. Source records never
 carry shell commands or trusted deep links to execute.
 

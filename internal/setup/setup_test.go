@@ -307,6 +307,25 @@ func TestMergeKeepsStyleTables(t *testing.T) {
 	}
 }
 
+func TestMergeConversationsConfig(t *testing.T) {
+	updated, _, _, err := Merge("workspace = \"1\"\n[conversations]\ncommand = \"custom list\"\nopen = \"custom open\"\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := loadString(t, updated)
+	if cfg.Conversations.Command != "custom list" || cfg.Conversations.Open != "custom open" {
+		t.Fatalf("commands not preserved: %+v", cfg.Conversations)
+	}
+	again, _, _, err := Merge(updated)
+	if err != nil || again != updated {
+		t.Fatalf("merge not idempotent: %v", err)
+	}
+	updated, _, _, err = Merge("workspace = \"1\"\n")
+	if err != nil || loadString(t, updated).ConversationsEnabled() || !strings.Contains(updated, "[conversations]") {
+		t.Fatalf("old config upgrade = %s, error = %v", updated, err)
+	}
+}
+
 func TestUpdateMigratesV010Config(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")

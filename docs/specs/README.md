@@ -28,7 +28,7 @@ can run in parallel, each on its own branch.
 | [13-settings-file](13-settings-file.md) (done) | Settings the TUI changes move from `config.toml` and state into `settings.toml`; `[theme.auto]` and `ansi-dark`/`ansi-light` | 12 | yes |
 | [14-default-view](14-default-view.md) (done) | `default_filter`, `list.group_by`, and `list.sort` move to `[list.default_view]` | 12, after 13 | yes |
 | [15-remove-deprecated](15-remove-deprecated.md) (done) | Remove the hidden `hook` subcommand and `--no-preview` | none | yes |
-| [16-conversation-history](16-conversation-history.md) | Generic ticket conversation source, metadata, config, and open contract | none | no |
+| [16-conversation-history](16-conversation-history.md) (core done) | Generic ticket conversation source, metadata, config, and open contract; provider integration remains in 17–19 | none | no |
 | [17-conversation-companion](17-conversation-companion.md) | Standalone `asana-sessions` package/CLI for native history, linking, and resumption | 16's adapter contract only; provider feasibility gate first | no |
 | [18-conversation-plugins](18-conversation-plugins.md) | `asana-sessions` native hook plugins, skill, installation, and independent releases | 17 | no |
 | [19-conversation-ui](19-conversation-ui.md) | Native ticket conversation picker, CLI, foreground opening, and end-to-end proof | 16, 17 | no |
@@ -37,7 +37,9 @@ can run in parallel, each on its own branch.
 
 Specs 12 to 15 are complete and shipped together in v0.3.0.
 
-Specs 16 to 19 describe a separate proposed feature. The standalone
+Specs 16 to 19 describe a separate conversation feature. Spec 16's generic
+core contract is implemented; its provider/package integration is not yet
+complete. The standalone
 `asana-sessions` package lives in
 `packages/asana-sessions/` in this repository while it is built out; moving
 to its own repository is a later decision. It has its own CLI, README,

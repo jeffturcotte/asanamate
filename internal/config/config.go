@@ -66,6 +66,8 @@ type Config struct {
 	ReducedMotion *bool      `toml:"reduced_motion"`
 	RepoSource    RepoSource `toml:"repo_source"`
 	Agents        Agents     `toml:"agents"`
+	// Conversations is disabled until both source and foreground opener are set.
+	Conversations Conversations `toml:"conversations"`
 	// TimeTracking is disabled until both its provider ID and command are set.
 	TimeTracking TimeTracking `toml:"time_tracking"`
 	// ProjectLinks is disabled until its command is set.
@@ -138,6 +140,19 @@ type Agents struct {
 // AgentsEnabled reports whether agent tracking is turned on.
 func (c Config) AgentsEnabled() bool {
 	return strings.TrimSpace(c.Agents.Command) != ""
+}
+
+// Conversations configures saved conversation discovery independently of agents.
+type Conversations struct {
+	// Command reads a versioned JSON task request and returns saved metadata.
+	Command string `toml:"command"`
+	// Open is foreground shell text that reads a private selection snapshot.
+	Open string `toml:"open"`
+}
+
+// ConversationsEnabled reports whether both conversation commands are configured.
+func (c Config) ConversationsEnabled() bool {
+	return strings.TrimSpace(c.Conversations.Command) != "" && strings.TrimSpace(c.Conversations.Open) != ""
 }
 
 // Symbol sets.
@@ -348,6 +363,7 @@ func Default() Config {
 	return Config{
 		Theme:         Theme{Name: ThemeAuto, Auto: AutoThemes{Dark: "ansi-dark", Light: "ansi-light"}},
 		ConfirmWrites: true,
+		Conversations: Conversations{},
 		TimeTracking:  TimeTracking{},
 		ProjectLinks:  ProjectLinks{},
 		Actions:       nil,
@@ -566,6 +582,12 @@ func (c Config) validate() error {
 	}
 	if err := c.Colors.validate("colors"); err != nil {
 		return err
+	}
+	if strings.TrimSpace(c.Conversations.Command) != "" && strings.TrimSpace(c.Conversations.Open) == "" {
+		return errors.New("conversations.open is required when conversations.command is set")
+	}
+	if strings.TrimSpace(c.Conversations.Open) != "" && strings.TrimSpace(c.Conversations.Command) == "" {
+		return errors.New("conversations.command is required when conversations.open is set")
 	}
 	return c.Agents.validate()
 }

@@ -10,6 +10,13 @@ it depends on that contract, not a built or installed core application.
 
 ## Feasibility gate: do this first
 
+The [2026-10-16 live observations](17-provider-feasibility.md) found that
+Claude Code `2.1.301` permits concurrent native resumption without writer
+exclusion. The user approved a conservative revision: retain Claude discovery
+and linking, but refuse default Claude resumption with unknown activity until
+safe resumption is established. Generic spec 16 implementation may proceed;
+the companion's remaining feasibility and release gates have not passed.
+
 Use disposable provider homes and conversations, never the user's current
 chat or personal history. Record versions and observations in a short
 compatibility section beside the companion's installation instructions.
@@ -221,6 +228,10 @@ Handle activity honestly:
   to resume despite unknown activity or cancel. In noninteractive use,
   fail with recovery instructions rather than hanging. This choice is not
   evidence that no other process exists; native safeguards still apply.
+  Claude is the conservative exception: the default opener refuses unknown
+  activity until safe resumption is established, because the tested CLI
+  supplies no cross-process writer exclusion. Report a precise recovery path;
+  do not offer confirmation as a substitute for missing exclusion.
 
 Do not forcibly take over a locked session. If the provider cannot safely
 resume an active conversation, refuse rather than forking silently. Host
