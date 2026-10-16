@@ -232,6 +232,9 @@ Handle activity honestly:
   activity until safe resumption is established, because the tested CLI
   supplies no cross-process writer exclusion. Report a precise recovery path;
   do not offer confirmation as a substitute for missing exclusion.
+  Claude Code's live-session registry establishes `active` and `inactive`
+  ([observations](17-provider-feasibility.md#claude-activity-registry-2026-10-16));
+  only an unreadable registry leaves Claude activity `unknown`.
 
 Do not forcibly take over a locked session. If the provider cannot safely
 resume an active conversation, refuse rather than forking silently. Host
