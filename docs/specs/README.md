@@ -28,9 +28,14 @@ can run in parallel, each on its own branch.
 | [13-settings-file](13-settings-file.md) (done) | Settings the TUI changes move from `config.toml` and state into `settings.toml`; `[theme.auto]` and `ansi-dark`/`ansi-light` | 12 | yes |
 | [14-default-view](14-default-view.md) (done) | `default_filter`, `list.group_by`, and `list.sort` move to `[list.default_view]` | 12, after 13 | yes |
 | [15-remove-deprecated](15-remove-deprecated.md) (done) | Remove the hidden `hook` subcommand and `--no-preview` | none | yes |
+| [20-addon-discovery](20-addon-discovery.md) | Shared CLI/TUI addon catalog, guided installation, setup instructions, and readiness checks | none | no |
+| [21-native-harvest](21-native-harvest.md) | Direct Harvest API, independent credentials, task selection, and compatible legacy setup | existing protocols; independent of 20 | no |
 
 Specs 12 to 15 ship together as v0.3.0. Tag the release only after all four
 are merged, so users migrate once.
+
+Specs 20 and 21 can ship independently. When both are present, 21 updates
+the Harvest catalog entry from 20 to use native setup and checks.
 
 ## Rules for every task
 
