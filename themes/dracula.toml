@@ -1,5 +1,6 @@
 # Dracula palette adapted to asanamate's themed roles.
 # Palette reference: https://github.com/dracula/dracula-theme
+# Copyright (c) 2023 Dracula Theme. MIT license: LICENSE.dracula.
 base = "dark"
 
 [colors]

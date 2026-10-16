@@ -1,5 +1,6 @@
 # One Dark palette adapted to asanamate's themed roles.
 # Palette reference: https://github.com/atom/one-dark-syntax
+# Copyright (c) 2016 GitHub Inc. MIT license: LICENSE.one.
 base = "dark"
 
 [colors]

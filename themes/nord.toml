@@ -1,5 +1,6 @@
 # Nord palette adapted to asanamate's themed roles.
 # Palette reference: https://www.nordtheme.com/docs/colors-and-palettes
+# Copyright (c) 2016-present Sven Greb. MIT license: LICENSE.nord.
 base = "dark"
 
 [colors]

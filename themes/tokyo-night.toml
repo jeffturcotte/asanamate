@@ -1,5 +1,6 @@
 # Tokyo Night palette adapted to asanamate's themed roles.
 # Palette reference: https://github.com/folke/tokyonight.nvim
+# Apache License 2.0: LICENSE.tokyonight.
 base = "dark"
 
 [colors]
