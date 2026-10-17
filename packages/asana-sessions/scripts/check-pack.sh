@@ -3,18 +3,45 @@
 # checkout, asanamate, provider history, or Asana token, then checks that every
 # public command runs and fails only for missing provider history.
 set -eu
+nodebin=$(node -p "require('node:path').dirname(process.execPath)")
 pkg=$(cd "$(dirname "$0")/.." && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
+node "$pkg/scripts/check-plugins.js"
 tarball=$(cd "$pkg" && npm pack --silent --pack-destination "$work")
 npm install --global --silent --no-audit --no-fund --prefix "$work/prefix" "$work/$tarball"
 
 run() {
-  (cd "$work" && env -i HOME="$work/home" PATH="$work/prefix/bin:$(dirname "$(command -v node)"):/usr/bin:/bin" asana-sessions "$@")
+  (cd "$work" && env -i HOME="$work/home" PATH="$work/prefix/bin:$nodebin:/usr/bin:/bin" asana-sessions "$@")
 }
 id=01a14609-3a63-7c02-bd2b-c313bedc3c37
 mkdir "$work/home"
 
+installed="$work/prefix/lib/node_modules/asana-sessions"
+test -f "$installed/npm-shrinkwrap.json"
+node --input-type=module - "$installed" <<'CHECK'
+import assert from 'node:assert/strict';
+import { readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+const root = process.argv[2];
+const lock = JSON.parse(readFileSync(join(root, 'npm-shrinkwrap.json')));
+for (const [path, entry] of Object.entries(lock.packages)) {
+  const manifest = join(root, path, 'package.json');
+  if (existsSync(manifest)) {
+    assert.equal(JSON.parse(readFileSync(manifest)).version, entry.version, path);
+  } else {
+    assert.ok(entry.optional, `missing pinned dependency ${path}`);
+  }
+}
+CHECK
+for provider in claude codex; do
+  test -f "$installed/plugins/$provider/asana-sessions/skills/link-asana-task/SKILL.md"
+  test -f "$installed/plugins/$provider/asana-sessions/hooks/hooks.json"
+done
+run hook codex <<'EVENT' > "$work/hook.txt"
+{"hook_event_name":"UserPromptSubmit","session_id":"invalid","cwd":"/tmp","prompt":"https://app.asana.com/0/1/42"}
+EVENT
+grep -q 'skipped' "$work/hook.txt"
 run version
 run help > /dev/null
 run doctor > "$work/doctor.txt" || { cat "$work/doctor.txt"; exit 1; }

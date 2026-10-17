@@ -21,16 +21,39 @@ export function createClaude({ sdk, env = process.env, starts = processStarts } 
     throw providerError(err, 'Claude Code');
   });
   const call = async (fn) => {
+    const previous = process.env.CLAUDE_CONFIG_DIR;
     try {
+      // The SDK reads its config directory from the process environment only.
+      if (process.env !== env) {
+        if (env.CLAUDE_CONFIG_DIR) {
+          process.env.CLAUDE_CONFIG_DIR = env.CLAUDE_CONFIG_DIR;
+        } else {
+          delete process.env.CLAUDE_CONFIG_DIR;
+        }
+      }
       return await fn(await load());
     } catch (err) {
       throw providerError(err, 'Claude Code');
+    } finally {
+      if (previous === undefined) {
+        delete process.env.CLAUDE_CONFIG_DIR;
+      } else {
+        process.env.CLAUDE_CONFIG_DIR = previous;
+      }
     }
   };
 
   return {
     name: 'claude',
     validID: (id) => UUID.test(id),
+    // The CLI exports the current conversation's ID to its tool commands.
+    currentEnv: 'CLAUDE_CODE_SESSION_ID',
+    // homeEnv names the config directory holding a hook event's transcript,
+    // <home>/projects/<project>/<id>.jsonl, or returns null.
+    homeEnv: (transcript, id) => {
+      const m = typeof transcript === 'string' && transcript.match(/^(.+)\/projects\/[^/]+\/[^/]+$/);
+      return m && transcript.endsWith(`/${id}.jsonl`) ? { CLAUDE_CONFIG_DIR: m[1] } : null;
+    },
 
     async probe() {
       await history();

@@ -18,21 +18,6 @@ jobs:
       - run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
       - run: go test -race ./...
 
-  # The optional Node companion package; the Go jobs never need Node.
-  asana-sessions:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: packages/asana-sessions
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24.18.0"
-      - run: npm ci
-      - run: npm test
-      - run: scripts/check-pack.sh
-
   # Builds the release archives without publishing and checks them; smoke runs
   # the binaries.
   release-check:

@@ -13,6 +13,9 @@
       },
       "bin": {
         "asana-sessions": "bin/asana-sessions.js"
+      },
+      "engines": {
+        "node": ">=22"
       }
     },
     "node_modules/@anthropic-ai/claude-agent-sdk": {

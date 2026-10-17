@@ -1,0 +1,35 @@
+name: asana-sessions-release
+on:
+  push:
+    tags: ['asana-sessions/v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/asana-sessions
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Check tag and asset versions
+        run: |
+          node --input-type=module -e 'import fs from "node:fs"; const p=JSON.parse(fs.readFileSync("package.json")); const l=JSON.parse(fs.readFileSync("npm-shrinkwrap.json")); if (process.env.GITHUB_REF_NAME !== `asana-sessions/v${p.version}` || l.version !== p.version || l.packages[""].version !== p.version) process.exit(1)'
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - run: npm run check
+      - run: scripts/check-pack.sh
+      - name: Pack pinned release artifact
+        run: |
+          mkdir -p dist
+          npm pack --pack-destination dist
+          cd dist
+          sha256sum *.tgz > checksums.txt
+          sha256sum -c checksums.txt
+      - name: Publish standalone assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/*.tgz dist/checksums.txt --verify-tag --title "$GITHUB_REF_NAME" --notes-file CHANGELOG.md

@@ -7,12 +7,12 @@ not preserve terminal input). No personal conversation history was read or
 copied. Codex authentication alone was copied into its isolated home; Claude
 was authenticated separately by the user.
 
-## Gate status: hooks pending
+## Gate status: local provider checks pass
 
-This is partial gate evidence, not a supported-version floor or a release
-approval. The user approved the conservative revision described below, allowing
-generic spec 16 implementation to proceed independently of the companion's
-remaining gate work. No provider integration is claimed by this evidence.
+Local live provider checks now pass at the tested versions below. The earlier
+conservative revision allowed generic spec 16 work to proceed independently;
+the 2026-10-17 Claude retry closes the account-quota gap. These local results
+are not a release approval or proof of the remote Node/platform CI matrix.
 
 ## Tested versions
 
@@ -186,3 +186,122 @@ explicit native-session mapping and authoritative ownership behavior.
 - [Claude session APIs](https://platform.claude.com/docs/en/agent-sdk/sessions).
 - [Codex app-server](https://developers.openai.com/codex/app-server).
 - Exact exported Claude SDK declarations shipped in `0.3.301`.
+
+
+## Spec 18 implementation evidence (2026-10-16)
+
+Deterministic checks pass on local Node 24.18.0: 55 package tests, plugin asset
+validation, and a tarball installed in an empty prefix and provider home. The
+packed install includes native manifests/hooks/skills, license and an npm
+shrinkwrap; installed dependency versions are checked against that shrinkwrap.
+The core conversation/Asana/CLI checks pass (103 tests). Node 22 and Linux are
+CI targets; this local run does not establish their results.
+
+Both native plugin installers were exercised twice in fresh temporary provider
+homes. Each reported exactly one `asana-sessions@asana-sessions` registration
+at version 0.1.0, then native plugin and marketplace removal succeeded. Claude's
+`plugin validate` accepts its plugin manifest. Codex `hooks/list` discovers
+exactly one enabled, untrusted `userPromptSubmit` hook, timeout 15 seconds, and
+no Stop hook. No trust was granted by these checks.
+
+Earlier hook probes in this worktree established that Claude's first prompt can
+precede the readable transcript. The implementation retains only pending
+provider/session/GID/time and attempts completion from Stop. Earlier Codex
+probes linked immediately after deriving CODEX_HOME from `transcript_path`:
+a login-shell profile had overridden the isolated home. The implementation
+therefore verifies transcript/session shape and uses the event's provider home.
+Codex has no deferred state or Stop hook.
+
+### Authenticated isolated checks
+
+The user authorized authenticated model turns. A packed 0.1.0 install was used
+in fresh provider homes and a fresh work directory. Only available authentication
+was supplied; no personal history or provider configuration was copied. Provider
+executables ran through `caveman`. The exact owned Codex hook definition was
+reviewed and trusted in its disposable home; setup did not grant that trust.
+
+Codex 0.162.1 passed these live checks:
+
+- A first submitted task URL linked the exact native ID immediately. A later
+  prompt and subsequent separate `exec resume` processes preserved the marker
+  in native metadata/history. No Stop hook or pending link was needed.
+- Repeated identical URLs were idempotent. Two distinct tasks produced a
+  nonblocking ambiguity notice. A different existing task produced a conflict
+  notice, without changing the saved link. Every submitted prompt had at most
+  one owned hook invocation after repeated native registration.
+- The installed explicit skill was loaded by the model and used `--current`
+  successfully from its tool environment. Changing the task used `--replace`.
+  Unlink and relink preserved a human title supplied through the native naming
+  API. Hook environments themselves did not expose CODEX_THREAD_ID; automatic
+  linking correctly used the event ID instead.
+- Disabled and untrusted plugins ran no owned hook and did not block replies.
+  Removing the helper from PATH also did not block the reply. Existing links
+  remained unchanged in all three cases.
+- Local upgrade fixtures advanced the isolated package/plugin manifests to
+  0.1.1 and then 0.1.2; repository/package versions remained 0.1.0. This exposed
+  a Claude installer issue: repeated native install retained its old version.
+  Setup now removes only the stale owned registration before reinstalling. Its
+  regression test fails without that fix and passes with it. Native upgrades
+  then succeeded for both providers, and Codex still loaded exactly one hook.
+- Changing only the disposable hook timeout during the next upgrade produced
+  native trustStatus `modified`; setup reported `untrusted`. It did not approve
+  the changed definition. With matching PATH and reviewed unchanged content,
+  standalone setup returned 0 and reported `ready`.
+- Native removal succeeded for both providers, cleared their owned pending
+  state, and preserved all three synthetic transcript files byte-for-byte.
+  The installed helper still listed the Codex link and its human title after
+  plugin removal. The opener implementation is unchanged from the earlier
+  native-open checks above; a new interactive open was not run here.
+
+Measured Codex hook durations were 596, 35, 196, 36, 208, 33 and 38 ms,
+including wrapper/process startup and native metadata verification. This
+supports the 10-second helper / 15-second host budget for these disposable
+Codex histories; it is not a large-history benchmark. The deterministic suite
+covers malformed/oversize events, unreadable/unknown sessions, deadlines,
+readback failures, and late-write prevention without spending model tokens.
+
+Claude Code 2.1.301 authenticated successfully, exported the matching
+CLAUDE_CODE_SESSION_ID to its hook, and ran exactly one UserPromptSubmit hook
+before its transcript existed (96 ms, exit 0, no notice). Its first reply was
+rejected with `You've hit your session limit · resets 7:10pm (America/New_York)`
+on 2026-10-16. No real Stop ran in that attempt; the remaining Claude checks
+were deferred until the account limit reset.
+
+### Claude retry (2026-10-17)
+
+A fresh packed 0.1.0 install, isolated provider home and working directory were
+used with the user's existing authorization. Claude Code remained 2.1.301;
+Node remained 24.18.0. No personal history or configuration was copied, and all
+provider executable calls ran through `caveman`.
+
+- The first authenticated prompt completed successfully. UserPromptSubmit ran
+  before the transcript existed (81 ms), retained the pending GID, and a real
+  nonblocking Stop linked it after persistence (71 ms). Independent SDK/history
+  lookup found the exact native ID and `Conversation [asana:424242420018]`.
+- Separate `--resume` processes submitted later prompts. The title persisted.
+  Duplicate task URLs were silent/idempotent; two tasks produced an ambiguity
+  notice, and another existing task produced a conflict notice with no relink.
+  Each prompt completed with exit 0 and an assistant reply.
+- The installed `asana-sessions:link-asana-task` skill was invoked natively.
+  It used `--current --replace` to change the task, then separate helper calls
+  unlinked and linked it again. Independent SDK reads after both operations
+  verified the exact session, human title and unrelated `keep-test-tag` tag.
+- Native plugin disablement ran no owned hooks and did not block the reply.
+  With the helper absent from PATH, the host reported nonblocking hook errors
+  and still completed the reply. The saved title and unrelated tag survived.
+- Across seven enabled submissions there were exactly seven owned prompt hooks
+  and seven owned Stop hooks, all exit 0. Durations were 81, 71, 32, 31, 70, 37,
+  54, 32, 72, 31, 36, 42, 39 and 34 ms. No pending entries remained. These checks
+  support the 10-second helper / 15-second native budget for the tested history;
+  they do not establish large-history latency.
+- Native removal preserved the synthetic transcript files byte-for-byte and
+  retained the title/tag. The installed helper then opened the exact inactive
+  session through `claude --resume` in a real terminal, without either plugin
+  installed. Its native title and exit resume command identified the same
+  session. After closing it, SDK lookup still returned the expected title/tag.
+
+The quota blocker is resolved and no product-code change was needed for this
+retry. Disposable homes were removed after verification. The remaining release
+requirements are the exact-main remote Node/platform CI gates, clean/local-remote
+commit agreement, and explicit authorization to tag; follow the
+[standalone release gate](../../packages/asana-sessions/RELEASING.md).

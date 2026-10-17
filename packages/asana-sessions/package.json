@@ -11,14 +11,21 @@
   "files": [
     "bin/",
     "src/",
+    "plugins/",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "RELEASING.md",
+    "npm-shrinkwrap.json"
   ],
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "check": "node scripts/check-plugins.js"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.301"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

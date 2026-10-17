@@ -1,0 +1,12 @@
+{
+  "name": "asana-sessions",
+  "interface": { "displayName": "asana-sessions" },
+  "plugins": [
+    {
+      "name": "asana-sessions",
+      "source": { "source": "local", "path": "./asana-sessions" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Productivity"
+    }
+  ]
+}

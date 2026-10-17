@@ -1,6 +1,6 @@
 // Codex history through a short-lived `codex app-server` stdio connection.
-// Only thread/list, thread/read, thread/name/set, and thread/unarchive are used;
-// never thread/resume or turn/start.
+// Only thread/list, thread/read, thread/name/set, thread/unarchive, and
+// hooks/list are used; never thread/resume or turn/start.
 import { spawn as nodeSpawn } from 'node:child_process';
 import { stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -15,7 +15,8 @@ const PAGE_SIZE = 100;
 const MAX_PAGES = 1000;
 const MAX_LINE = 4 * 1024 * 1024;
 
-export function createCodex({ spawn = nodeSpawn, env = process.env, timeoutMs = 8000, version = '0' } = {}) {
+// signal, when aborted, stops every running app-server.
+export function createCodex({ spawn = nodeSpawn, env = process.env, timeoutMs = 8000, version = '0', signal } = {}) {
   const home = () => env.CODEX_HOME || join(homedir(), '.codex');
 
   // connect runs fn against one initialized app-server and always stops it.
@@ -25,7 +26,7 @@ export function createCodex({ spawn = nodeSpawn, env = process.env, timeoutMs = 
     } catch (err) {
       throw providerError(err, 'Codex');
     }
-    const rpc = new Rpc(spawn('codex', ['app-server'], { stdio: ['pipe', 'pipe', 'pipe'], env }), timeoutMs);
+    const rpc = new Rpc(spawn('codex', ['app-server'], { stdio: ['pipe', 'pipe', 'pipe'], env, signal, killSignal: 'SIGKILL' }), timeoutMs);
     try {
       await rpc.request('initialize', { clientInfo: { name: 'asana-sessions', version } });
       rpc.notify('initialized');
@@ -38,6 +39,14 @@ export function createCodex({ spawn = nodeSpawn, env = process.env, timeoutMs = 
   return {
     name: 'codex',
     validID: (id) => UUID.test(id),
+    // The CLI exports the current thread's ID to its tool commands.
+    currentEnv: 'CODEX_THREAD_ID',
+    // homeEnv names the Codex home holding a hook event's transcript,
+    // <home>/sessions/YYYY/MM/DD/rollout-<time>-<id>.jsonl, or returns null.
+    homeEnv: (transcript, id) => {
+      const m = typeof transcript === 'string' && transcript.match(/^(.+)\/sessions\/\d{4}\/\d{2}\/\d{2}\/rollout-[^/]+$/);
+      return m && transcript.endsWith(`-${id}.jsonl`) ? { CODEX_HOME: m[1] } : null;
+    },
 
     probe: () => connect((rpc) => rpc.request('thread/list', { limit: 1, sourceKinds: SOURCE_KINDS })),
 
@@ -76,6 +85,16 @@ export function createCodex({ spawn = nodeSpawn, env = process.env, timeoutMs = 
     read(id) {
       return connect(async (rpc) => normalize((await rpc.request('thread/read', { threadId: id, includeTurns: false }))?.thread, false));
     },
+
+    // hooks lists the hooks Codex would run in cwd, with their source plugin
+    // and trust status.
+    hooks: (cwd) => connect(async (rpc) => {
+      const res = await rpc.request('hooks/list', { cwds: [cwd] });
+      if (!Array.isArray(res?.data)) {
+        throw new ProviderError('provider_error', 'Codex returned a malformed hook list');
+      }
+      return res.data.flatMap((entry) => (Array.isArray(entry?.hooks) ? entry.hooks : []));
+    }),
 
     rename: (id, title) => connect((rpc) => rpc.request('thread/name/set', { threadId: id, name: title })),
     unarchive: (id) => connect((rpc) => rpc.request('thread/unarchive', { threadId: id })),

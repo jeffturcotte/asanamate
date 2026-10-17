@@ -1,0 +1,9 @@
+{
+  "name": "asana-sessions",
+  "version": "0.1.0",
+  "description": "Link Claude Code conversations to Asana tasks by title marker",
+  "author": {
+    "name": "asana-sessions contributors"
+  },
+  "license": "GPL-3.0-or-later"
+}

@@ -1,0 +1,41 @@
+name: asana-sessions-ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  package:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node: [22, 24]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: packages/asana-sessions
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - run: npm run check
+      - run: scripts/check-pack.sh
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: npm ci --no-audit --no-fund
+        working-directory: packages/asana-sessions
+      - name: Check protocol 1 adapter and core consumer
+        run: |
+          node --test packages/asana-sessions/test/cli.test.js
+          go test ./internal/conversations ./internal/asana

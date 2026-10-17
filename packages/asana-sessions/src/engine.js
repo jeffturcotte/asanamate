@@ -118,6 +118,7 @@ export async function link(providers, { provider, sessionId, gid, replace = fals
   }
   return withLock(provider, sessionId, async () => {
     const s = await mustRead(p, sessionId);
+    lockOptions?.signal?.throwIfAborted();
     const { prefix, gids } = splitTitle(s.name);
     const tagged = tagGID(s.tag);
     const others = [...new Set([...gids, tagged].filter((g) => g && g !== gid))];
@@ -133,6 +134,7 @@ export async function link(providers, { provider, sessionId, gid, replace = fals
       await p.rename(sessionId, title);
     }
     if (clearTag) {
+      lockOptions?.signal?.throwIfAborted();
       await p.setTag(sessionId, null);
     }
     const after = await mustRead(p, sessionId);
@@ -149,6 +151,7 @@ export async function unlink(providers, { provider, sessionId }, lockOptions) {
   const p = pick(providers, provider, sessionId);
   return withLock(provider, sessionId, async () => {
     const s = await mustRead(p, sessionId);
+    lockOptions?.signal?.throwIfAborted();
     const { prefix, gids } = splitTitle(s.name);
     const tagged = tagGID(s.tag);
     if (!gids.length && !tagged) {
