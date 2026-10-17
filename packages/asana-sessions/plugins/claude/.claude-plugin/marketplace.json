@@ -1,0 +1,13 @@
+{
+  "name": "asana-sessions",
+  "owner": { "name": "asana-sessions" },
+  "description": "Local marketplace for the asana-sessions Claude Code plugin",
+  "plugins": [
+    {
+      "name": "asana-sessions",
+      "source": "./asana-sessions",
+      "description": "Link Claude Code conversations to Asana tasks by title marker",
+      "version": "0.1.0"
+    }
+  ]
+}

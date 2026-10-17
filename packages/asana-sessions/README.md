@@ -12,9 +12,9 @@ Fix task sorting [asana:1234567890]
 It needs no Asana token, makes no model requests, and does not need asanamate.
 It reads titles and other metadata only, never transcript text.
 
-> **Status: not released.** The provider feasibility gate has not passed
-> (see [Compatibility](#compatibility)). The package is marked `private` so it
-> cannot be published by accident.
+> **Status: not released.** Local provider checks pass at the tested versions.
+> Publication still requires the [release gates](RELEASING.md). The package is
+> marked `private` so it cannot be published to npm by accident.
 
 ## Install
 
@@ -23,12 +23,19 @@ The package lives in the asanamate repository for now. With Node and npm:
 ```sh
 cd packages/asana-sessions
 npm ci
-npm install --global .
+npm pack
+npm install --global ./asana-sessions-0.1.0.tgz
 asana-sessions doctor
 ```
 
 Install it where each provider's process can find it on `PATH`. Dependencies
-install only at installation time.
+install only at installation time. Package CI targets Node 22 and 24 on macOS and Linux. The tarball includes `npm-shrinkwrap.json`, pinning runtime and
+peer dependencies. No registry account is needed to build or install locally.
+
+Standalone releases use `asana-sessions/vX.Y.Z` tags and supply a `.tgz` and
+`checksums.txt`. Verify downloaded assets with `sha256sum -c checksums.txt`
+(or `shasum -a 256 -c checksums.txt` on macOS), then install the `.tgz` globally.
+No public npm registry name is reserved or published.
 
 ## Commands
 
@@ -39,6 +46,8 @@ install only at installation time.
 | `link --provider <name> --session <id> --task <task-url-or-gid>` | Add the ticket marker to one conversation's title and verify it |
 | `link ... --replace` | Replace a link to another ticket |
 | `unlink --provider <name> --session <id>` | Remove the ticket marker and keep the rest of the title |
+| `setup [--provider <claude\|codex\|both>]` | Register optional native plugins; show remaining trust and restart steps |
+| `remove [--provider <claude\|codex\|both>]` | Remove only this addon's plugins and pending state; preserve saved links |
 | `doctor` | Check Node, the Claude Agent SDK, both CLIs, and history access |
 | `help`, `version` | Work without any provider installed |
 | `asanamate list`, `asanamate open` | The [asanamate](../../README.md) conversation adapter |
@@ -126,9 +135,12 @@ Exercised on macOS with disposable provider homes:
 | Claude Code | 2.1.301 |
 | Codex CLI | 0.162.1 |
 
-These are tested versions, not a supported minimum. The SDK declares Node
-`>=18` and installs 105 packages, including its peer dependencies. Whether
-its metadata functions need the Claude CLI installed is not yet established.
+Plugin compatibility floors are Claude Code 2.1.301 and Codex 0.162.1;
+older versions are skipped by setup. Newer versions still need the live gate
+before a standalone release. The pinned SDK brings 105 installed packages,
+including peers and platform packages. Metadata operations do not need an
+Asana token or model request. Explicit Claude metadata operations work without
+the Claude executable; plugin installation needs the CLI.
 
 Proven with real conversations:
 
@@ -151,17 +163,113 @@ that daemon can update itself independently of the `codex` CLI. A Claude Code
 session launched from inside another one inherits `CLAUDE_CODE_CHILD_SESSION`
 and stops saving its transcript; run `claude --resume` from a plain shell.
 
-Not yet proven: hook reentrancy for both providers (spec 18). The
-[feasibility notes](../../docs/specs/17-provider-feasibility.md) record the
-details.
+Live checks pass for both providers at the versions above. Codex links
+immediately; Claude's real Stop hook completes the first deferred link after
+persistence. Both preserve links across later prompts and process restarts,
+reject ambiguity/conflicts without blocking, and support the explicit skill.
+Claude also preserves an unrelated tag through change/unlink/relink and reopens
+natively after plugin removal. Measured hook durations are 33–596 ms for Codex
+and 31–81 ms for Claude on disposable histories. Native upgrade, trust,
+disable/removal and missing-helper checks are recorded in the
+[feasibility notes](../../docs/specs/17-provider-feasibility.md). Remote
+Node/platform CI remains a separate release gate.
+
+## Optional native plugins
+
+The helper works on its own. Install plugins only when you want automatic links:
+
+```sh
+asana-sessions setup                 # choose Claude, Codex, both, or cancel
+asana-sessions setup --provider both # noninteractive selection
+asana-sessions doctor
+```
+
+A submitted prompt with exactly one supported Asana task URL links that exact
+conversation, **even when you only quote the URL**. Duplicate URLs for the same
+task count once. No URL does nothing. Multiple tasks produce a nonblocking
+notice. An existing different task is a conflict; automation never replaces it.
+Only the submitted user prompt is examined. System context, tool output,
+assistant text and transcript contents are not searched. To link deliberately,
+keep hooks disabled and use the bundled `link-asana-task` skill or the CLI.
+
+The skill supports linking, changing and unlinking. `--current` reads
+`CLAUDE_CODE_SESSION_ID` or `CODEX_THREAD_ID`; if the host does not export it,
+supply `--session <id>` explicitly. Never select the newest conversation.
+An explicit request to change the linked task authorizes `--replace`.
+
+Setup uses native local marketplaces, with stable identity
+`asana-sessions@asana-sessions`. It prints installed provider versions and
+registration status. Setup exits 1 while helper visibility or selected plugin readiness needs repair.
+Registration is distinct from readiness: diagnostics report
+missing, incompatible, stale, disabled, untrusted, ready or error states. Claude
+loads hooks in a new session or after `/reload-plugins`. Codex requires hooks to
+be enabled in the host and the exact prompt hook reviewed and trusted through
+`/hooks`. Setup does not enable features, approve trust or bypass host policy.
+Review changed hook definitions after upgrades.
+
+Hooks invoke `asana-sessions` from the provider's PATH. Nothing downloads at
+hook time. If doctor finds no helper or a different installation, fix the PATH
+used to start the provider and restart it. Login-shell profiles can change PATH
+and provider homes: hooks validate `transcript_path` against the exact session ID
+and derive the active home from it. Doctor checks its own inherited PATH; verify
+PATH inside the provider too when those environments differ.
+
+Codex writes immediately through its native metadata API. Claude can submit the
+first prompt before the session is saved; only Claude has a Stop hook to finish
+that link. Private pending files contain provider, session ID, GID and timestamp,
+never the prompt. They expire after 24 hours and are swept on subsequent linking
+attempts; Stop removes the entry after attempting completion. State lives under
+`$XDG_STATE_HOME/asana-sessions/pending/` (default
+`~/.local/state/asana-sessions/pending/`). Errors do not silently replace links.
+
+Event input is limited to 1 MiB. The helper deadline is 10 seconds, below the native 15-second hook timeout.
+Local live checks confirm this budget on the tested disposable histories. Malformed events, unknown identities, write
+failures and timeouts produce sanitized nonblocking notices. A timeout can leave
+write status uncertain; inspect the saved title. Hooks never prompt or deny chat.
+All linking stays local; GUI/Paseo title synchronization is not promised.
+
+Upgrade by installing the new package tarball, then rerun setup. Doctor reports
+stale versions or source paths. Setup replaces only this addon's stale
+registration before reinstalling. Native hash checks retain trust for unchanged
+hooks; changed definitions require review again.
+Existing skills and AGENTS.md/CLAUDE.md files are left alone.
+
+```sh
+asana-sessions remove --provider both
+npm uninstall --global asana-sessions # optional, after disabling core commands
+```
+
+You can also disable the plugin through its host. Removing or disabling plugins
+preserves conversation titles, tags and transcripts. The installed helper still
+lists and opens links. Bulk unlink is not part of removal.
+
+## Optional asanamate integration
+
+The helper and plugins do not need asanamate. Core's conversation protocol is
+version 1, supported by `asana-sessions` 0.1.x. The products have independent
+versions; matching release numbers are not required. Opt in manually or through
+core's normal config-update workflow:
+
+```toml
+[conversations]
+command = "asana-sessions asanamate list"
+open = "asana-sessions asanamate open"
+```
+
+Setup never probes or rewrites asanamate configuration. If you uninstall the
+helper, clear both commands; core diagnoses a missing configured executable.
+The native ticket picker is separate work in spec 19.
 
 ## Development
 
 ```sh
 npm ci
+npm run check          # validate packaged native assets
 npm test               # node:test, with fake SDK and app-server
 scripts/check-pack.sh  # install the packed tarball in a clean prefix
 ```
+
+Release gates and authenticated checks: [RELEASING.md](RELEASING.md).
 
 `test/fixtures/task-urls.json` is shared with asanamate's Go URL parser test.
 

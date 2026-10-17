@@ -1525,3 +1525,7 @@ is no need to copy them.
 - Activity cache (the last 30 days of Activity events): `~/.cache/asanamate/activity.json`
 
 `$XDG_CONFIG_HOME`, `$XDG_STATE_HOME`, and `$XDG_CACHE_HOME` are honored.
+
+The optional [asana-sessions helper and native plugins](packages/asana-sessions/README.md)
+are installed and released independently (`asana-sessions/vX.Y.Z`, protocol 1,
+package 0.1.x). Core archives contain no Node runtime or provider tools.

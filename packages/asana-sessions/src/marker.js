@@ -40,6 +40,23 @@ export function taskGIDFromURL(raw) {
   return '';
 }
 
+// URL_CANDIDATE finds app.asana.com links in free text, stopping at whitespace,
+// quotes, and brackets so Markdown and angle-bracket links still parse.
+const URL_CANDIDATE = /https:\/\/app\.asana\.com\/[^\s<>"'`()[\]{}]+/gi;
+
+// taskGIDsInText returns the distinct task GIDs linked in text, in order.
+// Trailing sentence punctuation is not part of a link.
+export function taskGIDsInText(text) {
+  const gids = new Set();
+  for (const [raw] of String(text ?? '').matchAll(URL_CANDIDATE)) {
+    const gid = taskGIDFromURL(raw.replace(/[.,;:!?]+$/, ''));
+    if (gid) {
+      gids.add(gid);
+    }
+  }
+  return [...gids];
+}
+
 // parseTask accepts a task URL or, for explicit commands only, a raw GID.
 export function parseTask(input) {
   const value = String(input ?? '').trim();

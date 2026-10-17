@@ -10,7 +10,9 @@ import { asanamateList, asanamateOpen } from './asanamate.js';
 import { display } from './display.js';
 import { Cancelled, createProviders, link, lookup, open, unlink } from './engine.js';
 import { ProviderError, UsageError } from './errors.js';
+import { hook } from './hook.js';
 import { parseTask } from './marker.js';
+import { helperOnPath, pluginStatus, remove, runtimeStatus, setup } from './setup.js';
 
 const pkg = JSON.parse(await readFile(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8'));
 
@@ -21,10 +23,14 @@ const USAGE = `asana-sessions ${VERSION}: find and resume Claude Code and Codex 
 Usage:
   asana-sessions list <task-url-or-gid> [--json]
   asana-sessions open <task-url-or-gid> --provider <claude|codex> --session <id>
-  asana-sessions link --provider <claude|codex> --session <id> --task <task-url-or-gid> [--replace]
-  asana-sessions unlink --provider <claude|codex> --session <id>
+  asana-sessions link --provider <claude|codex> (--session <id> | --current) --task <task-url-or-gid> [--replace]
+  asana-sessions unlink --provider <claude|codex> (--session <id> | --current)
+  asana-sessions setup [--provider <claude|codex|both>]
+  asana-sessions remove [--provider <claude|codex|both>]
   asana-sessions doctor
   asana-sessions help | version
+
+  asana-sessions hook <claude|codex>   provider plugin hook; reads one event on stdin
 
   asana-sessions asanamate list   asanamate conversations.command adapter
   asana-sessions asanamate open   asanamate conversations.open adapter
@@ -51,7 +57,10 @@ export async function main(argv, ctx = {}) {
     stdout: process.stdout, stderr: process.stderr, stdin: process.stdin, env: process.env,
     ...ctx,
   };
-  c.providers ??= createProviders({ env: c.env, version: VERSION });
+  c.abort ??= new AbortController();
+  c.makeProviders ??= (env) => createProviders({ env, version: VERSION, signal: c.abort.signal });
+  c.providers ??= c.makeProviders(c.env);
+  c.version ??= VERSION;
   c.io ??= terminalIO(c.stdin, c.stderr);
   try {
     return await dispatch(argv, c);
@@ -75,9 +84,11 @@ const OPTIONS = {
   session: { type: 'string' },
   task: { type: 'string' },
   replace: { type: 'boolean' },
+  current: { type: 'boolean' },
 };
 
-function parse(args, allowed, positionals = 0) {
+// parse requires every allowed string option except those in optional.
+function parse(args, allowed, positionals = 0, optional = []) {
   let parsed;
   try {
     parsed = parseArgs({ args, options: Object.fromEntries(allowed.map((k) => [k, OPTIONS[k]])), allowPositionals: true, strict: true });
@@ -88,7 +99,7 @@ function parse(args, allowed, positionals = 0) {
     throw new UsageError(`expected ${positionals} argument(s)`);
   }
   for (const name of allowed) {
-    if (OPTIONS[name].type === 'string' && parsed.values[name] === undefined) {
+    if (OPTIONS[name].type === 'string' && parsed.values[name] === undefined && !optional.includes(name)) {
       throw new UsageError(`--${name} is required`);
     }
   }
@@ -123,15 +134,24 @@ async function dispatch([command, ...rest], c) {
       return open(c.providers, { provider: o.provider, sessionId: o.session, gid: parseTask(o.args[0]) }, { ...c.io, env: c.env });
     }
     case 'link': {
-      const o = parse(rest, ['provider', 'session', 'task', 'replace']);
-      json(await link(c.providers, { provider: o.provider, sessionId: o.session, gid: parseTask(o.task), replace: Boolean(o.replace) }, { env: c.env }));
+      const o = parse(rest, ['provider', 'session', 'current', 'task', 'replace'], 0, ['session']);
+      json(await link(c.providers, { provider: o.provider, sessionId: session(o, c), gid: parseTask(o.task), replace: Boolean(o.replace) }, { env: c.env }));
       return 0;
     }
     case 'unlink': {
-      const o = parse(rest, ['provider', 'session']);
-      json(await unlink(c.providers, { provider: o.provider, sessionId: o.session }, { env: c.env }));
+      const o = parse(rest, ['provider', 'session', 'current'], 0, ['session']);
+      json(await unlink(c.providers, { provider: o.provider, sessionId: session(o, c) }, { env: c.env }));
       return 0;
     }
+    case 'hook':
+      if (rest.length !== 1) {
+        throw new UsageError('expected `hook claude` or `hook codex`');
+      }
+      return hook(rest[0], c);
+    case 'setup':
+      return setup(c, parse(rest, ['provider'], 0, ['provider']));
+    case 'remove':
+      return remove(c, parse(rest, ['provider'], 0, ['provider']));
     case 'doctor':
       parse(rest, []);
       return doctor(c);
@@ -146,6 +166,23 @@ async function dispatch([command, ...rest], c) {
     default:
       throw new UsageError(`unknown command ${JSON.stringify(display(command))}`);
   }
+}
+
+// session is --session, or with --current the ID the provider exports to the
+// commands it runs. Without that variable there is no reliable current ID.
+function session(o, c) {
+  if (Boolean(o.current) === (o.session !== undefined)) {
+    throw new UsageError('pass exactly one of --session <id> or --current');
+  }
+  if (o.session !== undefined) {
+    return o.session;
+  }
+  const name = c.providers[o.provider]?.currentEnv;
+  const id = name ? c.env[name] : undefined;
+  if (!id) {
+    throw new UsageError(`no current ${display(o.provider)} session ID is available here${name ? ` (${name} is not set)` : ''}; pass --session <id>`);
+  }
+  return id;
 }
 
 function printList({ conversations, diagnostics }, out) {
@@ -169,15 +206,9 @@ function printList({ conversations, diagnostics }, out) {
 // starting a model turn. Missing providers are reported, not failures.
 async function doctor(c) {
   const run = promisify(execFile);
-  const lines = [`ok: node ${process.versions.node}`];
-  let failed = false;
-  try {
-    const sdk = JSON.parse(await readFile(join(dirname(fileURLToPath(import.meta.resolve('@anthropic-ai/claude-agent-sdk'))), 'package.json'), 'utf8'));
-    lines.push(`ok: @anthropic-ai/claude-agent-sdk ${sdk.version}`);
-  } catch {
-    lines.push('error: @anthropic-ai/claude-agent-sdk is missing; reinstall asana-sessions');
-    failed = true;
-  }
+  const runtime = await runtimeStatus(c);
+  const lines = runtime.lines;
+  let failed = !runtime.ok;
   for (const name of ['claude', 'codex']) {
     try {
       const { stdout } = await run(name, ['--version'], { env: c.env, timeout: 5000 });
@@ -194,7 +225,11 @@ async function doctor(c) {
       lines.push(`${e.code === 'unavailable' ? 'missing' : 'error'}: ${name}: ${display(e.message)}`);
       failed ||= e.code !== 'unavailable';
     }
+    const s = await pluginStatus(name, c);
+    lines.push(`${s.state === 'error' ? 'error' : 'info'}: ${name} plugin: ${s.state}: ${s.detail}`);
+    failed ||= s.state === 'error';
   }
+  lines.push((await helperOnPath(c)).line);
   c.stdout.write(`${lines.join('\n')}\n`);
   return failed ? 1 : 0;
 }

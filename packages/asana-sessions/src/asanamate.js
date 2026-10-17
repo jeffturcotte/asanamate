@@ -4,6 +4,7 @@
 import { readFile } from 'node:fs/promises';
 import { lookup, open } from './engine.js';
 import { UsageError } from './errors.js';
+import { readBounded } from './input.js';
 import { validGID } from './marker.js';
 
 const MAX_REQUEST = 64 * 1024;
@@ -35,24 +36,10 @@ function request(text, operation) {
   return req;
 }
 
-async function readBounded(stream) {
-  let size = 0;
-  const chunks = [];
-  for await (const data of stream) {
-    const chunk = Buffer.from(data);
-    size += chunk.length;
-    if (size > MAX_REQUEST) {
-      throw new UsageError('request is too large');
-    }
-    chunks.push(chunk);
-  }
-  return Buffer.concat(chunks).toString('utf8');
-}
-
 // asanamateList answers one discovery request from stdin. A partial lookup is
 // still a valid response (exit 0); only no available provider exits nonzero.
 export async function asanamateList(c) {
-  const req = request(await readBounded(c.stdin), 'list');
+  const req = request(await readBounded(c.stdin, MAX_REQUEST, () => new UsageError('request is too large')), 'list');
   const { status, ...result } = await lookup(c.providers, req.asana.task_gid);
   if (status === 'unavailable') {
     c.stderr.write('asana-sessions: no Claude Code or Codex history is available; run `asana-sessions doctor`\n');

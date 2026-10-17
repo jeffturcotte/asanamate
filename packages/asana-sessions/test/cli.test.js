@@ -117,3 +117,20 @@ test('asanamate open reads the private snapshot and keeps stdin for the terminal
   await writeFile(path, JSON.stringify({ version: 1, operation: 'open', asana: { task_gid: '42' }, conversation: { ...conversation, task_gid: '7' } }));
   assert.equal((await run(['asanamate', 'open'], { providers: linked(), env })).code, 2);
 });
+
+test('--current uses only the documented provider identity and never guesses', async () => {
+  const p = fakeProvider('codex', [session({ name: 'Exact session' })], { currentEnv: 'CODEX_THREAD_ID' });
+  const { env } = await lockEnv();
+  const argv = ['link', '--provider', 'codex', '--current', '--task', '42'];
+  const missing = await run(argv, { providers: { codex: p }, env });
+  assert.equal(missing.code, 2);
+  assert.match(missing.stderr, /pass --session/);
+  assert.equal(p.calls.length, 0);
+  const invalid = await run(argv, { providers: { codex: p }, env: { ...env, CODEX_THREAD_ID: '../bad' } });
+  assert.equal(invalid.code, 2);
+  const linked = await run(argv, { providers: { codex: p }, env: { ...env, CODEX_THREAD_ID: ID } });
+  assert.equal(linked.code, 0);
+  assert.equal(JSON.parse(linked.stdout).session_id, ID);
+  const both = await run([...argv, '--session', ID], { providers: { codex: p }, env });
+  assert.equal(both.code, 2);
+});
