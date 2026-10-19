@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0
 
 - Optional native Claude Code and Codex plugins, explicit link skills, and
   nonblocking prompt hooks with verified metadata writes.
