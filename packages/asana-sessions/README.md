@@ -104,7 +104,8 @@ longer linked to the ticket. It then:
    terminal; without a terminal it fails.
 3. Uses the recorded directory, or asks for an existing replacement for this
    launch. It does not change Git branches or create worktrees.
-4. Restores an archived Codex conversation first, and says so.
+4. Restores an archived Codex conversation first. It says so before the
+   unknown-activity question, because the provider's full screen hides later output.
 5. Resumes in the foreground: `claude --resume <id>` without an inherited
    `CLAUDE_CODE_CHILD_SESSION`, or `codex resume <id>` without the parent
    agent's `CODEX_THREAD_ID` and `CODEX_SESSION_ID`.

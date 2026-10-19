@@ -192,6 +192,10 @@ export async function open(providers, { provider, sessionId, gid }, io) {
   if (rec.activity === 'active') {
     throw new ProviderError('provider_error', `this conversation is active elsewhere; use the program that owns it, or stop it and retry`);
   }
+  // Disclose before any question: a full-screen provider hides later output.
+  if (rec.archived) {
+    io.say(`This conversation is archived; resuming restores it from the ${provider} archive.`);
+  }
   if (rec.activity === 'unknown') {
     if (p.unknownActivity === 'refuse') {
       throw new ProviderError('provider_error',
@@ -207,7 +211,6 @@ export async function open(providers, { provider, sessionId, gid }, io) {
   }
   const cwd = await chooseCwd(rec.cwd, io);
   if (rec.archived) {
-    io.say(`Restoring this conversation from the ${provider} archive before resuming.`);
     await p.unarchive(sessionId);
   }
   return resume(target, cwd, io);
