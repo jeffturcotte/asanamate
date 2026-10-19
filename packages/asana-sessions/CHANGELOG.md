@@ -7,9 +7,6 @@
 - Native setup/removal and diagnostics for PATH, versions, registration and trust.
 - Private expiring Claude pending links for first-prompt persistence.
 - Independently tagged tarballs, checksums, package CI and pinned installs.
-
-## Unreleased
-
 - `list`, `open`, `link`, `unlink`, `doctor`, `help`, and `version` for
   Claude Code and Codex conversations linked by `[asana:<GID>]` title markers.
 - `asanamate list` and `asanamate open` adapters for asanamate's conversation
