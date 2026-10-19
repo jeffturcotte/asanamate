@@ -32,4 +32,4 @@ jobs:
       - name: Publish standalone assets
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/*.tgz dist/checksums.txt --verify-tag --title "$GITHUB_REF_NAME" --notes-file CHANGELOG.md
+        run: gh release create "$GITHUB_REF_NAME" dist/*.tgz dist/checksums.txt --verify-tag --title "$GITHUB_REF_NAME" --notes-file CHANGELOG.md --latest=false
