@@ -55,6 +55,9 @@ and model turns. Do not copy personal history. Run provider executables through
 - Exercise the explicit skill in each CLI. Verify host session identity is
   available, or document the need for an explicit ID. Link, change with
   `--replace`, and unlink; preserve human title and unrelated tags.
+- Run `scripts/live-reentrancy.sh both`. It races concurrent prompt hooks with
+  `link --replace`, `unlink`, and raw native renames on one disposable
+  conversation per provider; Codex spends one short `codex exec` turn.
 - Exercise missing helper, old provider version, malformed/oversize event,
   deadline, unwritable history, unknown identity, and readback failure. Chat
   must remain usable, with no blocking output fields or false success.
