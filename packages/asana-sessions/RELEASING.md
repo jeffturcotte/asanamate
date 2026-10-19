@@ -21,8 +21,10 @@ No npm registry name is reserved or published; the actual local package name is
 5. Verify local `main` and `origin/main` match that tested commit and the working
    tree is clean. Only on explicit user request, create an annotated
    `asana-sessions/vX.Y.Z` tag and push only that tag.
-6. Verify `asana-sessions-release` succeeds and the release contains the tarball
-   and `checksums.txt`. Verify checksums and install the downloaded artifact.
+6. Publish standalone releases with `--latest=false` so GitHub's Latest release
+   remains the core asanamate release. Verify `asana-sessions-release` succeeds
+   and the release contains the tarball and `checksums.txt`. Verify checksums
+   and install the downloaded artifact.
    Keep pushed tags immutable; correct failures under a new patch version.
 
 Core releases still require every job of the core `ci` workflow on their exact
