@@ -68,6 +68,35 @@ func TestFeedOrdersUpcomingThenNewest(t *testing.T) {
 	}
 }
 
+func TestFeedLineDeduplicatesNormalizedTitle(t *testing.T) {
+	m := feedModel(t)
+	for _, name := range []string{
+		"Cancel vs. Reschedule",
+		" Cancel vs. Reschedule ",
+		"Cancel  vs. Reschedule",
+		"Cancel\tvs.\nReschedule",
+		"Cancel\u00a0vs. Reschedule",
+	} {
+		t.Run(name, func(t *testing.T) {
+			item := feedRow{
+				Item: feed.Item{Text: "2h · Fuse '26 · Cancel vs. Reschedule"},
+				task: &asana.Task{Name: name},
+			}
+			line := ansi.Strip(m.feedLine(item, false, 200, 5))
+			if strings.Count(line, "Cancel") != 1 {
+				t.Fatalf("duplicate title: %q", line)
+			}
+		})
+	}
+	item := feedRow{
+		Item: feed.Item{Text: "2h · Fuse '26 · Reviewed options"},
+		task: &asana.Task{Name: "Cancel vs. Reschedule"},
+	}
+	if line := ansi.Strip(m.feedLine(item, false, 200, 5)); !strings.Contains(line, "Reviewed options · Cancel vs. Reschedule") {
+		t.Fatalf("distinct notes lost linked title: %q", line)
+	}
+}
+
 func TestFeedLinksItemsToTickets(t *testing.T) {
 	m := feedModel(t)
 	now := testToday.Add(-time.Minute)

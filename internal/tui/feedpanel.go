@@ -675,9 +675,9 @@ func (m *Model) feedLine(it feedRow, selected bool, width, timeWidth int) string
 	when := feedTime(it.Time, m.now())
 	source := " " + it.source
 	text := style.Render(it.Text)
-	// Skip the title when the text already ends with it, as Harvest's does.
+	// Compare using the feed's whitespace normalization, as Harvest's notes do.
 	if it.task != nil {
-		if title := ticket.OneLine(it.task.Name); !strings.HasSuffix(it.Text, " · "+title) {
+		if title := ticket.OneLine(it.task.Name); !strings.HasSuffix(it.Text, " · "+feed.OneLine(title)) {
 			text += dimStyle.Render(" · ") + tagTitle(title, lipgloss.NewStyle())
 		}
 	}
