@@ -14,12 +14,13 @@ import (
 )
 
 type pickItem struct {
-	Label  string
-	Hint   string
-	Help   string // optional description shown below the list when selected
-	Search string // optional text search matches besides Label
-	Key    string
-	Value  any
+	Disabled bool // visible but cannot be chosen
+	Label    string
+	Hint     string
+	Help     string // optional description shown below the list when selected
+	Search   string // optional text search matches besides Label
+	Key      string
+	Value    any
 }
 
 type pickResult struct {
@@ -147,6 +148,9 @@ func (p *picker) checkedResult() pickResult {
 
 func (p *picker) choose(i int) pickResult {
 	it := p.items[i]
+	if it.Disabled {
+		return pickResult{}
+	}
 	return pickResult{done: true, item: &it}
 }
 
@@ -332,6 +336,9 @@ func (p *picker) listView(width, height int, accent lipgloss.Style) string {
 		} else {
 			it := p.items[p.matches[i]]
 			line = it.Label
+			if it.Disabled {
+				line = dimStyle.Render(line)
+			}
 			switch {
 			case p.keySelect && it.Key == "":
 				line = "    " + line // chosen with the cursor, aligned with keyed rows

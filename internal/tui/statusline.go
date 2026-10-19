@@ -16,6 +16,14 @@ import (
 // mode returns the statusline's mode name and pill style, and the key hints
 // for what has focus.
 func (m *Model) mode() (name string, pill lipgloss.Style, hints [][2]string) {
+	defer func() {
+		if name == "READ" || name == "EDIT" {
+			hints = append(hints, m.keyHints("yank")...)
+			if !m.readerHidden && m.copySelection().text != "" {
+				hints = append(hints, m.keyHints("copy_selection")...)
+			}
+		}
+	}()
 	targets := [2]string{keyLabel("main", "down", "up"), "targets"}
 	scroll := [2]string{keyLabel("main", "scroll_down", "scroll_up"), "scroll"}
 	pane := [2]string{keyLabel("main", "next_pane"), "pane"}
@@ -47,7 +55,6 @@ func (m *Model) mode() (name string, pill lipgloss.Style, hints [][2]string) {
 					hint = "see more"
 				}
 				hints = append(hints, [2]string{open, hint})
-				hints = append(hints, m.keyHints("copy_comment")...)
 			}
 			return "READ", readPill, append(hints, scroll, pane, list)
 		}
@@ -57,7 +64,7 @@ func (m *Model) mode() (name string, pill lipgloss.Style, hints [][2]string) {
 	case m.focusNav:
 		return "VIEWS", normalPill, [][2]string{{keyLabel("views", "down", "up"), "move"}, {keyLabel("views", "open"), "open"}, list, {keyLabel("main", "help"), "keys"}}
 	}
-	return "NORMAL", normalPill, m.keyHints("action", "edit", "log_time", "copy_link", "filter", "projects", "help")
+	return "NORMAL", normalPill, m.keyHints("action", "edit", "log_time", "yank", "filter", "projects", "help")
 }
 
 // statusline is the bottom bar: a mode pill, where the list is and what it
