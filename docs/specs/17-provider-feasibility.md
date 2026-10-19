@@ -342,3 +342,30 @@ directory it started in. That directory pinned another mise Node version, so
 the hook could not find `asana-sessions` and exited 127.
 Linking the helper into a directory on every PATH fixed it; the package README
 now documents this.
+
+## 0.1.1 patch verification (2026-10-19)
+
+The deferred-link cancellation fix shares the native metadata lock across
+prompt deferral, Stop completion, and explicit unlink. Five new regressions
+cover unlink before/after persistence, both in-flight hook phases, and a
+conflicting native link. The pre-fix code failed both cancellation cases;
+all 60 package tests pass with the fix.
+
+Disposable histories through the pinned real Claude SDK verified that unlink
+cancels a queued link both before and after transcript persistence; a later
+Stop is silent and ticket lookup returns no linked conversation. No model
+turn or personal history was needed for those cases.
+
+The packed helper passed `scripts/live-reentrancy.sh both` again. Claude's
+synthetic native transcript and real SDK metadata operations passed all
+concurrent-hook, replace, raw-rename, and unlink cases within 1 second.
+Codex CLI 0.163.0 created one authenticated disposable conversation through
+`caveman`; the same cases passed within 2 seconds. Neither provider left a
+metadata lock behind. The dependencies, native hook definitions, and CLI
+resume behavior are unchanged; the earlier native plugin lifecycle and
+interactive-open observations above remain the host integration evidence.
+
+The release workflow now opts out of GitHub Latest designation. The existing
+core `v0.3.1` release was restored as Latest without moving either tag or
+replacing published assets. Version 0.1.1 publication still requires the
+exact-main package/platform CI and downloaded-artifact checks.

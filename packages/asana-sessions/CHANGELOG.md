@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1
+
+- Explicit unlink cancels deferred Claude links, including before the first
+  transcript is saved. Prompt hooks, Stop hooks, and metadata changes share
+  the session lock so an in-flight hook cannot restore a cancelled link.
+- Standalone releases no longer replace the core asanamate release as GitHub's
+  Latest release.
+
 ## 0.1.0
 
 - Optional native Claude Code and Codex plugins, explicit link skills, and

@@ -12,9 +12,9 @@ Fix task sorting [asana:1234567890]
 It needs no Asana token, makes no model requests, and does not need asanamate.
 It reads titles and other metadata only, never transcript text.
 
-> **Status: not released.** Local provider checks pass at the tested versions.
-> Publication still requires the [release gates](RELEASING.md). The package is
-> marked `private` so it cannot be published to npm by accident.
+Releases are distributed as GitHub tarballs under the
+[standalone release gates](RELEASING.md). The package is marked `private`
+so it cannot be published to npm by accident.
 
 ## Install
 
@@ -24,7 +24,7 @@ The package lives in the asanamate repository for now. With Node and npm:
 cd packages/asana-sessions
 npm ci
 npm pack
-npm install --global ./asana-sessions-0.1.0.tgz
+npm install --global ./asana-sessions-0.1.1.tgz
 asana-sessions doctor
 ```
 
