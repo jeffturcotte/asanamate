@@ -10,6 +10,7 @@ import { display } from './display.js';
 import { ProviderError, UsageError, providerError } from './errors.js';
 import { withLock } from './lock.js';
 import { DEFAULT_PREFIX, linkTitle, splitTitle, tagGID, ticketLink, validGID } from './marker.js';
+import { savePending, takePending } from './pending.js';
 
 // PROTOCOL_VERSION versions the JSON record shape, independently of package SemVer.
 export const PROTOCOL_VERSION = 1;
@@ -117,45 +118,97 @@ export async function link(providers, { provider, sessionId, gid, replace = fals
     throw new UsageError('invalid task GID');
   }
   return withLock(provider, sessionId, async () => {
-    const s = await mustRead(p, sessionId);
-    lockOptions?.signal?.throwIfAborted();
-    const { prefix, gids } = splitTitle(s.name);
-    const tagged = tagGID(s.tag);
-    const others = [...new Set([...gids, tagged].filter((g) => g && g !== gid))];
-    if (others.length && !replace) {
-      throw new ProviderError('metadata_conflict', `session ${sessionId} already links ticket ${others.join(', ')}; pass --replace to relink it`);
-    }
-    const title = linkTitle(prefix || s.summary, gid);
-    const clearTag = Boolean(tagged) && tagged !== gid;
-    if (title === s.name && !clearTag) {
-      return { provider, session_id: sessionId, task_gid: gid, title, changed: false };
-    }
-    if (title !== s.name) {
-      await p.rename(sessionId, title);
-    }
-    if (clearTag) {
-      lockOptions?.signal?.throwIfAborted();
-      await p.setTag(sessionId, null);
-    }
-    const after = await mustRead(p, sessionId);
-    if (after.name !== title || ticketLink(after.name, after.tag).gid !== gid) {
-      throw new ProviderError('provider_error', `the saved ${provider} title did not verify; it may have been changed concurrently`);
-    }
-    return { provider, session_id: sessionId, task_gid: gid, title: after.name, changed: true };
+    const result = await linkSaved(p, sessionId, gid, replace, lockOptions);
+    await takePending(lockOptions?.env, provider, sessionId);
+    return result;
   }, lockOptions);
 }
 
+// Prompt deferral, Stop completion, and explicit mutations share the session
+// lock. A pending GID cannot escape that lock and be applied after unlink.
+export async function linkFromPrompt(providers, { provider, sessionId, gid }, lockOptions) {
+  const p = pick(providers, provider, sessionId);
+  if (!validGID(gid)) {
+    throw new UsageError('invalid task GID');
+  }
+  return withLock(provider, sessionId, async () => {
+    const saved = await readIfPersisted(p, sessionId);
+    lockOptions?.signal?.throwIfAborted();
+    if (!saved && provider === 'claude') {
+      const other = await savePending(lockOptions?.env, provider, sessionId, gid);
+      return other ? { pendingTask: other } : null;
+    }
+    return linkSaved(p, sessionId, gid, false, lockOptions);
+  }, lockOptions);
+}
+
+export async function completePending(providers, { provider, sessionId }, lockOptions) {
+  const p = pick(providers, provider, sessionId);
+  return withLock(provider, sessionId, async () => {
+    const gid = await takePending(lockOptions?.env, provider, sessionId);
+    return gid ? linkSaved(p, sessionId, gid, false, lockOptions) : null;
+  }, lockOptions);
+}
+
+// Claude's first prompt can precede even the projects directory.
+async function readIfPersisted(p, sessionId) {
+  try {
+    return await p.read(sessionId);
+  } catch (err) {
+    if (p.name === 'claude' && err instanceof ProviderError && err.code === 'unavailable'
+      && err.message === 'Claude Code is not installed or has no history') {
+      return null;
+    }
+    throw err;
+  }
+}
+
+// Call only while holding this provider/session's metadata lock.
+async function linkSaved(p, sessionId, gid, replace, lockOptions) {
+  const provider = p.name;
+  const s = await mustRead(p, sessionId);
+  lockOptions?.signal?.throwIfAborted();
+  const { prefix, gids } = splitTitle(s.name);
+  const tagged = tagGID(s.tag);
+  const others = [...new Set([...gids, tagged].filter((g) => g && g !== gid))];
+  if (others.length && !replace) {
+    throw new ProviderError('metadata_conflict', `session ${sessionId} already links ticket ${others.join(', ')}; pass --replace to relink it`);
+  }
+  const title = linkTitle(prefix || s.summary, gid);
+  const clearTag = Boolean(tagged) && tagged !== gid;
+  if (title === s.name && !clearTag) {
+    return { provider, session_id: sessionId, task_gid: gid, title, changed: false };
+  }
+  if (title !== s.name) {
+    await p.rename(sessionId, title);
+  }
+  if (clearTag) {
+    lockOptions?.signal?.throwIfAborted();
+    await p.setTag(sessionId, null);
+  }
+  const after = await mustRead(p, sessionId);
+  if (after.name !== title || ticketLink(after.name, after.tag).gid !== gid) {
+    throw new ProviderError('provider_error', `the saved ${provider} title did not verify; it may have been changed concurrently`);
+  }
+  return { provider, session_id: sessionId, task_gid: gid, title: after.name, changed: true };
+}
+
 // unlink removes trailing markers and a recognized Asana tag, keeping the
-// human-readable title and any unrelated tag.
+// human-readable title and any unrelated tag. It also cancels deferred links,
+// including a first-prompt link whose native conversation is not saved yet.
 export async function unlink(providers, { provider, sessionId }, lockOptions) {
   const p = pick(providers, provider, sessionId);
   return withLock(provider, sessionId, async () => {
-    const s = await mustRead(p, sessionId);
+    const pending = await takePending(lockOptions?.env, provider, sessionId);
+    const s = pending ? await readIfPersisted(p, sessionId) : await mustRead(p, sessionId);
     lockOptions?.signal?.throwIfAborted();
+    if (!s) {
+      return { provider, session_id: sessionId, title: '', changed: true };
+    }
     const { prefix, gids } = splitTitle(s.name);
     const tagged = tagGID(s.tag);
     if (!gids.length && !tagged) {
-      return { provider, session_id: sessionId, title: s.name ?? '', changed: false };
+      return { provider, session_id: sessionId, title: s.name ?? '', changed: Boolean(pending) };
     }
     const title = gids.length ? prefix || DEFAULT_PREFIX : s.name;
     if (gids.length) {

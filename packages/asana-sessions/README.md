@@ -87,6 +87,8 @@ the verified `title`, and `changed`.
 - An untitled conversation becomes `Conversation [asana:<GID>]`. The first
   prompt is never copied into a title.
 - Renaming a conversation natively so the marker disappears removes the link.
+- Explicit `unlink` also cancels a deferred first-prompt link, even before
+  Claude saves the transcript. A later Stop hook will not restore it.
 - Claude's tag `asana:<GID>` is also recognized. A tag and title that disagree
   are a conflict; `link --replace` and `unlink` clear only that tag.
 - Writes re-read the title first and verify it afterwards. A rename by the

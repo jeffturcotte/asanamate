@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { PassThrough, Readable } from 'node:stream';
 import test from 'node:test';
 import { hook, MAX_EVENT } from '../src/hook.js';
+import { unlink } from '../src/engine.js';
 import { taskGIDsInText } from '../src/marker.js';
 import { savePending, takePending, sweepPending, RETENTION_MS } from '../src/pending.js';
 import { ID, fakeProvider, lockEnv, session } from './fakes.js';
@@ -47,6 +48,91 @@ test('Claude defers missing first record; Stop consumes only pending GID', async
   assert.match(await run(p, JSON.stringify(event({ hook_event_name: 'Stop', prompt: 'https://app.asana.com/0/1/43' })), env), /task 42/);
   assert.equal(await takePending(env, 'claude', ID), '');
   assert.equal(p.store.get(ID).name, 'Generated title [asana:42]');
+});
+
+for (const persisted of [false, true]) {
+  test(`explicit unlink cancels a deferred Claude link ${persisted ? 'after' : 'before'} persistence`, async (t) => {
+    const { env } = await lockEnv(); t.after(() => rm(env.XDG_STATE_HOME, { recursive: true, force: true }));
+    const p = fakeProvider('claude');
+    const send = (e) => run(p, JSON.stringify(event(e)), env);
+    await send();
+    if (persisted) {
+      p.store.set(ID, session({ provider: 'claude', name: 'Generated title', tag: 'keep' }));
+    }
+    const result = await unlink({ claude: p }, { provider: 'claude', sessionId: ID }, { env });
+    assert.equal(result.changed, true);
+    if (!persisted) {
+      p.store.set(ID, session({ provider: 'claude', name: 'Generated title', tag: 'keep' }));
+    }
+    assert.equal(await send({ hook_event_name: 'Stop' }), '');
+    assert.equal(p.store.get(ID).name, 'Generated title');
+    assert.equal(p.store.get(ID).tag, 'keep');
+    assert.equal(await takePending(env, 'claude', ID), '');
+    // Cancelling this pending write does not disable future intentional links.
+    assert.match(await send(), /linked this conversation/);
+    assert.equal(p.store.get(ID).name, 'Generated title [asana:42]');
+  });
+}
+
+test('unlink during deferred completion waits for the write and leaves the session unlinked', async (t) => {
+  const { env } = await lockEnv(); t.after(() => rm(env.XDG_STATE_HOME, { recursive: true, force: true }));
+  const p = fakeProvider('claude', [session({ name: 'Work' })]);
+  await savePending(env, 'claude', ID, '42');
+  const entered = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const rename = p.rename;
+  p.rename = async (...args) => {
+    if (args[1].includes('[asana:')) {
+      entered.resolve();
+      await release.promise;
+    }
+    return rename(...args);
+  };
+  const stopped = run(p, JSON.stringify(event({ hook_event_name: 'Stop' })), env);
+  await entered.promise;
+  const unlinked = unlink({ claude: p }, { provider: 'claude', sessionId: ID }, { env });
+  release.resolve();
+  await stopped;
+  await unlinked;
+  assert.equal(p.store.get(ID).name, 'Work');
+  assert.equal(await run(p, JSON.stringify(event({ hook_event_name: 'Stop' })), env), '');
+});
+
+test('unlink during first-prompt lookup cancels the pending link once it is queued', async (t) => {
+  const { env } = await lockEnv(); t.after(() => rm(env.XDG_STATE_HOME, { recursive: true, force: true }));
+  const p = fakeProvider('claude');
+  const entered = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const read = p.read;
+  let first = true;
+  p.read = async (...args) => {
+    if (first) {
+      first = false;
+      entered.resolve();
+      await release.promise;
+      return null;
+    }
+    return read(...args);
+  };
+  const prompting = run(p, JSON.stringify(event()), env);
+  await entered.promise;
+  const unlinked = unlink({ claude: p }, { provider: 'claude', sessionId: ID }, { env });
+  release.resolve();
+  const [, result] = await Promise.all([prompting, unlinked]);
+  assert.equal(result.changed, true);
+  p.store.set(ID, session({ name: 'Work' }));
+  assert.equal(await run(p, JSON.stringify(event({ hook_event_name: 'Stop' })), env), '');
+  assert.equal(p.store.get(ID).name, 'Work');
+});
+
+test('deferred completion preserves a conflicting native link and reports the existing ticket', async (t) => {
+  const { env } = await lockEnv(); t.after(() => rm(env.XDG_STATE_HOME, { recursive: true, force: true }));
+  const p = fakeProvider('claude');
+  await run(p, JSON.stringify(event()), env);
+  p.store.set(ID, session({ name: 'Work [asana:43]' }));
+  const notice = await run(p, JSON.stringify(event({ hook_event_name: 'Stop' })), env);
+  assert.match(notice, /already links ticket 43; automatic linking skipped/);
+  assert.equal(p.store.get(ID).name, 'Work [asana:43]');
 });
 
 test('malformed, oversize, unreadable and unknown events never block or rename', async (t) => {
