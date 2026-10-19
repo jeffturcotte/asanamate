@@ -182,6 +182,14 @@ func handlers() map[string]handler {
 			}
 			return nil
 		}},
+		"yank": {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd {
+			if m.focusNav {
+				m.openYankMenu()
+				return nil
+			}
+			return m.requestMenu(func() tea.Cmd { m.openYankMenu(); return nil })
+		}},
+		"copy_selection": {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd { return m.copySelection().copy(m) }},
 		"copy_link": {run: func(m *Model, _ tea.KeyPressMsg) tea.Cmd {
 			if t, ok := m.selected(); ok {
 				if t.PermalinkURL == "" {

@@ -513,6 +513,15 @@ func (m *Model) handleActivityKey(msg tea.KeyPressMsg) tea.Cmd {
 		if e, ok := a.selected(); ok {
 			return openURL(e.Task.PermalinkURL)
 		}
+	case "yank", "copy_selection":
+		if e, ok := a.selected(); ok {
+			v := yankValue{"Ticket title", e.Task.Name}
+			if name == "copy_selection" {
+				return v.copy(m)
+			}
+			detail, loaded := m.details[e.Task.GID]
+			m.yankMenu(ticket.Ticket{Task: e.Task}, detail, loaded, v)
+		}
 	case "copy_link":
 		if e, ok := a.selected(); ok {
 			m.setStatus(statusInfo, "link sent to clipboard")
@@ -831,7 +840,7 @@ func (m *Model) activityHelp() string {
 		{"main", "toggle_sidebar", "show / hide views panel"},
 		{"main", "reload", "rescan the period from the API"},
 		{"main", "open_browser", "open ticket in browser"},
-		{"main", "copy_link", "copy ticket link"},
+		{"main", "yank", "yank menu"},
 	}
 	lines := []string{m.accentStyle.Render("Activity"), ""}
 	for _, row := range rows {

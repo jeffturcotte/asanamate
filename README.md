@@ -304,8 +304,8 @@ key press.
 | `ctrl+s` | save the current filter, grouping, and sorting under a name |
 | `s` | settings: separators, header spacing, reader view, auto-update interval, selection style, dim unfocused panes, and theme save in `settings.toml`; list columns save per project in state; `n` opens session status history |
 | `o` | open the ticket in the browser |
-| `y` | copy the selected ticket's link to the clipboard (requires terminal OSC 52 support) |
-| `Y` | copy the targeted comment as Markdown in the cards reader (requires terminal OSC 52 support); does nothing on other targets |
+| `y` | open yank menu: `y` selection, `u` ticket URL, `g` ticket GID, `t` ticket title, `c` latest comment; `Esc` cancels (requires terminal OSC 52 support) |
+| `Y` | copy current selection directly: ticket title in list, targeted comment as Markdown, project/section value, or reader field value; unsupported targets do nothing (requires terminal OSC 52 support) |
 | `r` | reload tickets, rerun the Feed panel's feeds and git check, and clear the inline image cache (including failed loads) |
 | `R` | set the automatic reload interval (persists between sessions) |
 | `?` | show every key |
@@ -626,7 +626,7 @@ saved with the action builder (`A`) apply at once. Run `asanamate doctor` to che
 | `feed.refresh_interval` | `"1m"` | how often feeds and the git check run, at least `1s`; `"0"` runs them only at start and on reload (`r`) |
 | `feed.commands` | `[]` | commands that answer the [feed protocol](docs/extensions.md#feeds), such as `["asanamate-hrvst"]` for today's Harvest time entries |
 | `picker.type_first` | `false` | open pickers in search mode, so typing filters at once; `esc` leaves search for browse mode |
-| `keys.<scope>.<name>` | see the template | key bindings: a list of keys per binding, such as `[keys.main] quit = ["q", "ctrl+q"]`; `[]` unbinds. Scopes: `main`, `activity`, `views`, `filter`, `picker`, `form`, `form_field`, `input`, `builder`, `notice`. Keys are a character (`"j"`, `"?"`) or a key name with modifiers (`"ctrl+d"`, `"shift+tab"`, `"enter"`, `"space"`, `"pgdown"`); a letter with `ctrl` or `alt` is lower case, plus `shift` for the capital (`"ctrl+shift+q"`, not `"ctrl+Q"`); `ctrl+c` is reserved for quitting and protects unsent comments. `asanamate setup` and `asanamate config update` write every binding, commented, with its default |
+| `keys.<scope>.<name>` | see the template | key bindings: a list of keys per binding, such as `[keys.main] quit = ["q", "ctrl+q"]`; `[]` unbinds. Yank uses `keys.main.yank` and `keys.main.copy_selection`; legacy `copy_link` and `copy_comment` remain available without default keys. Scopes: `main`, `activity`, `views`, `filter`, `picker`, `form`, `form_field`, `input`, `builder`, `notice`. Keys are a character (`"j"`, `"?"`) or a key name with modifiers (`"ctrl+d"`, `"shift+tab"`, `"enter"`, `"space"`, `"pgdown"`); a letter with `ctrl` or `alt` is lower case, plus `shift` for the capital (`"ctrl+shift+q"`, not `"ctrl+Q"`); `ctrl+c` is reserved for quitting and protects unsent comments. `asanamate setup` and `asanamate config update` write every binding, commented, with its default |
 | `keys.input.save_draft` | `["ctrl+d"]` | save a comment draft and close; other text inputs keep their editing controls |
 | `reader.max_text_width` | `0` | cards view: wrap description and comment text at this many columns (words are kept whole); `0` wraps at the pane width |
 | `reader.comments.latest` | `3` | cards view: list only this many of the newest comments, under a Show all comments row; `0` lists them all |
