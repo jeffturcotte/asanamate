@@ -93,8 +93,11 @@ func (m *Model) startRun() (string, bool) {
 	return "", true
 }
 
+// openActionMenu lists the actions for the selection, then the built-in
+// Conversations entry when the conversation source is on.
 func (m *Model) openActionMenu() {
-	if len(m.deps.Config.Actions) == 0 {
+	conversationsOn := m.deps.Config.ConversationsEnabled()
+	if len(m.deps.Config.Actions) == 0 && !conversationsOn {
 		m.setStatus(statusWarning, "no actions configured; add a .toml file to the actions folder next to config.toml")
 		return
 	}
@@ -115,12 +118,23 @@ func (m *Model) openActionMenu() {
 		}
 	}
 	items := append(first, rest...)
+	if conversationsOn {
+		items = append(items, pickItem{Label: "Conversations", Hint: "resume a saved chat", Value: conversationsEntry{}})
+	}
 	if len(items) == 0 {
 		m.run = nil
 		m.setStatus(statusWarning, "no actions for this selection")
 		return
 	}
-	p := newPicker(pickValue(m.pickedAction), "Run on: "+ticket.Clean(m.run.ticket.Name), items)
+	p := newPicker(func(res pickResult) tea.Cmd {
+		if i, ok := res.item.Value.(int); ok {
+			return m.pickedAction(i)
+		}
+		// Not an action run: the last action stays the one repeat runs.
+		t := m.run.ticket
+		m.modal, m.run = nil, nil
+		return m.lookupConversations(t, nil)
+	}, "Run on: "+ticket.Clean(m.run.ticket.Name), items)
 	p.keySelect = true
 	m.modal = p
 }

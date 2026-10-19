@@ -29,6 +29,9 @@ func TestConversationSnapshotAndCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	command := "/bin/sh '" + script + "'"
+	if c.Files, err = WriteFiles(dir, c.Ticket); err != nil {
+		t.Fatal(err)
+	}
 	cmd, err := ConversationCommand(dir, command, c, record)
 	if err != nil {
 		t.Fatal(err)
@@ -67,9 +70,21 @@ func TestConversationSnapshotAndCommand(t *testing.T) {
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
 		t.Fatal("record metadata executed as shell text")
 	}
-	second, err := ConversationCommand(dir, command, c, record)
-	if err != nil || slices.Equal(second.Env, cmd.Env) {
+	if filepath.Dir(snapshot) != filepath.Dir(c.Files.JSON) {
+		t.Fatalf("snapshot %s is not beside the ticket exports %s", snapshot, c.Files.JSON)
+	}
+	// Without ticket exports (the CLI path), each open still gets its own run.
+	bare := Context{Ticket: ticket.Ticket{Task: asana.Task{GID: "42"}}}
+	first, err := ConversationCommand(dir, command, bare, record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := ConversationCommand(dir, command, bare, record)
+	if err != nil || slices.Equal(second.Env, first.Env) {
 		t.Fatal("open runs reused snapshot")
+	}
+	if !slices.Contains(first.Env, "ASANAMATE_TICKET_JSON=") {
+		t.Fatal("absent ticket exports are not empty")
 	}
 	for _, kv := range Command(config.Action{Command: "true"}, c).Env {
 		if strings.HasPrefix(kv, "ASANAMATE_CONVERSATION_") && !strings.HasSuffix(kv, "=") {

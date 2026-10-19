@@ -98,18 +98,11 @@ func fieldBranch(t asana.Task, branchField string, preferred map[string]bool) st
 // <stateDir>/tickets/<gid>. Detached actions retain their own snapshot even
 // when another action runs on the same ticket.
 func WriteFiles(stateDir string, t ticket.Ticket) (Files, error) {
-	if !asana.ValidGID(t.GID) {
-		return Files{}, fmt.Errorf("invalid task gid %q", t.GID)
-	}
 	data, err := json.MarshalIndent(t, "", "  ")
 	if err != nil {
 		return Files{}, err
 	}
-	parent := filepath.Join(stateDir, "tickets", t.GID)
-	if err := os.MkdirAll(parent, 0o700); err != nil {
-		return Files{}, err
-	}
-	dir, err := os.MkdirTemp(parent, "run-")
+	dir, err := runDir(stateDir, t.GID)
 	if err != nil {
 		return Files{}, err
 	}
@@ -123,6 +116,18 @@ func WriteFiles(stateDir string, t ticket.Ticket) (Files, error) {
 		return Files{}, err
 	}
 	return f, nil
+}
+
+// runDir creates a new private run directory under <stateDir>/tickets/<gid>.
+func runDir(stateDir, gid string) (string, error) {
+	if !asana.ValidGID(gid) {
+		return "", fmt.Errorf("invalid task gid %q", gid)
+	}
+	parent := filepath.Join(stateDir, "tickets", gid)
+	if err := os.MkdirAll(parent, 0o700); err != nil {
+		return "", err
+	}
+	return os.MkdirTemp(parent, "run-")
 }
 
 // WriteInput saves text typed for the action next to its ticket snapshot.

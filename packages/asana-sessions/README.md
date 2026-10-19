@@ -257,8 +257,10 @@ open = "asana-sessions asanamate open"
 ```
 
 Setup never probes or rewrites asanamate configuration. If you uninstall the
-helper, clear both commands; core diagnoses a missing configured executable.
-The native ticket picker is separate work in spec 19.
+helper, clear both commands; `asanamate doctor` warns about a missing
+configured executable. With both commands set, asanamate offers a
+Conversations entry in its action menu and `asanamate conversations`; see its
+[Conversations](../../README.md#conversations-optional) section.
 
 ## Development
 

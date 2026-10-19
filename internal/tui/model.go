@@ -22,6 +22,7 @@ import (
 	"github.com/sadmachine/asanamate/internal/agents"
 	"github.com/sadmachine/asanamate/internal/asana"
 	"github.com/sadmachine/asanamate/internal/config"
+	"github.com/sadmachine/asanamate/internal/conversations"
 	"github.com/sadmachine/asanamate/internal/filter"
 	"github.com/sadmachine/asanamate/internal/keymap"
 	"github.com/sadmachine/asanamate/internal/kitty"
@@ -158,6 +159,11 @@ type Model struct {
 	menuOpen       func() tea.Cmd // opens that menu
 	openGID        string         // history ticket to show once its details arrive
 
+	// conversations is the lookup in flight; conversationResults holds each
+	// ticket's last successful lookup, in memory only, shown stale on refresh.
+	conversations       *conversationLookup
+	conversationResults map[string]conversations.Result
+
 	status           string
 	statusLevel      statusLevel
 	statusProgress   bool
@@ -203,6 +209,8 @@ func New(d Deps) *Model {
 		loading:         true,
 		now:             time.Now,
 		readerHidden:    d.NoPreview || !d.Config.Layout.Reader,
+
+		conversationResults: map[string]conversations.Result{},
 	}
 	m.setPalette(d.Config.Palette(!d.LightBackground))
 	for _, p := range d.State.Projects {
@@ -309,6 +317,8 @@ func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 			m.waiting = ""
 			m.openRepoPicker(msg)
 		}
+	case conversationsMsg:
+		m.gotConversations(msg)
 	case actionDoneMsg:
 		status := actionStatus(msg)
 		if msg.err != nil {
@@ -620,6 +630,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			return tea.Quit
 		case keys.Name("picker", k) == "cancel":
 			m.waiting, m.run, m.timeEntry = "", nil, nil
+			m.stopConversations()
 		}
 		return nil
 	}
@@ -694,6 +705,7 @@ func (m *Model) updateModal(msg tea.KeyPressMsg) tea.Cmd {
 			return cmd
 		}
 		m.modal, m.run, m.edit, m.timeEntry = nil, nil, nil, nil
+		m.stopConversations()
 	case res.done:
 		return tea.Batch(cmd, p.onPick(res))
 	}
