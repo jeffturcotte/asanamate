@@ -170,8 +170,7 @@ window remains between the check and the launch.
 
 ## Remaining gate work
 
-Only hook reentrancy remains, for both providers; it needs the spec 18 plugins.
-Claude has no native exclusion; the opener relies on its live-session
+Hook reentrancy passed on 2026-10-19 (see below). Claude has no native exclusion; the opener relies on its live-session
 registry instead and refuses when the registry cannot be read. Do not publish minimum supported versions
 until the hook checks pass.
 
@@ -305,3 +304,41 @@ retry. Disposable homes were removed after verification. The remaining release
 requirements are the exact-main remote Node/platform CI gates, clean/local-remote
 commit agreement, and explicit authorization to tag; follow the
 [standalone release gate](../../packages/asana-sessions/RELEASING.md).
+
+## Hook reentrancy and integrated proof (2026-10-19)
+
+`scripts/live-reentrancy.sh both` installs the packed helper into an empty
+prefix and races its prompt hook against one real conversation per provider in
+disposable homes. Claude used a synthetic transcript read and renamed by the
+pinned SDK, with no model turn. Codex 0.163.0 created its conversation with one
+`codex exec` turn, authenticated by copying only `auth.json`, and ran through
+`caveman`. Both providers passed every check:
+
+- Eight simultaneous hooks for one task linked once. Exactly one hook claimed
+  the link; the others were silent or reported a busy write. All exited 0
+  within 1 second.
+- Hooks for another task, racing an explicit `link --replace`, reported a
+  conflict or busy write and never relinked. The saved title matched the
+  replace command's exit status.
+- Raw native renames that bypass the helper's lock, racing hooks, left either
+  the human title or the human title with one marker. No hook claimed an
+  unverified link.
+- `unlink` racing hooks kept the human title with at most one marker, and no
+  lock remained afterwards.
+
+The user's manual spec 19 proof passed for Claude Code and Codex: plugin
+linking outside asanamate, lookup and resumption of the same native ID from the
+ticket picker, returning to the ticket, manually named chats with hooks off,
+archived Codex display and resumption, missing-directory replacement and
+cancel, provider failure reporting, refusal of an active Claude conversation,
+and both CLI commands without an Asana token. Codex unknown activity asked for
+confirmation, and both answers behaved correctly. Resuming the archived Codex
+conversation restored it, but its disclosure printed after the confirmation and
+the provider's full screen hid it. The disclosure now precedes the question.
+
+The first Codex attempt exposed an environment issue, not a product defect:
+Codex ran hooks in its shared app-server daemon, which kept the PATH of the
+directory it started in. That directory pinned another mise Node version, so
+the hook could not find `asana-sessions` and exited 127.
+Linking the helper into a directory on every PATH fixed it; the package README
+now documents this.

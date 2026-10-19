@@ -29,6 +29,9 @@ and coding agents can do what you can. macOS and Linux only.
   as starting a coding agent in its repo. See [Actions](#actions).
 - **Show agents** (optional): coding agents running in ccmux or any other tool
   appear next to their tickets. See [Agents](#agents-optional).
+- **Resume conversations** (optional): find a ticket's saved Claude Code and
+  Codex conversations, including archived ones, and resume one in the
+  terminal. See [Conversations](#conversations-optional).
 - **Track time** (optional): log time to Harvest from a ticket. See
   [Time tracking](#time-tracking-optional).
 - **Suggest links** (optional): preselect each project's repo and Harvest
@@ -39,9 +42,10 @@ and coding agents can do what you can. macOS and Linux only.
   and lines from any feed command, such as Harvest time entries. See
   [Feed panel](#feed-panel).
 
-**Extending asanamate.** External commands plug in at six points:
+**Extending asanamate.** External commands plug in at seven points:
 [actions](docs/extensions.md#actions),
 [agent sources](docs/extensions.md#agent-sources),
+[conversation history](docs/extensions.md#conversation-history),
 [time tracking providers](docs/extensions.md#time-tracking),
 [repo sources](docs/extensions.md#repo-sources),
 [project links](docs/extensions.md#project-links), and
@@ -182,6 +186,7 @@ shows; see [Troubleshooting](#troubleshooting) for what its results prove.
 | Paste image into comment (`alt+v`) | macOS `osascript` (built in); Linux `wl-clipboard` (Wayland) or `xclip` (X11). On macOS the terminal must send Option as Alt (kitty `macos_option_as_alt`, Ghostty `macos-option-as-alt`, iTerm2 "Esc+") | always on | not needed | not checked | the comment box shows why; type the image's Markdown yourself |
 | Paste into input (`Ctrl+V`) | macOS `pbpaste`; Linux `xclip` or `xsel` (X11) or `wl-clipboard` (Wayland) | always on | not needed | not checked | the input shows why, and your terminal's paste still works |
 | Agent status | an agents command, such as `asanamate-ccmux` for ccmux; see [Agents](#agents-optional) | `agents.command` | remove `[agents]` keys | `agents` | off |
+| Conversations | the [asana-sessions](packages/asana-sessions/README.md) package (Node 22+); see [Conversations](#conversations-optional) | `[conversations]` | remove `[conversations]` keys | `conversations` (shown only when on) | no Conversations entry |
 | Time tracking | `asanamate-hrvst` and [hrvst](https://github.com/kgajera/hrvst-cli) 3.x, or your own provider; see [Time tracking](#time-tracking-optional) | `[time_tracking]` | remove `[time_tracking]` keys | `time_tracking` (unchecked) | off |
 | Project link suggestions | a project links command, such as imarc's `asanamate-hub`; see [Project links](#project-links-optional) | `project_links.command` | remove `project_links.command` | `project_links` (unchecked) | no suggestions |
 | Relative dates (`tomorrow`, `+1 day`) | GNU `date`; on macOS, `gdate` from `brew install coreutils` | install it | not needed | not checked | type dates as `YYYY-MM-DD` |
@@ -561,6 +566,9 @@ commands = ["asanamate-hrvst"]
   # Popup: review the ticket picked with fzf
   bind-key R display-popup -E -w 80% -h 80% 'asanamate read "$(asanamate list | fzf | cut -f1)"'
   ```
+- `asanamate conversations <gid | url>` and `asanamate conversation open`
+  list and resume a ticket's saved conversations without an Asana token. See
+  [Conversations](#conversations-optional).
 - `asanamate doctor [<gid>]` checks that asanamate is ready to browse and
   which optional features can work, and, for a ticket, why agents link to it
   or not. See [Troubleshooting](#troubleshooting).
@@ -601,8 +609,8 @@ saved with the action builder (`A`) apply at once. Run `asanamate doctor` to che
 | `list.fields` | `["section", "due"]` | default values shown with the title, in aligned columns (`single` layout); `s`, then `c` overrides columns per project; projects whose columns were set in the TUI keep their own; due dates show relative to today and are colored by urgency; a column with one value in each group (such as the grouped field) leaves the rows and shows that value once in the group header, or after the count when the list is ungrouped |
 | `branch_field` | `""` | custom field holding the ticket's git branch (`$ASANAMATE_BRANCH`); empty uses the ticket's ID field, else the title slug |
 | `agents.command` | unset (off) | opt-in agent tracking, such as `"asanamate-ccmux"`; see [Agents](#agents-optional) |
-| `conversations.command` | `""` (off) | generic saved-conversation JSON source; requires `conversations.open`; see [extension contract](docs/extensions.md#conversation-history). Native ticket picker and CLI integration are planned in spec 19 |
-| `conversations.open` | `""` (off) | trusted foreground opener reading a private selection snapshot; requires `conversations.command`. The optional provider companion is not bundled |
+| `conversations.command` | `""` (off) | saved-conversation lookup, such as `"asana-sessions asanamate list"`; requires `conversations.open`; see [Conversations](#conversations-optional) and the [extension contract](docs/extensions.md#conversation-history) |
+| `conversations.open` | `""` (off) | foreground opener reading a private selection snapshot, such as `"asana-sessions asanamate open"`; requires `conversations.command`. asana-sessions is not bundled |
 | `symbols` | `unicode` on UTF-8, else `ascii` | `unicode`, `nerd`, or `ascii` for ticket markers and agent states |
 | `reduced_motion` | OS setting | `true` shows static agent symbols instead of the spinner |
 | `list.default_view.group_by` | `""` (ungrouped) | starting grouping, until the project has its own saved view: any `list.fields` name; `b` picks another |
@@ -1300,6 +1308,72 @@ command = 'ccmux switch "$ASANAMATE_AGENT_TARGET"'
 Ticket text becomes the agent's prompt, so anyone who can edit a ticket can
 steer the agent. Be careful combining this with auto-approved tools.
 
+## Conversations (optional)
+
+asanamate can find a ticket's saved Claude Code and Codex conversations and
+resume one in the terminal, even when neither asanamate nor ccmux started it.
+A conversation is linked to a ticket by a marker at the end of its title:
+
+```text
+Fix task sorting [asana:1234567890]
+```
+
+Add the marker by renaming the conversation in its provider, with
+`asana-sessions link`, or with the package's optional plugins, which add it
+when a prompt contains one task link. The lookup and opener come from the separate
+[asana-sessions](packages/asana-sessions/README.md) package, which needs Node
+22 or later. Install it, then turn the feature on:
+
+```toml
+[conversations]
+command = "asana-sessions asanamate list"
+open = "asana-sessions asanamate open"
+```
+
+This release supports conversation protocol version 1, which asana-sessions
+0.1.x implements. The two have their own version numbers; they need not match.
+Any program implementing the
+[protocol](docs/extensions.md#conversation-history) works too.
+
+**In the TUI.** Press `a` on a ticket and pick **Conversations**, the last
+entry (with arrows and `enter`). It is there even with no action files, and it
+does not change what `.` repeats. The picker lists one row per conversation,
+newest first: title, provider, last activity, `active`/`inactive`/`unknown`,
+and whether it is archived; the highlighted row shows its native session ID,
+directory, and branch. Pick a row to **resume it in this terminal**; quitting
+the conversation returns to the same ticket. **Refresh** looks again, showing
+the last result, marked stale, until the new one arrives. A lookup that failed
+or found only part of the history says so, with the provider's message; it is
+never shown as "No linked conversations."
+
+**From the CLI.** Neither command needs an Asana token or reads Asana:
+
+```sh
+asanamate conversations https://app.asana.com/0/123/456   # or a task gid
+asanamate conversations 456 --json                        # version-1 JSON
+asanamate conversation open 456 --provider claude --session <session-id>
+```
+
+`conversations` exits nonzero when the lookup failed or was incomplete, after
+printing what it found; with `--json` a failure is a diagnostic from provider
+`source`. `conversation open` never picks a conversation for you: it looks
+again and opens only that exact conversation, if it is still linked to the
+ticket. Its opener gets no ticket exports.
+
+What to expect:
+
+- History is local: only this machine's provider homes (`CLAUDE_CONFIG_DIR`,
+  `CODEX_HOME`) are searched. Archived conversations are included.
+- Resuming does not restore Git. The recorded directory and branch are
+  context; if the directory is gone, the opener asks for another one.
+- The opener refuses a conversation that is open elsewhere; return to the
+  window that owns it. Claude conversations whose activity is unknown are
+  refused too, because Claude Code does not stop two processes resuming one.
+- Session IDs are the providers' own; they differ from ccmux or Paseo agent
+  IDs. The **Agents** section shows running agents, not saved conversations.
+- The plugins only add markers. Disabling or removing them keeps every link,
+  and lookup works without them.
+
 ## Writing back to Asana
 
 ```sh
@@ -1486,6 +1560,12 @@ the workspace is reachable. For optional features it checks less:
   `PATH` (see [Agents](#agents-optional)).
 - A `codex_hook` warning means Codex still runs `asanamate hook codex`, which
   v0.3.0 drops; run `asanamate-ccmux setup` to replace it.
+- A `conversations` row appears only when `[conversations]` is set. A warning
+  names a configured command that is not on your `PATH`, such as
+  `asana-sessions`. With a ticket gid, `doctor` also looks up its
+  conversations and prints any provider diagnostics; run
+  `asana-sessions doctor` for provider, plugin, and version details. An
+  `unavailable` lookup means no provider history was found.
 
 With a ticket gid, it also explains why each agent links to that ticket or not.
 

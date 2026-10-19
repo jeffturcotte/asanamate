@@ -104,7 +104,8 @@ longer linked to the ticket. It then:
    terminal; without a terminal it fails.
 3. Uses the recorded directory, or asks for an existing replacement for this
    launch. It does not change Git branches or create worktrees.
-4. Restores an archived Codex conversation first, and says so.
+4. Restores an archived Codex conversation first. It says so before the
+   unknown-activity question, because the provider's full screen hides later output.
 5. Resumes in the foreground: `claude --resume <id>` without an inherited
    `CLAUDE_CODE_CHILD_SESSION`, or `codex resume <id>` without the parent
    agent's `CODEX_THREAD_ID` and `CODEX_SESSION_ID`.
@@ -214,6 +215,15 @@ and provider homes: hooks validate `transcript_path` against the exact session I
 and derive the active home from it. Doctor checks its own inherited PATH; verify
 PATH inside the provider too when those environments differ.
 
+Codex can run hooks in its shared background app-server daemon. The daemon keeps
+the PATH it started with, which may differ from your shell's PATH. A Codex hook
+that fails with exit code 127 could not find `asana-sessions`. This happens when
+a Node version manager such as mise or nvm installed the helper under one Node
+version's `bin`, and the daemon's PATH names another Node version. Link the
+helper into a directory on every PATH, such as
+`ln -s "$(npm prefix -g)/bin/asana-sessions" ~/.local/bin/`, or restart the
+daemon from a shell where `asana-sessions` resolves.
+
 Codex writes immediately through its native metadata API. Claude can submit the
 first prompt before the session is saved; only Claude has a Stop hook to finish
 that link. Private pending files contain provider, session ID, GID and timestamp,
@@ -257,8 +267,10 @@ open = "asana-sessions asanamate open"
 ```
 
 Setup never probes or rewrites asanamate configuration. If you uninstall the
-helper, clear both commands; core diagnoses a missing configured executable.
-The native ticket picker is separate work in spec 19.
+helper, clear both commands; `asanamate doctor` warns about a missing
+configured executable. With both commands set, asanamate offers a
+Conversations entry in its action menu and `asanamate conversations`; see its
+[Conversations](../../README.md#conversations-optional) section.
 
 ## Development
 

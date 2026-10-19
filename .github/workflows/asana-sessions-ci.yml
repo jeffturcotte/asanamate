@@ -39,3 +39,29 @@ jobs:
         run: |
           node --test packages/asana-sessions/test/cli.test.js
           go test ./internal/conversations ./internal/asana
+      # A packed, separately installed companion drives asanamate's
+      # conversations CLI end to end in a disposable home, without an Asana
+      # token: real SDK link and lookup, then the foreground open handoff.
+      - name: Check packed companion with asanamate
+        run: |
+          set -eu
+          work=$(mktemp -d)
+          go build -o "$work/bin/asanamate" ./cmd/asanamate
+          tarball=$(cd packages/asana-sessions && npm pack --silent --pack-destination "$work")
+          npm install --global --silent --no-audit --no-fund --prefix "$work/prefix" "$work/$tarball"
+          id=7d1f6a2e-1c3b-4f5a-9e8d-2b4c6a8e0f13
+          mkdir -p "$work/home/.claude/projects/p" "$work/home/.claude/sessions" "$work/repo" "$work/config/asanamate"
+          printf '{"type":"user","message":{"role":"user","content":"hi"},"uuid":"a1b2c3d4-0000-4000-8000-000000000001","parentUuid":null,"sessionId":"%s","cwd":"%s","timestamp":"2026-10-17T10:00:00.000Z","isSidechain":false,"userType":"external"}\n' "$id" "$work/repo" > "$work/home/.claude/projects/p/$id.jsonl"
+          printf 'workspace = "1"\n[conversations]\ncommand = "asana-sessions asanamate list"\nopen = "asana-sessions asanamate open"\n' > "$work/config/asanamate/config.toml"
+          printf '#!/bin/sh\necho "resumed $*"\n' > "$work/bin/claude" && chmod +x "$work/bin/claude"
+          run() {
+            env -i HOME="$work/home" XDG_CONFIG_HOME="$work/config" XDG_STATE_HOME="$work/state" \
+              PATH="$work/bin:$work/prefix/bin:$(dirname "$(command -v node)"):/usr/bin:/bin" "$@"
+          }
+          run asana-sessions link --provider claude --session "$id" --task https://app.asana.com/0/1/42
+          run asanamate conversations 42 --json > "$work/list.json"
+          grep -q "\"session_id\":\"$id\"" "$work/list.json"
+          grep -q '"activity":"inactive"' "$work/list.json"
+          run asanamate conversation open 42 --provider claude --session "$id" < /dev/null > "$work/open.txt"
+          grep -qx "resumed --resume $id" "$work/open.txt"
+          if run asanamate conversation open 42 --provider codex --session "$id" < /dev/null; then exit 1; fi

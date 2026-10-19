@@ -176,12 +176,53 @@ func TestSourceFailureAndCancellation(t *testing.T) {
 	}
 	ctx, cancel = context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	if _, err := (Source{Command: "sleep 60"}).List(ctx, "42"); !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "incomplete") {
+	if _, err := (Source{Command: "sleep 60"}).List(ctx, "42"); !errors.Is(err, context.DeadlineExceeded) || Failure(err).Code != "incomplete" {
 		t.Fatalf("error = %v", err)
 	}
 	for _, command := range []string{"", "printf 'unavailable' >&2; exit 3", "printf '%4194305d' 0", "printf '%65537d' 0 >&2"} {
 		if _, err := (Source{Command: command}).List(context.Background(), "42"); err == nil {
 			t.Fatal("command failure accepted")
 		}
+	}
+}
+
+func TestFailureClassifiesWholeLookupErrors(t *testing.T) {
+	cases := map[string]string{
+		"printf 'no history' >&2; exit 3":           "unavailable",
+		"printf '%4194305d' 0":                      "incomplete",
+		`printf '{"version":2,"conversations":[]}'`: "unsupported_version",
+		`printf '{"version":1}'`:                    "provider_error",
+	}
+	for command, code := range cases {
+		_, err := (Source{Command: "cat >/dev/null; " + command}).List(context.Background(), "42")
+		d := Failure(err)
+		if err == nil || d.Code != code || d.Provider != SourceProvider || d.Severity != "error" || Guidance(d.Code) == "" {
+			t.Fatalf("%s: diagnostic = %+v, error = %v", command, d, err)
+		}
+	}
+}
+
+func TestSortAndFind(t *testing.T) {
+	records := []Record{
+		{Provider: "codex", SessionID: "b"},
+		{Provider: "codex", SessionID: "old", UpdatedAt: "2026-10-01T00:00:00Z"},
+		{Provider: "claude", SessionID: "z"},
+		{Provider: "codex", SessionID: "a", UpdatedAt: "2026-10-15T00:00:00+02:00"},
+		{Provider: "claude", SessionID: "a", UpdatedAt: "2026-10-14T22:00:00Z"},
+	}
+	Sort(records)
+	var got []string
+	for _, r := range records {
+		got = append(got, r.Provider+"/"+r.SessionID)
+	}
+	if strings.Join(got, " ") != "claude/a codex/a codex/old claude/z codex/b" {
+		t.Fatalf("order = %v", got)
+	}
+	result := Result{Conversations: records}
+	if r, ok := result.Find("codex", "a"); !ok || r.UpdatedAt == "" {
+		t.Fatal("exact identity not found")
+	}
+	if _, ok := result.Find("claude", "old"); ok {
+		t.Fatal("identity matched across providers")
 	}
 }

@@ -439,10 +439,11 @@ commands = []
 # [agents.symbols]
 # waiting = "!"
 
-# Optional saved conversation source and foreground opener. Both must be set
-# together; empty commands leave the extension off. This is the generic contract;
-# ticket picker and CLI integration are planned separately (spec 19).
-# See docs/extensions.md for the protocol and provider safety requirements.
+# Optional saved Claude Code and Codex conversations for a ticket: the action
+# menu's Conversations entry and "asanamate conversations". Both must be set
+# together; empty commands leave the feature off. The commands below need the
+# separately installed asana-sessions package. See README "Conversations" and
+# docs/extensions.md for the protocol and provider safety requirements.
 [conversations]
 # command = "asana-sessions asanamate list"
 # open = "asana-sessions asanamate open"

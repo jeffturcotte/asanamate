@@ -9,7 +9,7 @@ The provider's saved conversation metadata is the source of truth.
 
 The generic core contract is implemented in `internal/conversations` and
 `internal/action`, with configuration and fixture tests. The standalone tool,
-provider integrations, and ticket UI remain separate tasks in specs 17–19.
+provider integrations, and ticket UI are specs 17–19.
 Details requiring a provider spike are explicitly gated in spec 17;
 documentation alone is not proof that an operation works on an actively
 running conversation.
@@ -262,7 +262,8 @@ snapshot permissions: directory `0700`, file `0600`. Export:
 
 The snapshot contains `version: 1`, `operation: "open"`, `asana.task_gid`,
 and one `conversation` object using the discovery record shape. Existing
-ticket exports remain available. Clear these variables for unrelated action
+ticket exports remain available in the TUI; spec 19's CLI open reads no
+ticket from Asana, so its ticket exports are empty. Clear these variables for unrelated action
 runs and remove inherited `ASANAMATE_*` values as `action.Command` does now.
 
 Execute the configured open command through the existing foreground action

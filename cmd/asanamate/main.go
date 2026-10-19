@@ -82,6 +82,10 @@ const usage = `usage:
                     [--assignee <name | me>] [--due <date>] [--notes <markdown | ->] <title>
                                                    create a ticket (default: in My Tasks, assigned
                                                    to you) or a subtask; prints its gid
+  asanamate conversations [--json] <gid | url>    list saved Claude Code and Codex conversations linked
+                                                   to a task (needs [conversations]; no Asana token)
+  asanamate conversation open <gid | url> --provider <name> --session <id>
+                                                   resume one exact linked conversation in this terminal
   asanamate doctor [<gid>]                         check setup and optional tools; for a ticket, why agents link (or not)
   asanamate version
 `
@@ -121,6 +125,10 @@ func run(args []string) int {
 		err = runRead(args[1:])
 	case "doctor":
 		err = runDoctor(args[1:])
+	case "conversations":
+		err = runConversations(args[1:], os.Stdout)
+	case "conversation":
+		err = runConversation(args[1:])
 	default:
 		if name != "" && !strings.HasPrefix(name, "-") {
 			fmt.Fprint(os.Stderr, usage)
@@ -657,6 +665,11 @@ func runDoctor(args []string) error {
 			}
 		}
 	}
+	gid := ""
+	if len(args) == 1 {
+		gid = args[0]
+	}
+	checkConversations(ctx, w, cfg, gid)
 	if client == nil {
 		return errDoctorBlocking
 	}

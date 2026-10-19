@@ -118,12 +118,16 @@ command = '~/bin/show-ticket.sh | less'
 
 ## Conversation history
 
-This is the generic core contract, version **1**. Ticket picker and public CLI
-integration are a separate task ([spec 19](specs/19-conversation-ui.md)); the
-provider companion and plugins are also separate ([specs 17–18](specs/17-conversation-companion.md)).
-Configuring the commands alone does not add a ticket menu or CLI subcommand.
-Core has no Claude/Codex SDK, provider title parser, transcript index, or cache.
-Running agents and persisted conversations remain different extension points.
+This is the generic core contract, version **1**. When both commands are set,
+the action menu (`a`) gains a built-in **Conversations** entry, and
+`asanamate conversations` and `asanamate conversation open` use the same
+lookup and opener ([README](../README.md#conversations-optional)). The
+provider companion and plugins are separate
+([specs 17–18](specs/17-conversation-companion.md)).
+Core has no Claude/Codex SDK, provider title parser, transcript index, or disk
+cache. The TUI keeps each ticket's last successful lookup in memory only, shown
+as stale while a refresh runs. Running agents and persisted conversations
+remain different extension points.
 
 Both settings default to empty, leaving the extension off. Set both together:
 
@@ -224,8 +228,15 @@ separate sessions. Descendants retaining pipes after the shell exits get a
 250 ms drain period before transport failure and cleanup. Existing unbounded
 `jsoncmd.Run` callers retain their original contract.
 
-Overflow, timeout, cancellation, and nonzero exit mean incomplete lookup and
+Overflow, timeout, cancellation, and nonzero exit fail the whole lookup and
 return no rows. Malformed or conflicting responses also return no rows.
+`conversations.Failure` classifies a failed lookup as one `error` diagnostic
+with provider `source`: `unavailable` (nonzero exit, such as no provider
+installed), `incomplete` (timeout, overflow, cancellation),
+`unsupported_version`, or `provider_error` (malformed response).
+`asanamate conversations --json` prints that diagnostic in a version-1
+response with no rows, and the picker shows it, keeping any earlier result as
+stale instead of an empty list.
 Never decode truncated output as a successful result, or silently convert
 failure into no conversations. Diagnostics use one display-safe line and at
 most 1024 Unicode code points, truncating longer messages with `…`. Core strips
@@ -252,10 +263,13 @@ or an Asana network request.
 ### Foreground opening
 
 `action.ConversationCommand` validates the selected record against the ticket,
-then writes a new private action run containing `ticket.json`, `ticket.md`, and
-`conversation.json`. The directory is `0700`; each file is `0600`. Snapshot
-paths are absolute, and every open gets its own directory. Existing ticket
-exports remain available. The selection file is:
+then writes `conversation.json` into a private action run. The TUI first
+exports the ticket (`action.WriteFiles`), so the run also holds `ticket.json`
+and `ticket.md`. `asanamate conversation open` reads no ticket from Asana, so
+its run holds only the snapshot and `ASANAMATE_TICKET_JSON`, `ASANAMATE_TITLE`,
+and other ticket exports are empty; a custom opener must accept that. The
+directory is `0700`; each file is `0600`. Snapshot paths are absolute, and
+every open gets its own directory. The selection file is:
 
 ```json
 {

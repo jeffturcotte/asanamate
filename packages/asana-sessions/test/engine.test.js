@@ -176,8 +176,12 @@ test('open asks for a replacement directory and never rewrites metadata', async 
 
 test('open restores an archived session only after confirmation and discloses it', async () => {
   const p = fakeProvider('codex', [linked({ archived: true })]);
-  await assert.rejects(open({ codex: p }, { provider: 'codex', sessionId: ID, gid: '42' }, fakeIO(['n'])), Cancelled);
+  const declined = fakeIO(['n']);
+  await assert.rejects(open({ codex: p }, { provider: 'codex', sessionId: ID, gid: '42' }, declined), Cancelled);
   assert.equal(p.calls.some((c) => c[0] === 'unarchive'), false);
+  // The disclosure precedes the question: a full-screen provider hides later output.
+  const disclosed = declined.said.findIndex((l) => l.includes('archive'));
+  assert.ok(disclosed >= 0 && disclosed < declined.said.findIndex((l) => l.includes('Resume anyway')));
   const io = fakeIO(['y']);
   await open({ codex: p }, { provider: 'codex', sessionId: ID, gid: '42' }, io);
   assert.deepEqual(p.calls.filter((c) => c[0] === 'unarchive'), [['unarchive', ID]]);
