@@ -1,6 +1,7 @@
 package action
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"os"
@@ -260,19 +261,27 @@ func TestRunBackgroundStartsNewSession(t *testing.T) {
 
 func TestExecReplacesProcess(t *testing.T) {
 	if os.Getenv("ASANAMATE_TEST_EXEC") == "1" {
-		cmd := exec.Command("/bin/sh", "-c", "trap '' INT; sleep 0.5; exit 7")
+		cmd := exec.Command("/bin/sh", "-c", "trap '' INT; echo ready; sleep 0.5; exit 7")
 		cmd.Env = os.Environ()
 		err := Exec(cmd)
 		t.Fatalf("Exec returned: %v", err)
 	}
 	helper := exec.Command(os.Args[0], "-test.run=^TestExecReplacesProcess$")
 	helper.Env = append(os.Environ(), "ASANAMATE_TEST_EXEC=1")
+	out, err := helper.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := helper.Start(); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(200 * time.Millisecond)
+	// Interrupt only once the replacement shell ignores it; a fixed delay
+	// raced the exec on slow runners and killed the test binary instead.
+	if line, err := bufio.NewReader(out).ReadString('\n'); line != "ready\n" {
+		t.Fatalf("helper did not start the command: %q, %v", line, err)
+	}
 	helper.Process.Signal(os.Interrupt)
-	err := helper.Wait()
+	err = helper.Wait()
 	var exitErr *exec.ExitError
 	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 7 {
 		t.Fatalf("want the command's exit code 7 after Ctrl+C, got %v", err)
