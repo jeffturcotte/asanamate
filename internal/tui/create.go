@@ -39,7 +39,7 @@ func (m *Model) openCreate() {
 func (m *Model) openCreateSubtask() {
 	t, ok := m.selected()
 	if !ok {
-		m.status = "no ticket selected"
+		m.setStatus(statusWarning, "no ticket selected")
 		return
 	}
 	m.openTitle("New subtask of "+ticket.Clean(t.Name), "subtask", writeback.NewTicket{Parent: t.GID})
@@ -54,10 +54,11 @@ func (m *Model) openTitle(title, what string, nt writeback.NewTicket) {
 	b.onSubmit = func(name string) tea.Cmd {
 		m.input = nil
 		if name == "" {
-			m.status = "title is empty; nothing created"
+			m.setStatus(statusWarning, "title is empty; nothing created")
 			return nil
 		}
-		nt.Name, m.status = name, "create "+what+"…"
+		nt.Name = name
+		m.setProgress("create " + what + "…")
 		svc := m.writer()
 		return request(func(ctx context.Context) tea.Msg {
 			t, err := svc.Create(ctx, nt)
@@ -71,9 +72,10 @@ func (m *Model) openTitle(title, what string, nt writeback.NewTicket) {
 // reader on it, keeping it under Viewing when the filter hides it.
 func (m *Model) created(msg createdMsg) tea.Cmd {
 	if msg.err != nil {
-		m.status = msg.what + " failed: " + msg.err.Error()
+		m.setStatus(statusError, msg.what+" failed: "+msg.err.Error())
 		return nil
 	}
-	m.status, m.openGID = msg.what+": done", msg.show
+	m.openGID = msg.show
+	m.setStatus(statusInfo, msg.what+": done")
 	return tea.Batch(m.refresh(), m.loadDetail(msg.show))
 }

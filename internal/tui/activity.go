@@ -152,7 +152,9 @@ func (m *Model) closeActivity() {
 
 func (m *Model) saveActivity() {
 	if err := m.activity.cache.Save(); err != nil {
-		m.status = "Activity cache: " + ticket.OneLine(err.Error())
+		m.setBackgroundError("activity cache", "Activity cache: "+ticket.OneLine(err.Error()))
+	} else {
+		delete(m.backgroundErrors, "activity cache")
 	}
 }
 
@@ -511,9 +513,18 @@ func (m *Model) handleActivityKey(msg tea.KeyPressMsg) tea.Cmd {
 		if e, ok := a.selected(); ok {
 			return openURL(e.Task.PermalinkURL)
 		}
+	case "yank", "copy_selection":
+		if e, ok := a.selected(); ok {
+			v := yankValue{"Ticket title", e.Task.Name}
+			if name == "copy_selection" {
+				return v.copy(m)
+			}
+			detail, loaded := m.details[e.Task.GID]
+			m.yankMenu(ticket.Ticket{Task: e.Task}, detail, loaded, v)
+		}
 	case "copy_link":
 		if e, ok := a.selected(); ok {
-			m.status = "link sent to clipboard"
+			m.setStatus(statusInfo, "link sent to clipboard")
 			return tea.SetClipboard(e.Task.PermalinkURL)
 		}
 	case "projects":
@@ -829,7 +840,7 @@ func (m *Model) activityHelp() string {
 		{"main", "toggle_sidebar", "show / hide views panel"},
 		{"main", "reload", "rescan the period from the API"},
 		{"main", "open_browser", "open ticket in browser"},
-		{"main", "copy_link", "copy ticket link"},
+		{"main", "yank", "yank menu"},
 	}
 	lines := []string{m.accentStyle.Render("Activity"), ""}
 	for _, row := range rows {

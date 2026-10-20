@@ -22,14 +22,14 @@ func (m *Model) recordViewed() {
 	}
 	m.deps.State.TouchTicket(rt)
 	if err := m.deps.State.Save(); err != nil {
-		m.status = "saving state: " + err.Error()
+		m.setStatus(statusError, "saving state: "+err.Error())
 	}
 }
 
 // openHistory lists the ticket history, most recent first.
 func (m *Model) openHistory() {
 	if len(m.deps.State.RecentTickets) == 0 {
-		m.status = "no ticket history yet"
+		m.setStatus(statusInfo, "no ticket history yet")
 		return
 	}
 	items := make([]pickItem, 0, len(m.deps.State.RecentTickets))
@@ -54,7 +54,7 @@ func (m *Model) pickedHistory(rt state.RecentTicket) tea.Cmd {
 		return m.showTicket(d.Task)
 	}
 	m.openGID = rt.GID
-	m.status = "loading " + ticket.Clean(rt.Name) + "…"
+	m.setProgress("loading " + ticket.Clean(rt.Name) + "…")
 	return m.loadDetail(rt.GID)
 }
 

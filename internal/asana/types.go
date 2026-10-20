@@ -269,26 +269,31 @@ type Project struct {
 	Members []Ref  `json:"members"`
 }
 
-// TaskGIDFromURL returns the task GID in an Asana task URL, in either the
-// /0/<project>/<task> or the /1/<workspace>/.../task/<task> form, or "" when
-// rawURL is not one.
+// TaskGIDFromURL returns the task GID in an HTTPS app.asana.com task URL, in
+// either the /0/<project>/<task>[/f] or the /1/<workspace>/.../task/<task>[/f]
+// form, or "" when rawURL is not one. Credentials, ports, and ambiguous paths
+// are rejected. packages/asana-sessions/test/fixtures/task-urls.json holds the
+// cases this shares with asana-sessions.
 func TaskGIDFromURL(rawURL string) string {
 	u, err := url.Parse(strings.TrimSpace(rawURL))
-	if err != nil || u.Host != "app.asana.com" {
+	if err != nil || u.Scheme != "https" || !strings.EqualFold(u.Host, "app.asana.com") || u.User != nil {
 		return ""
 	}
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-	gid := ""
+	// tail reports whether the GID at i ends the path, optionally followed by "f".
+	tail := func(i int) bool {
+		return len(parts) == i+1 || (len(parts) == i+2 && parts[i+1] == "f")
+	}
 	switch {
 	case len(parts) >= 3 && parts[0] == "0":
-		gid = parts[2]
-	default:
-		if i := slices.Index(parts, "task"); i > 0 && i+1 < len(parts) {
-			gid = parts[i+1]
+		if ValidGID(parts[1]) && ValidGID(parts[2]) && tail(2) {
+			return parts[2]
+		}
+	case len(parts) >= 2 && parts[0] == "1" && ValidGID(parts[1]):
+		i := slices.Index(parts, "task")
+		if i > 1 && i+1 < len(parts) && !slices.Contains(parts[i+1:], "task") && ValidGID(parts[i+1]) && tail(i+1) {
+			return parts[i+1]
 		}
 	}
-	if gid == "" || strings.Trim(gid, "0123456789") != "" {
-		return ""
-	}
-	return gid
+	return ""
 }

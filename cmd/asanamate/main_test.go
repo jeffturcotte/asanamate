@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/sadmachine/asanamate/internal/asana"
+	"github.com/sadmachine/asanamate/internal/config"
 	"github.com/sadmachine/asanamate/internal/writeback"
 )
 
@@ -169,5 +171,17 @@ func TestCheckFeedsRunsEachFeed(t *testing.T) {
 	checkFeeds(context.Background(), &out, nil)
 	if !strings.Contains(out.String(), "none: set feed.commands") {
 		t.Fatalf("no feeds = %q", out.String())
+	}
+}
+
+func TestReadNeedsOneTaskGID(t *testing.T) {
+	for _, args := range [][]string{nil, {"1", "2"}, {"abc"}} {
+		if err := runRead(args); err == nil {
+			t.Fatalf("read %v: no error", args)
+		}
+	}
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := runRead([]string{"--exit-on-action", "1"}); !errors.Is(err, config.ErrNotConfigured) {
+		t.Fatalf("read error = %v", err)
 	}
 }

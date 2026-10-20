@@ -63,7 +63,7 @@ func (m *Model) nextNew() tea.Cmd {
 			return m.selectionChanged()
 		}
 	}
-	m.status = "no new tickets"
+	m.setStatus(statusInfo, "no new tickets")
 	return nil
 }
 
@@ -79,7 +79,7 @@ func newHeaderStyle() lipgloss.Style {
 
 func (m *Model) saveSeen() {
 	if err := m.deps.State.Save(); err != nil {
-		m.status = "saving state: " + err.Error()
+		m.setStatus(statusError, "saving state: "+err.Error())
 	}
 }
 

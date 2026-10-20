@@ -22,6 +22,7 @@ import (
 	"github.com/sadmachine/asanamate/internal/agents"
 	"github.com/sadmachine/asanamate/internal/asana"
 	"github.com/sadmachine/asanamate/internal/config"
+	"github.com/sadmachine/asanamate/internal/conversations"
 	"github.com/sadmachine/asanamate/internal/filter"
 	"github.com/sadmachine/asanamate/internal/keymap"
 	"github.com/sadmachine/asanamate/internal/kitty"
@@ -81,6 +82,9 @@ type Deps struct {
 	// LightBackground picks theme.auto.light for the auto theme; false picks
 	// theme.auto.dark.
 	LightBackground bool
+	// Ticket opens only this ticket's reader, full screen, with no list or
+	// views panel.
+	Ticket string
 }
 
 // Model is the Bubble Tea model for asanamate.
@@ -144,8 +148,8 @@ type Model struct {
 	input          *inputBox // free-text modal for input actions
 	composer       *commentComposer
 	builder        *actionBuilder
-	form           *formModal // shared action and time-entry controls
-	notices        []string   // messages that block input until dismissed
+	form           *formModal      // shared action and time-entry controls
+	notices        []statusMessage // messages that block input until dismissed
 	run            *pendingRun
 	edit           *pendingEdit
 	timeEntry      *pendingTime
@@ -156,8 +160,21 @@ type Model struct {
 	menuOpen       func() tea.Cmd // opens that menu
 	openGID        string         // history ticket to show once its details arrive
 
-	status  string
-	exitCmd *exec.Cmd
+	// conversations is the lookup in flight; conversationResults holds each
+	// ticket's last successful lookup, in memory only, shown stale on refresh.
+	conversations       *conversationLookup
+	conversationResults map[string]conversations.Result
+
+	status           string
+	statusLevel      statusLevel
+	statusProgress   bool
+	statusHistory    []statusMessage
+	toast            *statusToast
+	toastSeq         uint64
+	toastPending     bool
+	toastTimer       func(time.Duration, toastTickMsg) tea.Cmd // nil uses the real clock
+	backgroundErrors map[string]string
+	exitCmd          *exec.Cmd
 }
 
 // New returns a model that starts on My Tasks with its last used grouping, sort, and filter.
@@ -193,6 +210,8 @@ func New(d Deps) *Model {
 		loading:         true,
 		now:             time.Now,
 		readerHidden:    d.NoPreview || !d.Config.Layout.Reader,
+
+		conversationResults: map[string]conversations.Result{},
 	}
 	m.setPalette(d.Config.Palette(!d.LightBackground))
 	for _, p := range d.State.Projects {
@@ -203,22 +222,40 @@ func New(d Deps) *Model {
 	m.feed = newFeedPanel(d.Config.Feed)
 	m.restoreView()
 	m.refreshInterval, _ = config.ParseRefreshInterval(cmp.Or(d.Config.List.RefreshInterval, config.Default().List.RefreshInterval))
+	if m.ticketOnly() {
+		m.loading, m.readerHidden, m.navHidden, m.focusReader = false, false, true, true
+		m.openGID = d.Ticket
+	}
 	return m
 }
+
+// ticketOnly reports whether the TUI shows only Deps.Ticket.
+func (m *Model) ticketOnly() bool { return m.deps.Ticket != "" }
 
 // ExitCommand is the command an exit-mode action left to run after the TUI quits.
 func (m *Model) ExitCommand() *exec.Cmd { return m.exitCmd }
 
 func (m *Model) Init() tea.Cmd {
-	cmd := tea.Batch(loadTasks(m.deps.Client, m.deps.Config.Workspace, m.viewProject, m.pinnedTasks()), m.startSpinner(), m.scheduleRefresh(), m.startActivity(), m.startFeed())
+	var cmd tea.Cmd
+	if m.ticketOnly() {
+		m.setProgress("loading ticket…")
+		cmd = tea.Batch(m.loadDetail(m.deps.Ticket), m.startSpinner(), m.scheduleRefresh())
+	} else {
+		cmd = tea.Batch(loadTasks(m.deps.Client, m.deps.Config.Workspace, m.viewProject, m.pinnedTasks()), m.startSpinner(), m.scheduleRefresh(), m.startActivity(), m.startFeed())
+	}
 	if m.deps.Config.AgentsEnabled() {
 		cmd = tea.Batch(cmd, loadAgents(m.deps.Config.Agents))
 	}
 	return cmd
 }
 
-func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *Model) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
+	// Statuses originate in synchronous handlers throughout the TUI. Schedule
+	// the latest toast once, after the handler finishes changing its state.
+	defer func() { cmd = tea.Batch(cmd, m.scheduleToast()) }()
 	switch msg := msg.(type) {
+	case toastTickMsg:
+		return m, m.toastTick(msg)
 	case refreshTickMsg:
 		return m, m.autoRefresh(msg)
 	case activityMsg:
@@ -257,7 +294,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case projectsMsg:
 		return m, m.gotProjects(msg)
 	case linkNamesMsg:
-		m.status = ""
+		m.clearProgress()
 		if m.linkNames == nil {
 			m.linkNames = map[string]string{}
 		}
@@ -281,12 +318,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.waiting = ""
 			m.openRepoPicker(msg)
 		}
+	case conversationsMsg:
+		m.gotConversations(msg)
 	case actionDoneMsg:
 		status := actionStatus(msg)
 		if msg.err != nil {
-			m.showNotice(status)
+			m.setStatus(statusError, status)
 		} else {
-			m.status = status
+			m.setStatus(statusInfo, status)
 		}
 	case editorDoneMsg:
 		msg.apply(msg.text, msg.err)
@@ -314,20 +353,24 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.inlineImageLoaded(msg)
 	case imageMsg:
 		if msg.err != nil {
-			m.status = "image: " + msg.err.Error() + "; opening in browser"
+			m.setStatus(statusWarning, "image: "+msg.err.Error()+"; opening in browser")
 			return m, openURL(msg.url)
 		}
-		m.status = ""
+		m.clearProgress()
 		viewer := kitty.NewViewer(msg.payload, m.viewerFooter(), len(m.viewImages) > 1, m.deps.InTmux)
 		return m, tea.Exec(viewer, func(err error) tea.Msg { return viewerDoneMsg{step: viewer.Step, err: err} })
 	case viewerDoneMsg:
 		if msg.err != nil || msg.step == 0 {
-			m.status = actionStatus(actionDoneMsg{name: "image viewer", err: msg.err})
+			level := statusInfo
+			if msg.err != nil {
+				level = statusError
+			}
+			m.setStatus(level, actionStatus(actionDoneMsg{name: "image viewer", err: msg.err}))
 			return m, nil
 		}
 		return m, m.viewImage((m.viewIndex + msg.step + len(m.viewImages)) % len(m.viewImages))
 	case statusMsg:
-		m.status = string(msg)
+		m.setStatus(statusError, string(msg))
 	case tea.KeyPressMsg:
 		return m, m.handleKey(msg)
 	}
@@ -352,9 +395,10 @@ func (m *Model) gotTasks(msg tasksMsg) tea.Cmd {
 	refreshing := m.loading
 	m.loading = false
 	if msg.err != nil {
-		m.status = "loading tasks: " + msg.err.Error()
+		m.setBackgroundError("tasks", "loading tasks: "+msg.err.Error())
 		return nil
 	}
+	delete(m.backgroundErrors, "tasks")
 	if msg.catalog != nil && msg.project != nil {
 		m.cacheProjectFields(msg.project.GID, msg.catalog)
 	}
@@ -370,7 +414,7 @@ func (m *Model) gotTasks(msg tasksMsg) tea.Cmd {
 	}
 	m.fitList()
 	if msg.warning != "" {
-		m.status = msg.warning
+		m.setStatus(statusWarning, msg.warning)
 	}
 	cmd := m.selectionChanged()
 	if !m.background {
@@ -394,7 +438,7 @@ func (m *Model) gotDetail(msg detailMsg) tea.Cmd {
 	isSelected := ok && t.GID == msg.gid
 	if msg.err != nil {
 		if isSelected || m.openGID == msg.gid {
-			m.status = "loading ticket: " + msg.err.Error()
+			m.setBackgroundError("ticket", "loading ticket: "+msg.err.Error())
 		}
 		if m.openGID == msg.gid {
 			m.openGID = ""
@@ -404,13 +448,15 @@ func (m *Model) gotDetail(msg detailMsg) tea.Cmd {
 		}
 		return nil
 	}
+	delete(m.backgroundErrors, "ticket")
 	m.details[msg.gid], m.linked = msg.ticket, nil
 	if m.refreshRetained(msg.ticket.Task) {
 		m.applyFilter()
 	}
 	images := tea.Batch(m.loadInlineImages(msg.ticket), m.loadTimeSummary(msg.ticket.Task))
 	if m.openGID == msg.gid {
-		m.openGID, m.status = "", ""
+		m.openGID = ""
+		m.clearProgress()
 		return tea.Batch(images, m.showTicket(msg.ticket.Task))
 	}
 	if isSelected {
@@ -428,15 +474,19 @@ func (m *Model) gotDetail(msg detailMsg) tea.Cmd {
 func (m *Model) gotProjects(msg projectsMsg) tea.Cmd {
 	m.loadingProjects = false
 	if msg.err != nil {
-		m.status = "loading projects: " + msg.err.Error()
+		message := "loading projects: " + msg.err.Error()
 		if m.composer != nil && m.afterProjects != nil {
+			m.setInlineError(message)
 			m.afterProjects = nil
 			m.composer.setError(m.status)
 			m.returnToDraft()
+		} else {
+			m.setBackgroundError("projects", message)
 		}
 		return nil
 	}
-	m.status = ""
+	delete(m.backgroundErrors, "projects")
+	m.clearProgress()
 	m.projects, m.projectsLoaded = msg.projects, true
 	m.allProjects = msg.allProjects
 	m.deps.State.Projects = make([]state.Project, len(msg.projects))
@@ -444,7 +494,7 @@ func (m *Model) gotProjects(msg projectsMsg) tea.Cmd {
 		m.deps.State.Projects[i] = state.Project{GID: p.GID, Name: p.Name}
 	}
 	if err := m.deps.State.Save(); err != nil {
-		m.status = "saving state: " + err.Error()
+		m.setStatus(statusError, "saving state: "+err.Error())
 	}
 	if open := m.afterProjects; open != nil {
 		m.afterProjects = nil
@@ -459,10 +509,10 @@ func (m *Model) gotAgents(msg agentsMsg) tea.Cmd {
 		return nil
 	}
 	if msg.err != nil {
-		if s := "agents: " + msg.err.Error(); s != m.agentsErr {
-			m.status, m.agentsErr = s, s
-		}
+		m.agentsErr = "agents: " + msg.err.Error()
+		m.setBackgroundError("agents", m.agentsErr)
 	} else {
+		delete(m.backgroundErrors, "agents")
 		m.agents, m.agentsErr, m.linked = msg.list, "", nil
 		m.markAgents(msg.list)
 		badgeW := m.badgeW
@@ -485,7 +535,7 @@ func (m *Model) gotProjectFields(msg projectFieldsMsg) tea.Cmd {
 		return nil
 	}
 	if msg.err != nil {
-		m.status = "loading project fields: " + msg.err.Error()
+		m.setStatus(statusError, "loading project fields: "+msg.err.Error())
 		if msg.columns {
 			return nil
 		}
@@ -495,7 +545,7 @@ func (m *Model) gotProjectFields(msg projectFieldsMsg) tea.Cmd {
 		m.cacheProjectFields(msg.gid, msg.catalog)
 	}
 	if msg.columns && msg.gid == gidOf(m.viewProject) {
-		m.status = ""
+		m.clearProgress()
 		m.openColumnPicker()
 	}
 	if m.run != nil && m.run.awaitingFields {
@@ -508,13 +558,10 @@ func (m *Model) gotProjectFields(msg projectFieldsMsg) tea.Cmd {
 // editDone reports a finished edit and reloads the list.
 func (m *Model) editDone(msg editDoneMsg) tea.Cmd {
 	if msg.err != nil {
-		m.status = msg.what + " failed: " + msg.err.Error()
+		m.setStatus(statusError, msg.what+" failed: "+msg.err.Error())
 		return nil
 	}
-	m.status = msg.what + ": done"
-	if msg.done != "" {
-		m.status = msg.done
-	}
+	m.setStatus(statusInfo, cmp.Or(msg.done, msg.what+": done"))
 	// Keep the edited ticket shown even if the reload drops it from the view.
 	var logTime tea.Cmd
 	if t, ok := m.selected(); ok && t.GID == msg.gid {
@@ -550,7 +597,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		m.closeActivity()
 		return tea.Quit
 	}
-	if len(m.notices) > 0 {
+	if m.noticeVisible() {
 		if keys.Name("notice", k) == "dismiss" {
 			m.notices = m.notices[1:]
 		}
@@ -585,6 +632,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			return tea.Quit
 		case keys.Name("picker", k) == "cancel":
 			m.waiting, m.run, m.timeEntry = "", nil, nil
+			m.stopConversations()
 		}
 		return nil
 	}
@@ -614,7 +662,6 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		return nil
 	}
-	m.status = ""
 	if m.activityOpen {
 		return m.handleActivityKey(msg)
 	}
@@ -647,11 +694,6 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
-func (m *Model) showNotice(message string) {
-	m.notices = append(m.notices, message)
-	m.status = message
-}
-
 func (m *Model) updateModal(msg tea.KeyPressMsg) tea.Cmd {
 	p := m.modal
 	res, cmd := p.update(msg)
@@ -665,6 +707,7 @@ func (m *Model) updateModal(msg tea.KeyPressMsg) tea.Cmd {
 			return cmd
 		}
 		m.modal, m.run, m.edit, m.timeEntry = nil, nil, nil, nil
+		m.stopConversations()
 	case res.done:
 		return tea.Batch(cmd, p.onPick(res))
 	}
@@ -730,6 +773,9 @@ func (m *Model) reload() tea.Cmd {
 		if gid != m.shownGID {
 			delete(m.details, gid)
 		}
+	}
+	if m.ticketOnly() {
+		return m.loadDetail(m.deps.Ticket)
 	}
 	m.loading, m.background = true, false
 	return tea.Batch(loadTasks(m.deps.Client, m.deps.Config.Workspace, m.viewProject, m.pinnedTasks()), m.startSpinner())
@@ -929,7 +975,7 @@ func (m *Model) pickedProject(ref *asana.Ref) tea.Cmd {
 	if ref != nil {
 		m.deps.State.TouchProject(ref.GID)
 		if err := m.deps.State.Save(); err != nil {
-			m.status = "saving state: " + err.Error()
+			m.setStatus(statusError, "saving state: "+err.Error())
 		}
 	}
 	return m.reload()
@@ -960,7 +1006,7 @@ func (m *Model) saveView() {
 		m.deps.State.CurrentSavedViews[gid] = m.savedView
 	}
 	if err := m.deps.State.Save(); err != nil {
-		m.status = "saving state: " + err.Error()
+		m.setStatus(statusError, "saving state: "+err.Error())
 	}
 }
 
@@ -976,7 +1022,7 @@ func (m *Model) readerOn() bool {
 // panel, that room is minPaneW columns; otherwise the terminal must be
 // narrowWidth wide.
 func (m *Model) readerShown() bool {
-	if !m.readerOn() {
+	if !m.readerOn() || m.ticketOnly() {
 		return false
 	}
 	fixed := m.fixedListW()
@@ -1056,7 +1102,8 @@ func (m *Model) layout() {
 }
 
 func (m *Model) View() tea.View {
-	v := tea.NewView(m.body() + "\n" + m.statusline())
+	frame := m.body() + "\n" + m.renderStatusline(!m.toastVisible())
+	v := tea.NewView(m.overlayToast(frame))
 	v.AltScreen = true
 	return v
 }
@@ -1072,10 +1119,12 @@ func (m *Model) body() string {
 	var content string
 	style := modalStyle.BorderForeground(m.accentStyle.GetForeground())
 	switch {
-	case len(m.notices) > 0:
-		content = m.accentStyle.Render("Notice") + "\n\n" + ansi.Wrap(ticket.OneLine(m.notices[0]), w, "") +
+	case m.noticeVisible():
+		notice := m.notices[0]
+		noticeStyle, _ := m.statusAppearance(notice.level)
+		content = noticeStyle.Bold(true).Render("Error") + "\n\n" + ansi.Wrap(m.renderStatus(notice.level, notice.text), w, "") +
 			"\n\n" + hintLine(m.accentStyle, [2]string{keyLabel("notice", "dismiss"), "dismiss"})
-		style = modalStyle.BorderForeground(warnStyle.GetForeground())
+		style = modalStyle.BorderForeground(noticeStyle.GetForeground())
 	case m.builder != nil:
 		content = m.builder.view(w, mh, m.accentStyle)
 	case m.composer != nil && m.composer.confirm != nil:

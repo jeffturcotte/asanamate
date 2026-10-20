@@ -29,6 +29,9 @@ and coding agents can do what you can. macOS and Linux only.
   as starting a coding agent in its repo. See [Actions](#actions).
 - **Show agents** (optional): coding agents running in ccmux or any other tool
   appear next to their tickets. See [Agents](#agents-optional).
+- **Resume conversations** (optional): find a ticket's saved Claude Code and
+  Codex conversations, including archived ones, and resume one in the
+  terminal. See [Conversations](#conversations-optional).
 - **Track time** (optional): log time to Harvest from a ticket. See
   [Time tracking](#time-tracking-optional).
 - **Suggest links** (optional): preselect each project's repo and Harvest
@@ -39,9 +42,10 @@ and coding agents can do what you can. macOS and Linux only.
   and lines from any feed command, such as Harvest time entries. See
   [Feed panel](#feed-panel).
 
-**Extending asanamate.** External commands plug in at six points:
+**Extending asanamate.** External commands plug in at seven points:
 [actions](docs/extensions.md#actions),
 [agent sources](docs/extensions.md#agent-sources),
+[conversation history](docs/extensions.md#conversation-history),
 [time tracking providers](docs/extensions.md#time-tracking),
 [repo sources](docs/extensions.md#repo-sources),
 [project links](docs/extensions.md#project-links), and
@@ -182,6 +186,7 @@ shows; see [Troubleshooting](#troubleshooting) for what its results prove.
 | Paste image into comment (`alt+v`) | macOS `osascript` (built in); Linux `wl-clipboard` (Wayland) or `xclip` (X11). On macOS the terminal must send Option as Alt (kitty `macos_option_as_alt`, Ghostty `macos-option-as-alt`, iTerm2 "Esc+") | always on | not needed | not checked | the comment box shows why; type the image's Markdown yourself |
 | Paste into input (`Ctrl+V`) | macOS `pbpaste`; Linux `xclip` or `xsel` (X11) or `wl-clipboard` (Wayland) | always on | not needed | not checked | the input shows why, and your terminal's paste still works |
 | Agent status | an agents command, such as `asanamate-ccmux` for ccmux; see [Agents](#agents-optional) | `agents.command` | remove `[agents]` keys | `agents` | off |
+| Conversations | the [asana-sessions](packages/asana-sessions/README.md) package (Node 22+); see [Conversations](#conversations-optional) | `[conversations]` | remove `[conversations]` keys | `conversations` (shown only when on) | no Conversations entry |
 | Time tracking | `asanamate-hrvst` and [hrvst](https://github.com/kgajera/hrvst-cli) 3.x, or your own provider; see [Time tracking](#time-tracking-optional) | `[time_tracking]` | remove `[time_tracking]` keys | `time_tracking` (unchecked) | off |
 | Project link suggestions | a project links command, such as imarc's `asanamate-hub`; see [Project links](#project-links-optional) | `project_links.command` | remove `project_links.command` | `project_links` (unchecked) | no suggestions |
 | Relative dates (`tomorrow`, `+1 day`) | GNU `date`; on macOS, `gdate` from `brew install coreutils` | install it | not needed | not checked | type dates as `YYYY-MM-DD` |
@@ -299,10 +304,10 @@ key press.
 | `V` | recall or manage saved views |
 | `]` / `[` | apply the next/previous saved view, in name order |
 | `ctrl+s` | save the current filter, grouping, and sorting under a name |
-| `s` | settings: separators, header spacing, reader view, auto-update interval, selection style, dim unfocused panes, and theme save in `settings.toml`; list columns save per project in state |
+| `s` | settings: separators, header spacing, reader view, auto-update interval, selection style, dim unfocused panes, and theme save in `settings.toml`; list columns save per project in state; `n` opens session status history |
 | `o` | open the ticket in the browser |
-| `y` | copy the selected ticket's link to the clipboard (requires terminal OSC 52 support) |
-| `Y` | copy the targeted comment as Markdown in the cards reader (requires terminal OSC 52 support); does nothing on other targets |
+| `y` | open yank menu: `y` selection, `u` ticket URL, `g` ticket GID, `t` ticket title, `c` latest comment; `Esc` cancels (requires terminal OSC 52 support) |
+| `Y` | copy current selection directly: ticket title in list, targeted comment as Markdown, project/section value, or reader field value; unsupported targets do nothing (requires terminal OSC 52 support) |
 | `r` | reload tickets, rerun the Feed panel's feeds and git check, and clear the inline image cache (including failed loads) |
 | `R` | set the automatic reload interval (persists between sessions) |
 | `?` | show every key |
@@ -554,6 +559,18 @@ commands = ["asanamate-hrvst"]
     by tabs. `--format jsonl` prints one JSON object per task.
 - `asanamate show <gid>` prints one ticket as Markdown. `--format json` prints
   JSON instead.
+- `asanamate read <gid>` opens one ticket in the reader, full screen, with no
+  list, views panel, or pane border. The reader's keys, ticket edits, and
+  actions work as usual; `r` and the auto-update reload only that ticket, and
+  `q` quits. `--exit-on-action` works as it does for the list.
+
+  ```tmux
+  # Popup: review the ticket picked with fzf
+  bind-key R display-popup -E -w 80% -h 80% 'asanamate read "$(asanamate list | fzf | cut -f1)"'
+  ```
+- `asanamate conversations <gid | url>` and `asanamate conversation open`
+  list and resume a ticket's saved conversations without an Asana token. See
+  [Conversations](#conversations-optional).
 - `asanamate doctor [<gid>]` checks that asanamate is ready to browse and
   which optional features can work, and, for a ticket, why agents link to it
   or not. See [Troubleshooting](#troubleshooting).
@@ -594,6 +611,8 @@ saved with the action builder (`A`) apply at once. Run `asanamate doctor` to che
 | `list.fields` | `["section", "due"]` | default values shown with the title, in aligned columns (`single` layout); `s`, then `c` overrides columns per project; projects whose columns were set in the TUI keep their own; due dates show relative to today and are colored by urgency; a column with one value in each group (such as the grouped field) leaves the rows and shows that value once in the group header, or after the count when the list is ungrouped |
 | `branch_field` | `""` | custom field holding the ticket's git branch (`$ASANAMATE_BRANCH`); empty uses the ticket's ID field, else the title slug |
 | `agents.command` | unset (off) | opt-in agent tracking, such as `"asanamate-ccmux"`; see [Agents](#agents-optional) |
+| `conversations.command` | `""` (off) | saved-conversation lookup, such as `"asana-sessions asanamate list"`; requires `conversations.open`; see [Conversations](#conversations-optional) and the [extension contract](docs/extensions.md#conversation-history) |
+| `conversations.open` | `""` (off) | foreground opener reading a private selection snapshot, such as `"asana-sessions asanamate open"`; requires `conversations.command`. asana-sessions is not bundled |
 | `symbols` | `unicode` on UTF-8, else `ascii` | `unicode`, `nerd`, or `ascii` for ticket markers and agent states |
 | `reduced_motion` | OS setting | `true` shows static agent symbols instead of the spinner |
 | `list.default_view.group_by` | `""` (ungrouped) | starting grouping, until the project has its own saved view: any `list.fields` name; `b` picks another |
@@ -609,7 +628,7 @@ saved with the action builder (`A`) apply at once. Run `asanamate doctor` to che
 | `feed.refresh_interval` | `"1m"` | how often feeds and the git check run, at least `1s`; `"0"` runs them only at start and on reload (`r`) |
 | `feed.commands` | `[]` | commands that answer the [feed protocol](docs/extensions.md#feeds), such as `["asanamate-hrvst"]` for today's Harvest time entries |
 | `picker.type_first` | `false` | open pickers in search mode, so typing filters at once; `esc` leaves search for browse mode |
-| `keys.<scope>.<name>` | see the template | key bindings: a list of keys per binding, such as `[keys.main] quit = ["q", "ctrl+q"]`; `[]` unbinds. Scopes: `main`, `activity`, `views`, `filter`, `picker`, `form`, `form_field`, `input`, `builder`, `notice`. Keys are a character (`"j"`, `"?"`) or a key name with modifiers (`"ctrl+d"`, `"shift+tab"`, `"enter"`, `"space"`, `"pgdown"`); a letter with `ctrl` or `alt` is lower case, plus `shift` for the capital (`"ctrl+shift+q"`, not `"ctrl+Q"`); `ctrl+c` is reserved for quitting and protects unsent comments. `asanamate setup` and `asanamate config update` write every binding, commented, with its default |
+| `keys.<scope>.<name>` | see the template | key bindings: a list of keys per binding, such as `[keys.main] quit = ["q", "ctrl+q"]`; `[]` unbinds. Yank uses `keys.main.yank` and `keys.main.copy_selection`; legacy `copy_link` and `copy_comment` remain available without default keys. Scopes: `main`, `activity`, `views`, `filter`, `picker`, `form`, `form_field`, `input`, `builder`, `notice`. Keys are a character (`"j"`, `"?"`) or a key name with modifiers (`"ctrl+d"`, `"shift+tab"`, `"enter"`, `"space"`, `"pgdown"`); a letter with `ctrl` or `alt` is lower case, plus `shift` for the capital (`"ctrl+shift+q"`, not `"ctrl+Q"`); `ctrl+c` is reserved for quitting and protects unsent comments. `asanamate setup` and `asanamate config update` write every binding, commented, with its default |
 | `keys.input.save_draft` | `["ctrl+d"]` | save a comment draft and close; other text inputs keep their editing controls |
 | `reader.max_text_width` | `0` | cards view: wrap description and comment text at this many columns (words are kept whole); `0` wraps at the pane width |
 | `reader.comments.latest` | `3` | cards view: list only this many of the newest comments, under a Show all comments row; `0` lists them all |
@@ -710,34 +729,44 @@ command = "sesh list -z"
 `auto`, which asks the terminal for its background color and uses
 `theme.auto.dark` or `theme.auto.light` in `settings.toml`. The defaults
 `ansi-dark` and `ansi-light` use ANSI color
-numbers, so they follow your terminal's color scheme. These 20 additional
+numbers, so they follow your terminal's color scheme. These 47 additional
 presets ship as separate TOML files in release archives and the source
 checkout. The installation steps run `install-themes.sh`, which copies them
 to `themes/<name>.toml` next to `config.toml`. It respects `XDG_CONFIG_HOME`
 and keeps existing files, including any edits you made:
 
-| Dark presets | Light presets |
-|---|---|
-| `one-dark` | `one-light` |
-| `monokai` | `tokyo-day` |
-| `tokyo-night` | `gruvbox-light` |
-| `sonokai` | `catppuccin-latte` |
-| `dracula` | `solarized-light` |
-| `nord` | |
-| `gruvbox-dark` | |
-| `catppuccin-mocha` | |
-| `solarized-dark` | |
-| `rose-pine` | |
-| `sonokai-andromeda` | |
-| `sonokai-atlantis` | |
-| `sonokai-maia` | |
-| `sonokai-shusia` | |
-| `sonokai-espresso` | |
+| Family | Dark presets | Light presets |
+|---|---|---|
+| One | `one-dark` | `one-light` |
+| Monokai | `monokai` | |
+| Tokyo Night | `tokyo-night`, `tokyo-storm`, `tokyo-moon` | `tokyo-day` |
+| Sonokai | `sonokai`, `sonokai-andromeda`, `sonokai-atlantis`, `sonokai-maia`, `sonokai-shusia`, `sonokai-espresso` | |
+| Dracula | `dracula` | |
+| Nord | `nord` | |
+| Gruvbox | `gruvbox-dark` | `gruvbox-light` |
+| Gruvbox Material | `gruvbox-material-dark` | `gruvbox-material-light` |
+| Catppuccin | `catppuccin-mocha`, `catppuccin-macchiato`, `catppuccin-frappe` | `catppuccin-latte` |
+| Solarized | `solarized-dark` | `solarized-light` |
+| Rosé Pine | `rose-pine`, `rose-pine-moon` | `rose-pine-dawn` |
+| Kanagawa | `kanagawa-wave`, `kanagawa-dragon` | `kanagawa-lotus` |
+| Everforest | `everforest-dark` | `everforest-light` |
+| Nightfox | `nightfox`, `carbonfox` | `dayfox` |
+| GitHub | `github-dark`, `github-dark-high-contrast` | `github-light`, `github-light-high-contrast` |
+| Ayu | `ayu-dark`, `ayu-mirage` | `ayu-light` |
+| Night Owl | `night-owl` | |
+| Flexoki | `flexoki-dark` | `flexoki-light` |
+| Palenight | `palenight` | |
 
 `sonokai` uses Sonokai's default style. The five `sonokai-*` files use the
 corresponding [upstream Sonokai styles](https://github.com/sainnhe/sonokai).
 For example, set `name = "sonokai-espresso"` in `[theme]` for Espresso.
-Sonokai's MIT license ships alongside the theme files as `LICENSE.sonokai`.
+Everforest and Gruvbox Material use their default medium background. The
+`github-*-high-contrast` presets suit low-vision use or bright rooms.
+
+Each theme file's header names the upstream palette it adapts and that
+palette's license. The license texts ship beside the theme files as
+`themes/LICENSE.<family>`, such as `LICENSE.catppuccin` and
+`LICENSE.tokyonight`.
 
 To try themes without restarting, open settings with `s` and press `t`. The
 theme picker lists every built-in theme and file in `themes/` beside a preview
@@ -820,11 +849,11 @@ pink = "#f76c7c"
 
 | Role | Used for |
 |---|---|
-| `accent` | reader headings, focused panel border, NORMAL and VIEWS pills |
+| `accent` | informational status messages, reader headings, focused panel border, NORMAL and VIEWS pills |
 | `border` | unfocused panel and card borders |
 | `muted` | secondary text: distant due dates, list fields, and tickets in the Later and No due date groups |
 | `highlight` | bar selection and the views panel cursor |
-| `ok`, `warn`, `error` | status messages, due-date urgency, Today and Overdue group headers, positive time logged today (`ok`), and applied filter text (`warn`) |
+| `ok`, `warn`, `error` | warning and error status messages (`warn`, `error`), due-date urgency, Today and Overdue group headers, positive time logged today (`ok`), and applied filter text (`warn`) |
 | `working` | working coding agents |
 | `header`, `selection` | group headers, selection marker |
 | `pinned`, `viewing` | Pinned and Viewing section headers |
@@ -837,6 +866,28 @@ pink = "#f76c7c"
 | `authors` | comment authors' dots and gutters and `initials` badges, cycled |
 | `mode.normal`, `mode.filter`, `mode.read`, `mode.edit` | statusline mode pills |
 | `markdown.text`, `.heading`, `.h1`, `.link`, `.code`, `.code_block`, `.quote`, `.rule` | reading pane Markdown, on top of glamour's dark or light style |
+
+Status messages begin with an information, warning, or error icon, following
+the selected `symbols` set. Informational messages include progress and success
+updates; warnings report unavailable choices or partial results; errors report
+failed operations. These use the existing `accent`, `warn`, and `error` colors.
+
+Info and warning messages briefly appear in a bordered toast covering the bottom
+right of the statusline: 4 seconds for info, 6 seconds for warnings. A new
+message replaces the toast. The border briefly highlights unless reduced motion
+is enabled; the toast never takes focus or moves the panes. Routine progress
+stays in the statusline. The latest message remains there after the toast closes
+and while navigating.
+
+Errors open an acknowledgment modal. Unrelated errors wait until the current
+editor or picker closes; errors belonging to an editor stay inline. Repeated
+identical background failures do not reopen a modal until that source recovers.
+
+Open Settings (`s`), then Status history (`n`) to search the latest 100 messages
+from this session, newest first, with timestamps and severity. Consecutive
+identical messages share an entry with a repeat count. Selecting an entry copies
+its full text to the clipboard. Progress is excluded. History stays in memory
+and is discarded when the app exits; it is not written to `actions.log` or state.
 
 ### Time tracking (optional)
 
@@ -1259,6 +1310,72 @@ command = 'ccmux switch "$ASANAMATE_AGENT_TARGET"'
 Ticket text becomes the agent's prompt, so anyone who can edit a ticket can
 steer the agent. Be careful combining this with auto-approved tools.
 
+## Conversations (optional)
+
+asanamate can find a ticket's saved Claude Code and Codex conversations and
+resume one in the terminal, even when neither asanamate nor ccmux started it.
+A conversation is linked to a ticket by a marker at the end of its title:
+
+```text
+Fix task sorting [asana:1234567890]
+```
+
+Add the marker by renaming the conversation in its provider, with
+`asana-sessions link`, or with the package's optional plugins, which add it
+when a prompt contains one task link. The lookup and opener come from the separate
+[asana-sessions](packages/asana-sessions/README.md) package, which needs Node
+22 or later. Install it, then turn the feature on:
+
+```toml
+[conversations]
+command = "asana-sessions asanamate list"
+open = "asana-sessions asanamate open"
+```
+
+This release supports conversation protocol version 1, which asana-sessions
+0.1.x implements. The two have their own version numbers; they need not match.
+Any program implementing the
+[protocol](docs/extensions.md#conversation-history) works too.
+
+**In the TUI.** Press `a` on a ticket and pick **Conversations**, the last
+entry (with arrows and `enter`). It is there even with no action files, and it
+does not change what `.` repeats. The picker lists one row per conversation,
+newest first: title, provider, last activity, `active`/`inactive`/`unknown`,
+and whether it is archived; the highlighted row shows its native session ID,
+directory, and branch. Pick a row to **resume it in this terminal**; quitting
+the conversation returns to the same ticket. **Refresh** looks again, showing
+the last result, marked stale, until the new one arrives. A lookup that failed
+or found only part of the history says so, with the provider's message; it is
+never shown as "No linked conversations."
+
+**From the CLI.** Neither command needs an Asana token or reads Asana:
+
+```sh
+asanamate conversations https://app.asana.com/0/123/456   # or a task gid
+asanamate conversations 456 --json                        # version-1 JSON
+asanamate conversation open 456 --provider claude --session <session-id>
+```
+
+`conversations` exits nonzero when the lookup failed or was incomplete, after
+printing what it found; with `--json` a failure is a diagnostic from provider
+`source`. `conversation open` never picks a conversation for you: it looks
+again and opens only that exact conversation, if it is still linked to the
+ticket. Its opener gets no ticket exports.
+
+What to expect:
+
+- History is local: only this machine's provider homes (`CLAUDE_CONFIG_DIR`,
+  `CODEX_HOME`) are searched. Archived conversations are included.
+- Resuming does not restore Git. The recorded directory and branch are
+  context; if the directory is gone, the opener asks for another one.
+- The opener refuses a conversation that is open elsewhere; return to the
+  window that owns it. Claude conversations whose activity is unknown are
+  refused too, because Claude Code does not stop two processes resuming one.
+- Session IDs are the providers' own; they differ from ccmux or Paseo agent
+  IDs. The **Agents** section shows running agents, not saved conversations.
+- The plugins only add markers. Disabling or removing them keeps every link,
+  and lookup works without them.
+
 ## Writing back to Asana
 
 ```sh
@@ -1445,6 +1562,12 @@ the workspace is reachable. For optional features it checks less:
   `PATH` (see [Agents](#agents-optional)).
 - A `codex_hook` warning means Codex still runs `asanamate hook codex`, which
   v0.3.0 drops; run `asanamate-ccmux setup` to replace it.
+- A `conversations` row appears only when `[conversations]` is set. A warning
+  names a configured command that is not on your `PATH`, such as
+  `asana-sessions`. With a ticket gid, `doctor` also looks up its
+  conversations and prints any provider diagnostics; run
+  `asana-sessions doctor` for provider, plugin, and version details. An
+  `unavailable` lookup means no provider history was found.
 
 With a ticket gid, it also explains why each agent links to that ticket or not.
 
@@ -1484,3 +1607,7 @@ is no need to copy them.
 - Activity cache (the last 30 days of Activity events): `~/.cache/asanamate/activity.json`
 
 `$XDG_CONFIG_HOME`, `$XDG_STATE_HOME`, and `$XDG_CACHE_HOME` are honored.
+
+The optional [asana-sessions helper and native plugins](packages/asana-sessions/README.md)
+are installed and released independently (`asana-sessions/vX.Y.Z`, protocol 1,
+package 0.1.x). Core archives contain no Node runtime or provider tools.

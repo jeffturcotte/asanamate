@@ -82,7 +82,7 @@ func sharesFieldNames(t asana.Task) bool {
 func (m *Model) startRun() (string, bool) {
 	t, ok := m.selectedDetail()
 	if !ok {
-		m.status = "ticket details are still loading"
+		m.setStatus(statusWarning, "ticket details are still loading")
 		return "", false
 	}
 	comment := m.selectedComment(t)
@@ -93,9 +93,12 @@ func (m *Model) startRun() (string, bool) {
 	return "", true
 }
 
+// openActionMenu lists the actions for the selection, then the built-in
+// Conversations entry when the conversation source is on.
 func (m *Model) openActionMenu() {
-	if len(m.deps.Config.Actions) == 0 {
-		m.status = "no actions configured; add a .toml file to the actions folder next to config.toml"
+	conversationsOn := m.deps.Config.ConversationsEnabled()
+	if len(m.deps.Config.Actions) == 0 && !conversationsOn {
+		m.setStatus(statusWarning, "no actions configured; add a .toml file to the actions folder next to config.toml")
 		return
 	}
 	context, ok := m.startRun()
@@ -115,11 +118,23 @@ func (m *Model) openActionMenu() {
 		}
 	}
 	items := append(first, rest...)
+	if conversationsOn {
+		items = append(items, pickItem{Label: "Conversations", Hint: "resume a saved chat", Value: conversationsEntry{}})
+	}
 	if len(items) == 0 {
-		m.run, m.status = nil, "no actions for this selection"
+		m.run = nil
+		m.setStatus(statusWarning, "no actions for this selection")
 		return
 	}
-	p := newPicker(pickValue(m.pickedAction), "Run on: "+ticket.Clean(m.run.ticket.Name), items)
+	p := newPicker(func(res pickResult) tea.Cmd {
+		if i, ok := res.item.Value.(int); ok {
+			return m.pickedAction(i)
+		}
+		// Not an action run: the last action stays the one repeat runs.
+		t := m.run.ticket
+		m.modal, m.run = nil, nil
+		return m.lookupConversations(t, nil)
+	}, "Run on: "+ticket.Clean(m.run.ticket.Name), items)
 	p.keySelect = true
 	m.modal = p
 }
@@ -127,7 +142,7 @@ func (m *Model) openActionMenu() {
 // repeatAction runs the last picked action again on the current selection.
 func (m *Model) repeatAction() tea.Cmd {
 	if m.lastAction < 0 || m.lastAction >= len(m.deps.Config.Actions) {
-		m.status = "no action run yet"
+		m.setStatus(statusInfo, "no action run yet")
 		return nil
 	}
 	context, ok := m.startRun()
@@ -136,7 +151,8 @@ func (m *Model) repeatAction() tea.Cmd {
 	}
 	a := m.deps.Config.Actions[m.lastAction]
 	if a.Context != "" && a.Context != context {
-		m.run, m.status = nil, a.Name+" needs a highlighted "+a.Context
+		m.run = nil
+		m.setStatus(statusWarning, a.Name+" needs a highlighted "+a.Context)
 		return nil
 	}
 	return m.pickedAction(m.lastAction)
@@ -163,7 +179,7 @@ func (m *Model) requestMenu(open func() tea.Cmd) tea.Cmd {
 		return open()
 	}
 	m.menuFor, m.menuOpen = t.GID, open
-	m.status = "loading ticket…"
+	m.setProgress("loading ticket…")
 	return m.loadDetail(t.GID)
 }
 
@@ -184,7 +200,7 @@ func (m *Model) runAgent(r *pendingRun) (tea.Cmd, bool) {
 	switch len(list) {
 	case 0:
 		m.run = nil
-		m.showNotice("no running agent for this ticket")
+		m.setStatus(statusWarning, "no running agent for this ticket")
 		return nil, true
 	case 1:
 		r.agent = &list[0]
@@ -217,7 +233,7 @@ func (m *Model) runProject(r *pendingRun) (tea.Cmd, bool) {
 			r.project, r.repo = action.DefaultProject(r.ticket.Task, gidOf(m.viewProject)), path
 			return nil, false
 		}
-		m.status = fmt.Sprintf("ticket repo %s is no longer a git repository; using the project's", path)
+		m.setStatus(statusWarning, fmt.Sprintf("ticket repo %s is no longer a git repository; using the project's", path))
 	}
 	switch len(r.ticket.Memberships) {
 	case 0:
@@ -253,7 +269,7 @@ func (m *Model) runRepo(r *pendingRun) (tea.Cmd, bool) {
 				r.repo = path
 				return nil, false
 			}
-			m.status = fmt.Sprintf("linked repo %s is no longer a git repository; pick again", path)
+			m.setStatus(statusWarning, fmt.Sprintf("linked repo %s is no longer a git repository; pick again", path))
 		}
 	}
 	projectGID := ""
@@ -377,7 +393,7 @@ func (m *Model) saveLink(target linkTarget, path string) {
 	m.linked = nil
 	m.renderDetail(true)
 	if err := m.deps.State.Save(); err != nil {
-		m.status = "saving repo link: " + err.Error()
+		m.setStatus(statusError, "saving repo link: "+err.Error())
 	}
 }
 
@@ -429,7 +445,7 @@ func (m *Model) typedActionForm(values map[string]string) tea.Cmd {
 		}
 		if remembered {
 			if err := m.deps.State.Save(); err != nil {
-				m.status = "saving action choices: " + err.Error()
+				m.setStatus(statusError, "saving action choices: "+err.Error())
 			}
 		}
 	}
@@ -448,7 +464,7 @@ func (m *Model) runProjectFields(r *pendingRun) (tea.Cmd, bool) {
 		return nil, false
 	}
 	r.awaitingFields = true
-	m.status = "loading project fields…"
+	m.setProgress("loading project fields…")
 	return loadProjectFields(m.deps.Client, p.GID), true
 }
 
@@ -487,12 +503,12 @@ func (m *Model) launch(r *pendingRun) tea.Cmd {
 	}
 	files, err := action.WriteFiles(m.deps.StateDir, r.ticket)
 	if err != nil {
-		m.showNotice("writing ticket files: " + err.Error())
+		m.setStatus(statusError, "writing ticket files: "+err.Error())
 		return nil
 	}
 	if r.action.Input != "" {
 		if err := files.WriteInput(r.input); err != nil {
-			m.showNotice("writing input: " + err.Error())
+			m.setStatus(statusError, "writing input: "+err.Error())
 			return nil
 		}
 	}
@@ -523,7 +539,7 @@ func (m *Model) launch(r *pendingRun) tea.Cmd {
 	case config.ModeForeground:
 		return tea.ExecProcess(cmd, func(err error) tea.Msg { return actionDoneMsg{name: name, err: err} })
 	case config.ModeBackground:
-		m.status = name + ": running…"
+		m.setProgress(name + ": running…")
 		logPath := filepath.Join(m.deps.StateDir, "actions.log")
 		return func() tea.Msg {
 			return actionDoneMsg{name: name, log: logPath, err: action.RunBackground(cmd, logPath)}
@@ -586,11 +602,11 @@ func actionStatus(msg actionDoneMsg) string {
 func (m *Model) openAttachments() {
 	t, ok := m.selectedDetail()
 	if !ok {
-		m.status = "ticket details are still loading"
+		m.setStatus(statusWarning, "ticket details are still loading")
 		return
 	}
 	if len(t.Attachments) == 0 {
-		m.status = "no attachments"
+		m.setStatus(statusInfo, "no attachments")
 		return
 	}
 	items := make([]pickItem, len(t.Attachments))
@@ -609,12 +625,12 @@ func (m *Model) openAttachments() {
 func (m *Model) openContentLinks() {
 	t, ok := m.selectedDetail()
 	if !ok {
-		m.status = "ticket details are still loading"
+		m.setStatus(statusWarning, "ticket details are still loading")
 		return
 	}
 	links := t.Links()
 	if len(links) == 0 {
-		m.status = "no links"
+		m.setStatus(statusInfo, "no links")
 		return
 	}
 	items := make([]pickItem, len(links))
@@ -628,7 +644,7 @@ func (m *Model) openContentLinks() {
 		m.modal = nil
 		url := res.item.Value.(string)
 		if res.copy {
-			m.status = "link sent to clipboard"
+			m.setStatus(statusInfo, "link sent to clipboard")
 			return tea.SetClipboard(url)
 		}
 		return openURL(url)
@@ -663,7 +679,7 @@ func (m *Model) pickedAttachment(a asana.Attachment) tea.Cmd {
 // viewImage loads viewImages[i] for the attachment viewer.
 func (m *Model) viewImage(i int) tea.Cmd {
 	m.viewIndex = i
-	m.status = "loading image…"
+	m.setProgress("loading image…")
 	// The image leaves room for a blank line and the two footer lines.
 	return loadImage(m.deps.Client, m.viewImages[i], max(m.width, 1), max(m.height-3, 1), m.imageCell, m.deps.InTmux)
 }

@@ -43,13 +43,13 @@ type themeChoice struct {
 func (m *Model) openThemes() tea.Cmd {
 	path, err := m.configPath()
 	if err != nil {
-		m.status = err.Error()
+		m.setStatus(statusError, err.Error())
 		return nil
 	}
 	dir := config.ThemesDir(path)
 	names, err := config.ThemeNames(dir)
 	if err != nil {
-		m.status = err.Error()
+		m.setStatus(statusError, err.Error())
 		return nil
 	}
 	current := cmp.Or(m.deps.Config.Theme.Name, config.ThemeAuto)
@@ -92,7 +92,7 @@ func (m *Model) openThemes() tea.Cmd {
 func (m *Model) setTheme(dir, name string) {
 	cfg, err := m.deps.Config.WithTheme(dir, name)
 	if err != nil {
-		m.status = err.Error()
+		m.setStatus(statusError, err.Error())
 		return
 	}
 	m.deps.Config = cfg

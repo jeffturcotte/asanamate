@@ -1,19 +1,20 @@
 # Monokai palette adapted to asanamate's themed roles.
-# Palette reference: https://github.com/monokai/monokai-colors
+# Palette reference: https://github.com/microsoft/vscode/blob/5804dcd916001684b20e5a0e5e108f9118b32b59/extensions/theme-monokai/themes/monokai-color-theme.json
+# Copyright (c) 2015 - present Microsoft Corporation. MIT license: LICENSE.monokai.
 base = "dark"
 
 [colors]
 accent = { fg = "#a6e22e", bold = true }
 border = "#75715e"
 muted = { fg = "#90908a", faint = false }
-highlight = { fg = "#f8f8f2", bg = "#49483e", reverse = false }
+highlight = { fg = "#f8f8f2", bg = "#414339", reverse = false }
 ok = "#a6e22e"
 warn = "#e6db74"
 error = "#f92672"
 working = "#66d9ef"
 pinned = { fg = "#fd971f", bold = true }
 viewing = { fg = "#ae81ff", bold = true }
-reacted = { fg = "#f8f8f2", bg = "#49483e" }
+reacted = { fg = "#f8f8f2", bg = "#414339" }
 new = { fg = "#272822", bg = "#a6e22e", bold = true }
 more = { fg = "#272822", bg = "#fd971f", bold = true }
 authors = ["#a6e22e", "#ae81ff", "#66d9ef", "#a6e22e", "#e6db74", "#f92672"]

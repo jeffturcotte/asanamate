@@ -1,5 +1,6 @@
 # Sonokai palette adapted to asanamate's themed roles.
 # Palette reference: https://github.com/sainnhe/sonokai
+# Copyright (c) 2020 sainnhe. MIT license: LICENSE.sonokai.
 base = "dark"
 
 [colors]

@@ -1,0 +1,36 @@
+# GitHub Light High Contrast palette adapted to asanamate's themed roles.
+# Palette reference: https://github.com/projekt0n/github-nvim-theme/blob/c106c9472154d6b2c74b74565616b877ae8ed31d/lua/github-theme/palette/primitives/light_high_contrast.lua
+# Copyright (c) 2018 GitHub Inc. and 2021 projekt0n. MIT license: LICENSE.github.
+base = "light"
+
+[colors]
+accent = { fg = "#0349b4", bold = true }
+border = "#20252c"
+muted = { fg = "#66707b", faint = false }
+highlight = { fg = "#0e1116", bg = "#9cd7ff", reverse = false }
+ok = "#055d20"
+warn = "#744500"
+error = "#a0111f"
+working = "#1b7c83"
+pinned = { fg = "#873800", bold = true }
+viewing = { fg = "#622cbc", bold = true }
+reacted = { fg = "#0e1116", bg = "#9cd7ff" }
+new = { fg = "#ffffff", bg = "#0349b4", bold = true }
+more = { fg = "#ffffff", bg = "#873800", bold = true }
+authors = ["#0349b4", "#622cbc", "#1b7c83", "#055d20", "#744500", "#a0111f"]
+
+[colors.mode]
+normal = { fg = "#ffffff", bg = "#0349b4", bold = true }
+filter = { fg = "#ffffff", bg = "#744500", bold = true }
+read = { fg = "#ffffff", bg = "#1b7c83", bold = true }
+edit = { fg = "#ffffff", bg = "#622cbc", bold = true }
+
+[colors.markdown]
+text = "#0e1116"
+heading = { fg = "#0349b4", bold = true }
+h1 = { fg = "#ffffff", bg = "#0349b4", bold = true }
+link = { fg = "#1b7c83", underline = true }
+code = { fg = "#055d20", bg = "#e7ecf0" }
+code_block = { fg = "#0e1116", bg = "#e7ecf0" }
+quote = { fg = "#66707b", italic = true }
+rule = "#20252c"

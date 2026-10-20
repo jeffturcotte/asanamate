@@ -1,0 +1,36 @@
+# Rosé Pine Moon palette adapted to asanamate's themed roles.
+# Palette reference: https://github.com/rose-pine/neovim/blob/ff483051a47e27d84bdef47703538df1ed9f4a47/lua/rose-pine/palette.lua
+# Copyright (c) 2023 Rosé Pine. MIT license: LICENSE.rose-pine.
+base = "dark"
+
+[colors]
+accent = { fg = "#c4a7e7", bold = true }
+border = "#56526e"
+muted = { fg = "#908caa", faint = false }
+highlight = { fg = "#e0def4", bg = "#44415a", reverse = false }
+ok = "#9ccfd8"
+warn = "#f6c177"
+error = "#eb6f92"
+working = "#9ccfd8"
+pinned = { fg = "#ea9a97", bold = true }
+viewing = { fg = "#c4a7e7", bold = true }
+reacted = { fg = "#e0def4", bg = "#44415a" }
+new = { fg = "#232136", bg = "#c4a7e7", bold = true }
+more = { fg = "#232136", bg = "#ea9a97", bold = true }
+authors = ["#c4a7e7", "#c4a7e7", "#9ccfd8", "#9ccfd8", "#f6c177", "#eb6f92"]
+
+[colors.mode]
+normal = { fg = "#232136", bg = "#c4a7e7", bold = true }
+filter = { fg = "#232136", bg = "#f6c177", bold = true }
+read = { fg = "#232136", bg = "#9ccfd8", bold = true }
+edit = { fg = "#232136", bg = "#c4a7e7", bold = true }
+
+[colors.markdown]
+text = "#e0def4"
+heading = { fg = "#c4a7e7", bold = true }
+h1 = { fg = "#232136", bg = "#c4a7e7", bold = true }
+link = { fg = "#9ccfd8", underline = true }
+code = { fg = "#9ccfd8", bg = "#2a273f" }
+code_block = { fg = "#e0def4", bg = "#2a273f" }
+quote = { fg = "#908caa", italic = true }
+rule = "#56526e"

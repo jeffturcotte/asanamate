@@ -46,8 +46,11 @@ The config is TOML, decoded into the structs in `internal/config/config.go`.
 
 ## Version bumps
 
-Releases come only from `v*` tags; there is no version file. Everything on
-`main` since the latest tag (`git describe --tags --abbrev=0 main`) ships in
+Core asanamate releases come only from `v*` tags; there is no core version file.
+The independent companion uses `asana-sessions/vX.Y.Z` tags and its package
+version. Follow [standalone release gates](packages/asana-sessions/RELEASING.md)
+for those tags; they never release core or trigger hub tagging. Everything on
+`main` since the latest tag (`git describe --tags --match 'v*' --abbrev=0 main`) ships in
 the next release, so the pending bump is the largest one any of those commits
 needs:
 

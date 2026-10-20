@@ -1,5 +1,6 @@
 # Rosé Pine palette adapted to asanamate's themed roles.
 # Palette reference: https://rosepinetheme.com/palette/ingredients/
+# Copyright (c) 2023 Rosé Pine. MIT license: LICENSE.rose-pine.
 base = "dark"
 
 [colors]

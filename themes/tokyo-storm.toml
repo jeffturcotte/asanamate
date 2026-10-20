@@ -1,0 +1,36 @@
+# Tokyo Night Storm palette adapted to asanamate's themed roles.
+# Palette reference: https://github.com/folke/tokyonight.nvim/blob/cdc07ac78467a233fd62c493de29a17e0cf2b2b6/lua/tokyonight/colors/storm.lua
+# Apache License 2.0: LICENSE.tokyonight.
+base = "dark"
+
+[colors]
+accent = { fg = "#7aa2f7", bold = true }
+border = "#565f89"
+muted = { fg = "#737aa2", faint = false }
+highlight = { fg = "#c0caf5", bg = "#2e3c64", reverse = false }
+ok = "#9ece6a"
+warn = "#e0af68"
+error = "#f7768e"
+working = "#7dcfff"
+pinned = { fg = "#ff9e64", bold = true }
+viewing = { fg = "#bb9af7", bold = true }
+reacted = { fg = "#c0caf5", bg = "#2e3c64" }
+new = { fg = "#24283b", bg = "#7aa2f7", bold = true }
+more = { fg = "#24283b", bg = "#ff9e64", bold = true }
+authors = ["#7aa2f7", "#bb9af7", "#7dcfff", "#9ece6a", "#e0af68", "#f7768e"]
+
+[colors.mode]
+normal = { fg = "#24283b", bg = "#7aa2f7", bold = true }
+filter = { fg = "#24283b", bg = "#e0af68", bold = true }
+read = { fg = "#24283b", bg = "#7dcfff", bold = true }
+edit = { fg = "#24283b", bg = "#bb9af7", bold = true }
+
+[colors.markdown]
+text = "#c0caf5"
+heading = { fg = "#7aa2f7", bold = true }
+h1 = { fg = "#24283b", bg = "#7aa2f7", bold = true }
+link = { fg = "#7dcfff", underline = true }
+code = { fg = "#9ece6a", bg = "#1f2335" }
+code_block = { fg = "#c0caf5", bg = "#1f2335" }
+quote = { fg = "#737aa2", italic = true }
+rule = "#565f89"

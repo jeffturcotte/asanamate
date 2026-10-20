@@ -439,6 +439,15 @@ commands = []
 # [agents.symbols]
 # waiting = "!"
 
+# Optional saved Claude Code and Codex conversations for a ticket: the action
+# menu's Conversations entry and "asanamate conversations". Both must be set
+# together; empty commands leave the feature off. The commands below need the
+# separately installed asana-sessions package. See README "Conversations" and
+# docs/extensions.md for the protocol and provider safety requirements.
+[conversations]
+# command = "asana-sessions asanamate list"
+# open = "asana-sessions asanamate open"
+
 # Optional completed time tracking. The command reads a JSON request from
 # stdin and writes a form spec as JSON. See README for the protocol.
 [time_tracking]

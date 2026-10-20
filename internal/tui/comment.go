@@ -394,7 +394,7 @@ func (m *Model) commentDone(msg commentDoneMsg) tea.Cmd {
 		// cannot be removed, preserving that file and reporting the failure.
 		if msg.op == commentDiscard && !c.hasChanges() {
 			m.composer, m.input, m.modal, m.edit = nil, nil, nil, nil
-			m.status = "comment closed; draft retained: " + msg.err.Error()
+			m.setStatus(statusWarning, "comment closed; draft retained: "+msg.err.Error())
 			if c.quitting {
 				m.closeActivity()
 				return tea.Quit
@@ -408,7 +408,7 @@ func (m *Model) commentDone(msg commentDoneMsg) tea.Cmd {
 		}
 		if applied > 0 {
 			refresh := m.editDone(editDoneMsg{gid: c.gid, what: "update ticket"})
-			m.status = "some changes saved; remaining edits kept in draft"
+			m.setStatus(statusWarning, "some changes saved; remaining edits kept in draft")
 			return refresh
 		}
 		return nil
@@ -416,9 +416,9 @@ func (m *Model) commentDone(msg commentDoneMsg) tea.Cmd {
 	m.composer, m.input, m.modal, m.edit = nil, nil, nil, nil
 	switch msg.op {
 	case commentSave:
-		m.status = "comment draft saved"
+		m.setStatus(statusInfo, "comment draft saved")
 	case commentDiscard:
-		m.status = "comment draft discarded"
+		m.setStatus(statusInfo, "comment draft discarded")
 	case commentPost:
 		what := "comment"
 		if c.storyGID != "" {
@@ -429,13 +429,14 @@ func (m *Model) commentDone(msg commentDoneMsg) tea.Cmd {
 		}
 		cmd := m.editDone(editDoneMsg{gid: c.gid, what: what, logTime: c.logTime})
 		if msg.cleanup != nil {
-			m.status = "comment posted; removing draft failed: " + msg.cleanup.Error()
+			message := "comment posted"
 			if what == "update ticket" {
-				m.status = "ticket updated; removing draft failed: " + msg.cleanup.Error()
+				message = "ticket updated"
 			}
 			if c.storyGID != "" {
-				m.status = "comment updated; removing draft failed: " + msg.cleanup.Error()
+				message = "comment updated"
 			}
+			m.setStatus(statusWarning, message+"; removing draft failed: "+msg.cleanup.Error())
 		}
 		return cmd
 	}

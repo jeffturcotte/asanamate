@@ -1,5 +1,6 @@
 # Catppuccin Mocha palette adapted to asanamate's themed roles.
 # Palette reference: https://github.com/catppuccin/catppuccin
+# Copyright (c) 2021 Catppuccin. MIT license: LICENSE.catppuccin.
 base = "dark"
 
 [colors]

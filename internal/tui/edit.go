@@ -58,7 +58,7 @@ func (m *Model) writer() writeback.Service {
 func (m *Model) startEdit() bool {
 	t, ok := m.selectedDetail()
 	if !ok {
-		m.status = "ticket details are still loading"
+		m.setStatus(statusWarning, "ticket details are still loading")
 		return false
 	}
 	m.edit, m.run = &pendingEdit{ticket: t}, nil
@@ -111,7 +111,8 @@ func (m *Model) pickedEdit(op editOp) tea.Cmd {
 		targets := m.sectionTargets(t.Task)
 		switch len(targets) {
 		case 0:
-			m.edit, m.status = nil, "ticket is not in any project or your My Tasks"
+			m.edit = nil
+			m.setStatus(statusWarning, "ticket is not in any project or your My Tasks")
 			if m.composer != nil {
 				m.returnToDraft()
 			}
@@ -143,7 +144,7 @@ func (m *Model) pickedEdit(op editOp) tea.Cmd {
 			return nil
 		}
 		m.afterProjects = func() tea.Cmd { m.openAddProjectPicker(); return nil }
-		m.status = "loading projects…"
+		m.setProgress("loading projects…")
 		return m.refreshProjects()
 	case editRemoveProject:
 		m.openRemoveProjectPicker()
@@ -194,7 +195,8 @@ func (m *Model) openTextEdit(op editOp) {
 		}
 		m.input = nil
 		if value == strings.TrimSpace(original) {
-			m.edit, m.status = nil, "unchanged"
+			m.edit = nil
+			m.setStatus(statusInfo, "unchanged")
 			return nil
 		}
 		svc := m.writer()
@@ -231,7 +233,8 @@ func (m *Model) toggleComplete() tea.Cmd {
 	if done {
 		what, status = "complete "+ticket.Clean(t.Name), "Completed "+ticket.Clean(t.Name)
 	}
-	m.edit, m.status = nil, what+"…"
+	m.edit = nil
+	m.setProgress(what + "…")
 	return request(func(ctx context.Context) tea.Msg {
 		return editDoneMsg{gid: gid, what: what, done: status, logTime: logTime, err: svc.Complete(ctx, gid, done)}
 	})
@@ -268,13 +271,15 @@ func (m *Model) saveBranch(gid, branch string) {
 	m.deps.State.SetTaskBranch(gid, branch)
 	m.linked = nil
 	m.renderDetail(true)
-	m.status = "branch saved"
-	if branch == "" {
-		m.status = "branch cleared"
-	}
 	if err := m.deps.State.Save(); err != nil {
-		m.status = "saving branch: " + err.Error()
+		m.setStatus(statusError, "saving branch: "+err.Error())
+		return
 	}
+	message := "branch saved"
+	if branch == "" {
+		message = "branch cleared"
+	}
+	m.setStatus(statusInfo, message)
 }
 
 func (m *Model) openAddProjectPicker() {
@@ -292,7 +297,8 @@ func (m *Model) openAddProjectPicker() {
 		}
 	}
 	if len(items) == 0 {
-		m.edit, m.status = nil, "no other accessible projects available"
+		m.edit = nil
+		m.setStatus(statusWarning, "no other accessible projects available")
 		if m.composer != nil {
 			m.returnToDraft()
 		}
@@ -303,7 +309,8 @@ func (m *Model) openAddProjectPicker() {
 
 func (m *Model) openRemoveProjectPicker() {
 	if len(m.edit.ticket.Memberships) == 0 {
-		m.edit, m.status = nil, "ticket is not in any project"
+		m.edit = nil
+		m.setStatus(statusWarning, "ticket is not in any project")
 		if m.composer != nil {
 			m.returnToDraft()
 		}
@@ -362,7 +369,7 @@ func (m *Model) pickedEditProject(project asana.Ref) tea.Cmd {
 	if project.GID == "" {
 		m.edit.project = writeback.MyTasks
 	}
-	m.status = "loading sections…"
+	m.setProgress("loading sections…")
 	return loadSections(m.deps.Client, m.deps.Config.Workspace, project)
 }
 
@@ -372,7 +379,7 @@ func (m *Model) requestUsers() tea.Cmd {
 		m.openUserPicker(nil)
 		return nil
 	}
-	m.status = "loading people…"
+	m.setProgress("loading people…")
 	return loadUsers(m.deps.Client, m.deps.Config.Workspace)
 }
 
@@ -388,14 +395,17 @@ func (m *Model) openSectionPicker(msg sectionsMsg) {
 		return
 	}
 	if msg.err != nil {
-		m.edit, m.status = nil, "loading sections: "+msg.err.Error()
+		m.edit = nil
 		if m.composer != nil {
+			m.setInlineError("loading sections: " + msg.err.Error())
 			m.composer.box.err = m.status
 			m.returnToDraft()
+		} else {
+			m.setStatus(statusError, "loading sections: "+msg.err.Error())
 		}
 		return
 	}
-	m.status = ""
+	m.clearProgress()
 	current := ""
 	if m.edit.project == writeback.MyTasks {
 		current = m.edit.ticket.AssigneeSection.GID
@@ -450,7 +460,8 @@ func (m *Model) openFieldPicker() {
 		}
 	}
 	if len(items) == 0 {
-		m.edit, m.status = nil, "ticket has no editable custom fields"
+		m.edit = nil
+		m.setStatus(statusWarning, "ticket has no editable custom fields")
 		return
 	}
 	m.modal = newPicker(pickValue(m.pickedField), "Set which field?", items)
@@ -706,14 +717,17 @@ func (m *Model) openUserPicker(err error) {
 		return
 	}
 	if err != nil {
-		m.edit, m.status = nil, "loading people: "+err.Error()
+		m.edit = nil
 		if m.composer != nil {
+			m.setInlineError("loading people: " + err.Error())
 			m.composer.box.err = m.status
 			m.returnToDraft()
+		} else {
+			m.setStatus(statusError, "loading people: "+err.Error())
 		}
 		return
 	}
-	m.status = ""
+	m.clearProgress()
 	users := slices.Clone(m.users)
 	slices.SortFunc(users, func(a, b asana.Ref) int {
 		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
@@ -774,7 +788,8 @@ func (m *Model) pickedUser(u asana.Ref) tea.Cmd {
 	}
 	svc, gid := m.writer(), m.edit.ticket.GID
 	logTime := u.GID != "" && u.GID != m.meGID && m.deps.Config.TimeTracking.PromptsAfter(config.PromptAssign)
-	m.edit, m.status = nil, what+"…"
+	m.edit = nil
+	m.setProgress(what + "…")
 	return request(func(ctx context.Context) tea.Msg {
 		return editDoneMsg{gid: gid, what: what, logTime: logTime, err: svc.Assign(ctx, gid, u.GID)}
 	})
@@ -782,6 +797,7 @@ func (m *Model) pickedUser(u asana.Ref) tea.Cmd {
 
 func (m *Model) saveEdit(what string, write func(context.Context) error) tea.Cmd {
 	gid := m.edit.ticket.GID
-	m.edit, m.status = nil, what+"…"
+	m.edit = nil
+	m.setProgress(what + "…")
 	return saveEdit(gid, what, write)
 }

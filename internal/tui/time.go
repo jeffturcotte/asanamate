@@ -42,11 +42,11 @@ type timeDoneMsg struct {
 func (m *Model) openTime() tea.Cmd {
 	t, ok := m.selectedDetail()
 	if !ok {
-		m.status = "ticket details are still loading"
+		m.setStatus(statusWarning, "ticket details are still loading")
 		return nil
 	}
 	if t.GID == "" || t.PermalinkURL == "" {
-		m.status = "ticket needs an Asana link to log time"
+		m.setStatus(statusWarning, "ticket needs an Asana link to log time")
 		return nil
 	}
 	var projects []asana.Ref
@@ -56,7 +56,7 @@ func (m *Model) openTime() tea.Cmd {
 		}
 	}
 	if len(projects) == 0 {
-		m.status = "ticket belongs to no Asana project"
+		m.setStatus(statusWarning, "ticket belongs to no Asana project")
 		return nil
 	}
 	m.timeEntry = &pendingTime{ticket: t}
@@ -92,7 +92,7 @@ func (m *Model) gotTimeForm(msg timeFormMsg) {
 	}
 	m.waiting = ""
 	if msg.err != nil {
-		m.status = "loading time form: " + msg.err.Error()
+		m.setStatus(statusError, "loading time form: "+msg.err.Error())
 		m.timeEntry = nil
 		return
 	}
@@ -111,9 +111,9 @@ func (m *Model) gotTimeForm(msg timeFormMsg) {
 			}
 		}
 	}
-	m.status = ""
+	m.clearProgress()
 	if msg.linksErr != nil {
-		m.status = "no suggestions: " + msg.linksErr.Error()
+		m.setStatus(statusWarning, "no suggestions: "+msg.linksErr.Error())
 	}
 	m.form = newFormModal("Log time · "+ticket.OneLine(entry.project.Name), msg.spec, defaults, m.submitTimeForm)
 }
@@ -121,7 +121,7 @@ func (m *Model) gotTimeForm(msg timeFormMsg) {
 func (m *Model) submitTimeForm(values map[string]string) tea.Cmd {
 	entry := m.timeEntry
 	m.form.busy = true
-	m.status = "logging time…"
+	m.setProgress("logging time…")
 	provider := timetracking.Provider{Command: m.deps.Config.TimeTracking.Command}
 	asanaTask := entry.asana()
 	return request(func(ctx context.Context) tea.Msg {
@@ -136,7 +136,7 @@ func (m *Model) finishTime(msg timeDoneMsg) tea.Cmd {
 	if msg.err != nil {
 		m.form.busy = false
 		m.form.err = msg.err.Error()
-		m.status = "logging time: " + msg.err.Error()
+		m.setInlineError("logging time: " + msg.err.Error())
 		return nil
 	}
 	entry := m.timeEntry
@@ -147,9 +147,9 @@ func (m *Model) finishTime(msg timeDoneMsg) tea.Cmd {
 		}
 	}
 	if err := m.deps.State.Save(); err != nil {
-		m.status = fmt.Sprintf("time logged; saving choices: %v", err)
+		m.setStatus(statusWarning, fmt.Sprintf("time logged; saving choices: %v", err))
 	} else {
-		m.status = "time logged"
+		m.setStatus(statusInfo, "time logged")
 	}
 	m.form, m.timeEntry = nil, nil
 	cmd := m.loadTimeSummary(entry.ticket.Task)

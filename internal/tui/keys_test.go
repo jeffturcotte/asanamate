@@ -137,7 +137,9 @@ func TestCopyCommentOnlyOnTarget(t *testing.T) {
 		{name: "no target"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			m, _ := testModel(t, config.Default())
+			cfg := config.Default()
+			cfg.Keymap, _ = keymap.Resolve(map[string]map[string][]string{"main": {"copy_comment": {"ctrl+y"}}})
+			m, _ := testModel(t, cfg)
 			m.Update(tasksMsg{tasks: []asana.Task{openTask}})
 			if !tt.noDetail {
 				m.Update(detailMsg{gid: "1", ticket: ticket.Ticket{Task: openTask, Comments: []asana.Story{
@@ -149,11 +151,7 @@ func TestCopyCommentOnlyOnTarget(t *testing.T) {
 			if tt.markdown {
 				m.readerView = config.ViewMarkdown
 			}
-			_, _, hints := m.mode()
-			if got := slices.Contains(hints, [2]string{"Y", "copy comment"}); got != (tt.want != "" && !tt.noPreview) {
-				t.Fatalf("copy hint = %v, hints = %v", got, hints)
-			}
-			_, cmd := m.Update(key("Y"))
+			_, cmd := m.Update(key("ctrl+y"))
 			if tt.want == "" {
 				if cmd != nil || m.status != "" {
 					t.Fatalf("non-comment target copied: command present = %v, status = %q", cmd != nil, m.status)
@@ -163,7 +161,7 @@ func TestCopyCommentOnlyOnTarget(t *testing.T) {
 			if cmd == nil {
 				t.Fatal("comment target did not request clipboard write")
 			}
-			if got, want := cmd(), tea.SetClipboard(tt.want)(); got != want {
+			if got, want := commandMessages(cmd), tea.SetClipboard(tt.want)(); !slices.Contains(got, want) {
 				t.Fatalf("clipboard message = %#v, want %#v", got, want)
 			}
 			if m.status != "comment sent to clipboard" {

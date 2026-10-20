@@ -1,0 +1,36 @@
+# Ayu Light palette adapted to asanamate's themed roles.
+# Palette reference: https://unpkg.com/ayu@9.1.0/dist/generated/light.js
+# Copyright (c) Konstantin Pschera. MIT license: LICENSE.ayu.
+base = "light"
+
+[colors]
+accent = { fg = "#22a4e6", bold = true }
+border = "#adaeb1"
+muted = { fg = "#828e9f", faint = false }
+highlight = { fg = "#5c6166", bg = "#d7e4f6", reverse = false }
+ok = "#86b300"
+warn = "#eba400"
+error = "#f07171"
+working = "#4cbf99"
+pinned = { fg = "#fa8532", bold = true }
+viewing = { fg = "#a37acc", bold = true }
+reacted = { fg = "#5c6166", bg = "#d7e4f6" }
+new = { fg = "#fcfcfc", bg = "#22a4e6", bold = true }
+more = { fg = "#fcfcfc", bg = "#fa8532", bold = true }
+authors = ["#22a4e6", "#a37acc", "#4cbf99", "#86b300", "#eba400", "#f07171"]
+
+[colors.mode]
+normal = { fg = "#fcfcfc", bg = "#22a4e6", bold = true }
+filter = { fg = "#fcfcfc", bg = "#eba400", bold = true }
+read = { fg = "#fcfcfc", bg = "#4cbf99", bold = true }
+edit = { fg = "#fcfcfc", bg = "#a37acc", bold = true }
+
+[colors.markdown]
+text = "#5c6166"
+heading = { fg = "#22a4e6", bold = true }
+h1 = { fg = "#fcfcfc", bg = "#22a4e6", bold = true }
+link = { fg = "#4cbf99", underline = true }
+code = { fg = "#86b300", bg = "#ebeef0" }
+code_block = { fg = "#5c6166", bg = "#ebeef0" }
+quote = { fg = "#828e9f", italic = true }
+rule = "#adaeb1"

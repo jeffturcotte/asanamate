@@ -8,6 +8,7 @@ commands, one section per extension point:
 |---|---|---|---|
 | [Actions](#actions) | `actions/*.toml` | `ASANAMATE_*` variables and ticket files | exit status |
 | [Agent sources](#agent-sources) | `agents.command`, `agents.states` | nothing | one tab-separated line per agent |
+| [Conversation history](#conversation-history) | `conversations.command`, `conversations.open` | JSON discovery request; private snapshot for foreground open | versioned metadata and diagnostics; opener exit status |
 | [Repo sources](#repo-sources) | `repo_source.command` | nothing | one repo path per line |
 | [Time tracking](#time-tracking) | `time_tracking.command` | one JSON request on stdin | one JSON reply |
 | [Project links](#project-links) | `project_links.command` | one JSON request on stdin | one JSON reply |
@@ -62,6 +63,7 @@ form, and its input box. Cancelling any of those skips the run.
 | `ASANAMATE_COMMENT_GID`, `ASANAMATE_COMMENT_AUTHOR`, `ASANAMATE_COMMENT_AUTHOR_GID`, `ASANAMATE_COMMENT_DATE`, `ASANAMATE_COMMENT_TEXT` | the highlighted comment when the menu opened: story gid, author name and gid, `created_at` timestamp, and body as Markdown. Empty when no comment is highlighted |
 | `ASANAMATE_TICKET_JSON`, `ASANAMATE_TICKET_MD` | full ticket as JSON / Markdown |
 | `ASANAMATE_INPUT_FILE` | text typed into the `input` box, possibly empty. Empty path for actions without `input` |
+| `ASANAMATE_CONVERSATION_JSON`, `ASANAMATE_CONVERSATION_PROVIDER`, `ASANAMATE_CONVERSATION_ID` | private selection snapshot, provider, and exact native session ID for a conversation opener; empty for unrelated actions |
 | `ASANAMATE_PARAM_<ID>` | selected action form value, with its field ID uppercased |
 | `ASANAMATE_FIELD_<NAME>` | custom field display values, e.g. `ASANAMATE_FIELD_BRANCH_NAME` |
 | `ASANAMATE_CONFIRM_WRITES` | `1`/`0`, read by the write-back subcommands |
@@ -113,6 +115,212 @@ key = "i"
 mode = "foreground"
 command = '~/bin/show-ticket.sh | less'
 ```
+
+## Conversation history
+
+This is the generic core contract, version **1**. When both commands are set,
+the action menu (`a`) gains a built-in **Conversations** entry, and
+`asanamate conversations` and `asanamate conversation open` use the same
+lookup and opener ([README](../README.md#conversations-optional)). The
+provider companion and plugins are separate
+([specs 17–18](specs/17-conversation-companion.md)).
+Core has no Claude/Codex SDK, provider title parser, transcript index, or disk
+cache. The TUI keeps each ticket's last successful lookup in memory only, shown
+as stale while a refresh runs. Running agents and persisted conversations
+remain different extension points.
+
+Both settings default to empty, leaving the extension off. Set both together:
+
+```toml
+[conversations]
+command = "asana-sessions asanamate list"
+open = "asana-sessions asanamate open"
+```
+
+The optional `asana-sessions` command is not bundled or installed by core; it
+lives in [`packages/asana-sessions`](../packages/asana-sessions/README.md).
+Any external program can implement this contract. Both config strings are
+trusted user-authored shell text; selected metadata never enters those strings.
+
+### Discovery
+
+`internal/conversations.Source.List` runs `command` in asanamate's working
+directory with one JSON request on stdin, then EOF. It validates the selected
+task GID before starting the command:
+
+```json
+{"version":1,"operation":"list","asana":{"task_gid":"42"}}
+```
+
+Sources must validate version, operation, and decimal task GID before starting
+providers. Ignore unknown optional request fields; reject unsupported versions.
+IDs are exact ASCII decimal GIDs accepted by `asana.ValidGID`, not numbers
+extracted from prose, session IDs, branch names, or project IDs.
+
+Return exactly one JSON object on stdout, with no banners or extra objects:
+
+```json
+{
+  "version": 1,
+  "conversations": [
+    {
+      "provider": "codex",
+      "session_id": "native-session-id",
+      "task_gid": "42",
+      "title": "Fix sorting [asana:42]",
+      "cwd": "/home/me/code/project",
+      "branch": "fix-sorting",
+      "updated_at": "2026-10-15T16:00:00Z",
+      "archived": false,
+      "activity": "unknown"
+    }
+  ],
+  "diagnostics": [
+    {"provider":"claude","code":"unavailable","severity":"info","message":"History is not installed"}
+  ]
+}
+```
+
+Record rules:
+
+- Required: string `provider`, `session_id`, `task_gid`, `title`, and `activity`.
+  Provider/session IDs must be nonblank without control characters; keep their
+  exact values. Title is display metadata, never identity or executable text.
+- `task_gid` must be valid and exactly equal the requested GID. Core does not
+  infer links from titles, branch names, paths, or running agents. The portable
+  trailing marker `[asana:<GID>]` and Claude tag conflict rules belong to the
+  companion, as defined in [spec 16](specs/16-conversation-history.md#canonical-ticket-metadata).
+- `activity` is exactly `active`, `inactive`, or `unknown`. Sources must return
+  explicit `unknown` when they cannot prove activity. Old timestamps and an
+  app-server's `notLoaded` status do not prove inactivity.
+- Optional string `cwd` must be absolute when supplied, without NUL. It may
+  point to a deleted worktree; the opener checks existence and offers recovery.
+  Optional `branch` is display context. Optional `updated_at` is an RFC 3339
+  timestamp, with fractional seconds allowed. Omit unknown paths/timestamps.
+- Optional boolean `archived` defaults to false. Archived history is included.
+  Unknown optional fields are ignored; wrong types and null known fields fail.
+- Identity is `(provider, session_id)` in this one local source. Exact duplicate
+  normalized records collapse, preserving first-seen order; conflicting records
+  with the same identity fail the entire response. Core does not choose a winner.
+
+`conversations` is a required array. A complete lookup with no matches returns
+`{"version":1,"conversations":[]}`. `diagnostics` may be omitted or an array.
+Each diagnostic requires string `provider`, `code`, `severity`, and `message`.
+Codes are `unavailable`, `unsupported_version`, `permission_denied`,
+`metadata_conflict`, `incomplete`, or `provider_error`; severity is `info`,
+`warning`, or `error`. Invalid diagnostics also fail validation.
+
+`Result.Complete()` is false when any diagnostic has warning/error severity.
+Usable rows and all diagnostics survive a valid partial lookup. Informational
+absence of an unused provider does not degrade a healthy single-provider
+installation. An installed provider's failed lookup must produce warning/error,
+even when another provider succeeds. If no provider is available, the source
+must exit nonzero with recovery information on stderr; it must not return an
+apparently complete empty lookup. Core cannot infer provider availability from
+the absence of rows or informational diagnostics.
+
+Transport limits are **4 MiB stdout**, **64 KiB stderr**, and **10 seconds**,
+including shell/helper startup. Caller cancellation can shorten the deadline.
+`jsoncmd.RunBounded` caps capture and terminates the command process group on
+overflow/cancellation, also cleaning up remaining group members after exit.
+Discovery subprocesses must remain in that process group, not detach into
+separate sessions. Descendants retaining pipes after the shell exits get a
+250 ms drain period before transport failure and cleanup. Existing unbounded
+`jsoncmd.Run` callers retain their original contract.
+
+Overflow, timeout, cancellation, and nonzero exit fail the whole lookup and
+return no rows. Malformed or conflicting responses also return no rows.
+`conversations.Failure` classifies a failed lookup as one `error` diagnostic
+with provider `source`: `unavailable` (nonzero exit, such as no provider
+installed), `incomplete` (timeout, overflow, cancellation),
+`unsupported_version`, or `provider_error` (malformed response).
+`asanamate conversations --json` prints that diagnostic in a version-1
+response with no rows, and the picker shows it, keeping any earlier result as
+stale instead of an empty list.
+Never decode truncated output as a successful result, or silently convert
+failure into no conversations. Diagnostics use one display-safe line and at
+most 1024 Unicode code points, truncating longer messages with `…`. Core strips
+terminal escapes, control characters, and Unicode format characters from
+diagnostic messages. Use `conversations.DisplayText` for every displayed title,
+path, branch, provider, and session ID. Preserve original metadata for opening.
+Do not log prompts or transcript content; sources return metadata only.
+
+**Fixture example.** `internal/conversations/testdata/source.sh` reads the full
+request into `$REQUEST_FILE`, then returns the JSON in `$RESPONSE_FILE`:
+
+```sh
+#!/bin/sh
+cat > "$REQUEST_FILE" || exit 1
+cat "$RESPONSE_FILE"
+```
+
+Use a version-1 response like the example above. A source command can be
+`/bin/sh /absolute/path/source.sh`, with those two paths supplied in its
+environment. The fixture test verifies exact request bytes, validation,
+duplicate/conflict handling, diagnostics, and failures without provider tools
+or an Asana network request.
+
+### Foreground opening
+
+`action.ConversationCommand` validates the selected record against the ticket,
+then writes `conversation.json` into a private action run. The TUI first
+exports the ticket (`action.WriteFiles`), so the run also holds `ticket.json`
+and `ticket.md`. `asanamate conversation open` reads no ticket from Asana, so
+its run holds only the snapshot and `ASANAMATE_TICKET_JSON`, `ASANAMATE_TITLE`,
+and other ticket exports are empty; a custom opener must accept that. The
+directory is `0700`; each file is `0600`. Snapshot paths are absolute, and
+every open gets its own directory. The selection file is:
+
+```json
+{
+  "version": 1,
+  "operation": "open",
+  "asana": {"task_gid":"42"},
+  "conversation": {
+    "provider":"codex",
+    "session_id":"native-session-id",
+    "task_gid":"42",
+    "title":"Fix sorting [asana:42]",
+    "archived":false,
+    "activity":"unknown"
+  }
+}
+```
+
+The command receives `ASANAMATE_CONVERSATION_JSON` (snapshot path),
+`ASANAMATE_CONVERSATION_PROVIDER`, and `ASANAMATE_CONVERSATION_ID`. Unrelated
+actions get empty values; inherited `ASANAMATE_*` values are always removed.
+The helper runs in asanamate's cwd. Ticket repository/worktree selection and
+branch action steps are not applied to saved conversations.
+
+The caller runs the returned command through the existing foreground handoff,
+with terminal stdin/stdout/stderr. JSON never occupies interactive stdin. Read
+the selection through the environment's snapshot path, not from stdin. The
+terminal fixture `internal/action/testdata/conversation.sh` verifies this with
+the system `script` command and checks successful/nonzero exit propagation.
+
+Before resuming, an opener must re-read native history to validate exact
+provider/session identity and its current ticket link. Refuse missing or changed
+links. Check cwd existence at open time; offer a replacement or cancellation
+without silently checking out a branch or creating a worktree. Use argument
+arrays or file data for native IDs, GIDs, and paths; never execute commands from
+records or interpolate metadata into shell text. Zero means normal completion,
+including a normally exited provider; nonzero means failure. Foreground callers
+restore terminal state and report failure through their existing action path.
+
+The supplied companion opener must refuse `active` conversations. For unknown
+activity, explicit confirmation is necessary but does not establish safety:
+native exclusion must still protect independently launched conversations.
+The [live feasibility observations](specs/17-provider-feasibility.md) show that
+Claude Code `2.1.301` lacks that exclusion. Under the approved conservative
+revision, Claude discovery/linking remain supported, but the companion's default
+Claude opener must refuse unknown activity. The companion derives Claude
+`active`/`inactive` from Claude Code's live-session registry and resumes only
+`inactive` conversations.
+This restriction belongs to the provider opener, not a provider-specific branch
+in generic core. A custom host opener must use an explicit native-ID mapping
+and authoritative ownership behavior. The remaining companion feasibility and
+release checks are still required; this core contract is not their approval.
 
 ## Agent sources
 

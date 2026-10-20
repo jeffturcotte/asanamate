@@ -16,10 +16,21 @@ import (
 // mode returns the statusline's mode name and pill style, and the key hints
 // for what has focus.
 func (m *Model) mode() (name string, pill lipgloss.Style, hints [][2]string) {
+	defer func() {
+		if name == "READ" || name == "EDIT" {
+			hints = append(hints, m.keyHints("yank")...)
+			if !m.readerHidden && m.copySelection().text != "" {
+				hints = append(hints, m.keyHints("copy_selection")...)
+			}
+		}
+	}()
 	targets := [2]string{keyLabel("main", "down", "up"), "targets"}
 	scroll := [2]string{keyLabel("main", "scroll_down", "scroll_up"), "scroll"}
 	pane := [2]string{keyLabel("main", "next_pane"), "pane"}
 	list := [2]string{keyLabel("main", "focus_list"), "list"}
+	if m.ticketOnly() {
+		pane, list = [2]string{}, [2]string{} // unbound, so hidden
+	}
 	switch {
 	case m.activityOpen:
 		return m.activityMode()
@@ -44,7 +55,6 @@ func (m *Model) mode() (name string, pill lipgloss.Style, hints [][2]string) {
 					hint = "see more"
 				}
 				hints = append(hints, [2]string{open, hint})
-				hints = append(hints, m.keyHints("copy_comment")...)
 			}
 			return "READ", readPill, append(hints, scroll, pane, list)
 		}
@@ -54,26 +64,37 @@ func (m *Model) mode() (name string, pill lipgloss.Style, hints [][2]string) {
 	case m.focusNav:
 		return "VIEWS", normalPill, [][2]string{{keyLabel("views", "down", "up"), "move"}, {keyLabel("views", "open"), "open"}, list, {keyLabel("main", "help"), "keys"}}
 	}
-	return "NORMAL", normalPill, m.keyHints("action", "edit", "log_time", "copy_link", "filter", "projects", "help")
+	return "NORMAL", normalPill, m.keyHints("action", "edit", "log_time", "yank", "filter", "projects", "help")
 }
 
 // statusline is the bottom bar: a mode pill, where the list is and what it
 // shows, then the key hints for what has focus, or the latest status message
 // in their place.
 func (m *Model) statusline() string {
+	return m.renderStatusline(true)
+}
+
+// renderStatusline hides the right side while a toast covers it, so a long
+// message cannot peek out from beside the toast. The left side stays in place.
+func (m *Model) renderStatusline(showMessage bool) string {
 	name, pillStyle, hints := m.mode()
 	pill := pillStyle.Render(" " + name + " ")
-	segs := m.listSegs()
-	if m.activityOpen {
+	var segs []string
+	switch {
+	case m.activityOpen:
 		segs = m.activitySegs()
+	case m.ticketOnly():
+		segs = []string{dimStyle.Render(m.refreshLabel())}
+	default:
+		segs = m.listSegs()
 	}
 	left := pill + " " + strings.Join(segs, dimStyle.Render(" │ "))
 
-	status := m.status
+	status, level := m.status, m.statusLevel
 	if len(m.notices) > 0 {
-		status = m.notices[0]
+		status, level = m.notices[0].text, m.notices[0].level
 	}
-	right := titleStyle.Render(ticket.OneLine(status))
+	right := m.renderStatus(level, status)
 	if status == "" {
 		var parts []string
 		for _, h := range hints {
@@ -82,6 +103,9 @@ func (m *Model) statusline() string {
 			}
 		}
 		right = strings.Join(parts, "  ")
+	}
+	if !showMessage {
+		right = ""
 	}
 	gap := m.width - ansi.StringWidth(left) - ansi.StringWidth(right)
 	if gap < 2 {

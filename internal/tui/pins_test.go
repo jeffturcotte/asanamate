@@ -107,6 +107,11 @@ func TestPinSaveFailureLeavesListAndStateUnchanged(t *testing.T) {
 	}
 	m.deps.State = st
 	m.Update(tasksMsg{tasks: []asana.Task{openTask}})
+	// Loading the ticket also reports a state-save error; acknowledge it
+	// before testing the separate pin operation.
+	if m.noticeVisible() {
+		m.Update(key("enter"))
+	}
 	m.Update(key("P"))
 	if len(m.pinnedTasks()) != 0 || m.pinnedCount != 0 || m.viewing != nil || !strings.HasPrefix(m.status, "saving pins:") {
 		t.Fatalf("failed save changed state: pins = %v, status = %q", m.pinnedTasks(), m.status)

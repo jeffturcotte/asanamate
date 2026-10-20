@@ -14,12 +14,13 @@ import (
 )
 
 type pickItem struct {
-	Label  string
-	Hint   string
-	Help   string // optional description shown below the list when selected
-	Search string // optional text search matches besides Label
-	Key    string
-	Value  any
+	Disabled bool // visible but cannot be chosen
+	Label    string
+	Hint     string
+	Help     string // optional description shown below the list when selected
+	Search   string // optional text search matches besides Label
+	Key      string
+	Value    any
 }
 
 type pickResult struct {
@@ -53,9 +54,12 @@ type picker struct {
 	links      bool // choose opens the item's link; copy returns a copy result
 	checked    map[int]bool
 	err        string
+	notice     string      // owner's status lines shown under the list; search keeps them
 	extraHints [][2]string // controls handled by the picker's owner
 	// preview draws the highlighted item, or nil for none, beside the list.
 	preview func(it *pickItem, width, height int) string
+	// listMaxWidth caps the list beside a preview; zero uses 32 columns.
+	listMaxWidth int
 }
 
 // newPicker returns a picker that calls onPick with the choice.
@@ -144,6 +148,9 @@ func (p *picker) checkedResult() pickResult {
 
 func (p *picker) choose(i int) pickResult {
 	it := p.items[i]
+	if it.Disabled {
+		return pickResult{}
+	}
 	return pickResult{done: true, item: &it}
 }
 
@@ -263,6 +270,15 @@ func (p *picker) moveItem(down bool) {
 	p.refilter()
 }
 
+// current returns the highlighted item, or nil on the Use row, with no
+// matches, or for a nil picker.
+func (p *picker) current() *pickItem {
+	if p == nil || p.cursor >= len(p.matches) {
+		return nil
+	}
+	return &p.items[p.matches[p.cursor]]
+}
+
 // minPreviewWidth is the narrowest modal that shows a picker's preview.
 const minPreviewWidth = 56
 
@@ -270,14 +286,14 @@ func (p *picker) view(width, height int, accent lipgloss.Style) string {
 	if p.preview == nil || width < minPreviewWidth {
 		return p.listView(width, height, accent)
 	}
-	listW := max(min(width*2/5, 32), 24)
-	paneW := width - listW - 2
-	var it *pickItem
-	if p.cursor < len(p.matches) {
-		it = &p.items[p.matches[p.cursor]]
-	}
+	listW := max(min(width*2/5, cmp.Or(p.listMaxWidth, 32)), 24)
+	paneW := width - listW - 3 // divider with one space on either side
 	list := p.listView(listW, height, accent)
-	return lipgloss.JoinHorizontal(lipgloss.Top, list, "  ", p.preview(it, paneW, height))
+	preview := p.preview(p.current(), paneW, height)
+	rows := max(lipgloss.Height(list), lipgloss.Height(preview))
+	divider := lipgloss.NewStyle().Foreground(borderColor).Padding(0, 1).
+		Render(strings.Repeat("│\n", rows-1) + "│")
+	return lipgloss.JoinHorizontal(lipgloss.Top, list, divider, preview)
 }
 
 // listView draws the title, search, list, and key hints.
@@ -304,7 +320,11 @@ func (p *picker) listView(width, height int, accent lipgloss.Style) string {
 		}
 	}
 	hint := ansi.Wrap(p.controls(accent), width, "")
-	rows := max(height-3-lipgloss.Height(help)-lipgloss.Height(hint), 1)
+	notice := ""
+	if p.notice != "" {
+		notice = warnStyle.Render(ansi.Wrap(p.notice, max(width-2, 1), ""))
+	}
+	rows := max(height-3-lipgloss.Height(help)-lipgloss.Height(hint)-lipgloss.Height(notice), 1)
 	start := max(p.cursor-rows+1, 0)
 	if p.rowCount() == 0 {
 		b.WriteString(dimStyle.Render("no matches") + "\n")
@@ -316,7 +336,12 @@ func (p *picker) listView(width, height int, accent lipgloss.Style) string {
 		} else {
 			it := p.items[p.matches[i]]
 			line = it.Label
+			if it.Disabled {
+				line = dimStyle.Render(line)
+			}
 			switch {
+			case p.keySelect && it.Key == "":
+				line = "    " + line // chosen with the cursor, aligned with keyed rows
 			case p.keySelect:
 				line = accent.Render("["+it.Key+"]") + " " + line
 			case p.multi && p.checked[p.matches[i]]:
@@ -336,6 +361,9 @@ func (p *picker) listView(width, height int, accent lipgloss.Style) string {
 			line = "  " + line
 		}
 		b.WriteString(line + "\n")
+	}
+	if notice != "" {
+		b.WriteString(notice + "\n")
 	}
 	if p.err != "" {
 		b.WriteString(errorStyle.Render(p.err) + "\n")

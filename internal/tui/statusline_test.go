@@ -1,11 +1,15 @@
 package tui
 
 import (
+	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/sadmachine/asanamate/internal/asana"
@@ -48,10 +52,111 @@ func TestStatuslineShowsModeAndHints(t *testing.T) {
 
 func TestStatusMessageReplacesHints(t *testing.T) {
 	m := splitModel(t)
-	m.status = "Comment: done"
+	m.setStatus(statusInfo, "Comment: done")
 	s := ansi.Strip(m.statusline())
 	if !strings.HasSuffix(s, "Comment: done") || strings.Contains(s, "? keys") {
 		t.Fatalf("statusline = %q", s)
+	}
+}
+
+func TestStatusMessageColorsAndIcons(t *testing.T) {
+	m := splitModel(t)
+	defer applyPalette(config.Config{}.Palette(true))
+	for _, dark := range []bool{true, false} {
+		palette := config.Config{}.Palette(dark)
+		palette.Colors.Accent = config.Style{FG: "#123456"}
+		palette.Colors.Warn = config.Style{FG: "#abcdef"}
+		palette.Colors.Error = config.Style{FG: "#fedcba"}
+		m.setPalette(palette)
+		for _, tc := range []struct {
+			symbols symbolSet
+			icons   [3]string
+		}{
+			{asciiSymbols, [3]string{"(i)", "(!)", "(x)"}},
+			{unicodeSymbols, [3]string{"(i)", "⚠", "✖"}},
+			{nerdSymbols, [3]string{"\U000f02fd", "\uf071", "\U000f05d6"}},
+		} {
+			m.sym = tc.symbols
+			for level, style := range []lipgloss.Style{m.accentStyle, warnStyle, errorStyle} {
+				// Isolate each rendered status; errors otherwise remain queued.
+				m.notices = nil
+				// The words do not determine the severity.
+				m.setStatus(statusLevel(level), "failed: warning about errors")
+				view := m.statusline()
+				want := style.Render(tc.icons[level] + " " + m.status)
+				if !strings.HasSuffix(view, want) || strings.Contains(ansi.Strip(view), "? keys") {
+					t.Fatalf("dark=%v, level=%d: statusline = %q, want suffix %q", dark, level, view, want)
+				}
+				if ansi.StringWidth(view) != m.width {
+					t.Fatalf("statusline width = %d, want %d", ansi.StringWidth(view), m.width)
+				}
+			}
+		}
+	}
+}
+
+func TestStatusMessageSeverityFromEvents(t *testing.T) {
+	m := splitModel(t)
+	m.Update(tasksMsg{err: errors.New("offline")})
+	if m.statusLevel != statusError || !strings.HasSuffix(ansi.Strip(m.statusline()), "✖ loading tasks: offline") {
+		t.Fatalf("load error status = %q, level = %d", m.status, m.statusLevel)
+	}
+	m.Update(key("enter"))
+	m.Update(tasksMsg{tasks: []asana.Task{openTask}, warning: "some pinned tickets unavailable"})
+	if m.statusLevel != statusWarning || !strings.HasSuffix(ansi.Strip(m.statusline()), "⚠ some pinned tickets unavailable") {
+		t.Fatalf("load warning status = %q, level = %d", m.status, m.statusLevel)
+	}
+	m.Update(statusMsg("browser unavailable"))
+	if m.statusLevel != statusError {
+		t.Fatalf("browser error level = %d", m.statusLevel)
+	}
+	m.Update(key("enter"))
+	m.Update(actionDoneMsg{name: "Export"})
+	if m.statusLevel != statusInfo || !strings.HasSuffix(ansi.Strip(m.statusline()), "(i) Export: done") {
+		t.Fatalf("success status = %q, level = %d", m.status, m.statusLevel)
+	}
+	m.Update(key("j"))
+	if m.status != "Export: done" || m.statusLevel != statusInfo || !strings.HasSuffix(ansi.Strip(m.statusline()), "(i) Export: done") {
+		t.Fatalf("navigation lost latest status = %q, level = %d", m.status, m.statusLevel)
+	}
+}
+
+func TestStatusNoticeKeepsSeverityWhileQueued(t *testing.T) {
+	m := splitModel(t)
+	m.setStatus(statusError, "first failure")
+	m.Update(actionDoneMsg{name: "Export", err: errors.New("offline")})
+	m.Update(actionDoneMsg{name: "Copy"})
+	if !strings.HasSuffix(ansi.Strip(m.statusline()), "✖ first failure") {
+		t.Fatalf("first notice = %q", ansi.Strip(m.statusline()))
+	}
+	m.Update(key("enter"))
+	if !strings.HasSuffix(ansi.Strip(m.statusline()), "✖ Export failed: offline") {
+		t.Fatalf("second notice = %q", ansi.Strip(m.statusline()))
+	}
+	m.Update(key("enter"))
+	if !strings.HasSuffix(ansi.Strip(m.statusline()), "(i) Copy: done") {
+		t.Fatalf("status after notices = %q", ansi.Strip(m.statusline()))
+	}
+}
+
+func TestStatusMessageTruncation(t *testing.T) {
+	m := splitModel(t)
+	for _, symbols := range []symbolSet{asciiSymbols, unicodeSymbols, nerdSymbols} {
+		m.sym = symbols
+		for _, level := range []statusLevel{statusInfo, statusWarning, statusError} {
+			m.notices = nil
+			m.setStatus(level, strings.Repeat("長い status ", 20)+"\nsecond line")
+			for _, width := range []int{0, 1, 8, 16, 30, 120} {
+				m.width = width
+				view := m.statusline()
+				if ansi.StringWidth(view) > width || strings.ContainsAny(view, "\r\n") {
+					t.Fatalf("width=%d, level=%d: statusline = %q", width, level, view)
+				}
+				if width >= 30 && !strings.Contains(ansi.Strip(view), ansi.Strip(m.renderStatus(level, "長い"))) {
+					t.Fatalf("width=%d: status message lost priority: %q", width, ansi.Strip(view))
+				}
+			}
+		}
 	}
 }
 
@@ -217,5 +322,279 @@ func TestUnboundKeysLeaveNoEmptyHints(t *testing.T) {
 	m.tasks = nil
 	if strings.Contains(ansi.Strip(m.emptyView(80, 10)), " filter") {
 		t.Fatal("empty view shows an unbound filter key")
+	}
+}
+
+func TestToastLifecycleAndReplacement(t *testing.T) {
+	m := splitModel(t)
+	var delays []time.Duration
+	m.toastTimer = func(after time.Duration, msg toastTickMsg) tea.Cmd {
+		delays = append(delays, after)
+		return func() tea.Msg { return msg }
+	}
+	_, cmd := m.Update(actionDoneMsg{name: "Export"})
+	if cmd == nil || m.toast == nil || !m.toast.highlighted || len(m.notices) != 0 {
+		t.Fatal("info must start a highlighted, nonblocking toast timer")
+	}
+	if len(delays) != 1 || delays[0] != toastHighlight {
+		t.Fatalf("initial highlight delay = %v", delays)
+	}
+	old := m.toast.seq
+	m.Update(key("j"))
+	if m.cursor != 1 || m.toast == nil || m.status != "Export: done" {
+		t.Fatal("toast intercepted movement or lost the latest status")
+	}
+	m.setStatus(statusWarning, "partial result")
+	seq := m.toast.seq
+	m.Update(toastTickMsg{seq: old, finish: true})
+	if m.toast == nil || m.toast.seq != seq {
+		t.Fatal("old timer removed a newer toast")
+	}
+	_, cmd = m.Update(toastTickMsg{seq: seq})
+	if cmd == nil || m.toast == nil || m.toast.highlighted {
+		t.Fatal("highlight must settle and schedule toast expiry")
+	}
+	if delays[len(delays)-1] != 6*time.Second-toastHighlight {
+		t.Fatalf("warning expiry delay = %v", delays)
+	}
+	m.Update(toastTickMsg{seq: seq, finish: true})
+	if m.toast != nil || m.status != "partial result" || m.statusLevel != statusWarning {
+		t.Fatal("expiry must leave the latest message in the statusline")
+	}
+	if toastDuration(statusInfo) != 4*time.Second || toastDuration(statusWarning) != 6*time.Second {
+		t.Fatal("unexpected toast duration")
+	}
+}
+
+func TestToastReducedMotionAndProgress(t *testing.T) {
+	m := splitModel(t)
+	m.deps.ReducedMotion = true
+	var delay time.Duration
+	m.toastTimer = func(after time.Duration, msg toastTickMsg) tea.Cmd {
+		delay = after
+		return func() tea.Msg { return msg }
+	}
+	m.Update(actionDoneMsg{name: "Export"})
+	if m.toast == nil || m.toast.highlighted || delay != 4*time.Second {
+		t.Fatal("reduced motion must skip the border highlight")
+	}
+	seq := m.toast.seq
+	m.setProgress("refreshing…")
+	if len(m.statusHistory) != 1 || m.toast.seq != seq {
+		t.Fatal("routine progress must not create a toast or history entry")
+	}
+	m.clearProgress()
+	if m.status != "Export: done" || m.statusProgress {
+		t.Fatal("clearing progress must restore the latest meaningful message")
+	}
+	m.Update(toastTickMsg{seq: seq, finish: true})
+	if m.toast != nil || m.status != "Export: done" {
+		t.Fatal("static toast did not expire cleanly")
+	}
+}
+
+func TestToastFitsWithoutChangingLayout(t *testing.T) {
+	m := splitModel(t)
+	for _, symbols := range []symbolSet{asciiSymbols, unicodeSymbols, nerdSymbols} {
+		m.sym = symbols
+		for _, size := range [][2]int{{8, 3}, {12, 5}, {32, 10}, {60, 20}, {120, 20}} {
+			m.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+			m.toast = nil
+			before := m.View().Content
+			m.setStatus(statusWarning, strings.Repeat("Long message 長い with no spaces: "+strings.Repeat("x", 60), 5))
+			view := m.View().Content
+			if len(strings.Split(view, "\n")) != len(strings.Split(before, "\n")) {
+				t.Fatalf("%v: toast changed the layout height", size)
+			}
+			for _, line := range strings.Split(view, "\n") {
+				if width := ansi.StringWidth(line); width > size[0] {
+					t.Fatalf("%v: toast line width = %d: %q", size, width, ansi.Strip(line))
+				}
+			}
+			if size[0] >= 12 && size[1] >= 5 && !strings.Contains(ansi.Strip(view), "…") {
+				t.Fatalf("%v: clipped toast must indicate more text", size)
+			}
+		}
+	}
+}
+
+func TestToastCoversStatuslineUntilExpiry(t *testing.T) {
+	for _, message := range []string{"Ticket saved", "Ticket saved: " + strings.Repeat("details ", 30)} {
+		m := splitModel(t)
+		m.setStatus(statusInfo, message)
+		underneath := m.statusline()
+		view := ansi.Strip(m.View().Content)
+		lines := strings.Split(view, "\n")
+		if strings.Contains(lines[len(lines)-1], "Ticket saved") {
+			t.Fatal("toast must cover the statusline message")
+		}
+		if strings.Count(view, "Ticket saved") != 1 {
+			t.Fatal("message must appear only in the toast, including long messages")
+		}
+		if !strings.Contains(lines[len(lines)-1], "──") {
+			t.Fatal("toast bottom border must occupy the statusline row")
+		}
+		m.Update(toastTickMsg{seq: m.toast.seq, finish: true})
+		view = m.View().Content
+		lines = strings.Split(view, "\n")
+		if lines[len(lines)-1] != underneath {
+			t.Fatal("expiry must restore the underlying statusline exactly")
+		}
+	}
+}
+
+func TestErrorsRequireAcknowledgmentAndWarningsDoNot(t *testing.T) {
+	m := splitModel(t)
+	m.Update(actionDoneMsg{name: "Export", err: errors.New("offline")})
+	if !m.noticeVisible() || m.toast != nil || !strings.Contains(ansi.Strip(m.body()), "Error") {
+		t.Fatal("error must show a modal without a duplicate toast")
+	}
+	m.Update(key("j"))
+	if m.cursor != 0 {
+		t.Fatal("error acknowledgment key must not move the list")
+	}
+	m.Update(key("enter"))
+	m.setStatus(statusWarning, "no running agent")
+	m.Update(key("j"))
+	if len(m.notices) != 0 || m.toast == nil || m.cursor != 1 {
+		t.Fatal("warning must stay nonblocking")
+	}
+}
+
+func TestUnrelatedErrorsWaitForEditor(t *testing.T) {
+	m := splitModel(t)
+	b := newInputBox("Draft", "")
+	b.area.SetValue("keep this")
+	m.input = b
+	m.Update(statusMsg("unrelated browser failure"))
+	if len(m.notices) != 1 || m.noticeVisible() || m.input != b {
+		t.Fatal("unrelated error interrupted editor")
+	}
+	before := b.area.Value()
+	m.Update(key("x"))
+	if b.area.Value() == before || m.input != b || m.noticeVisible() {
+		t.Fatal("deferred notice consumed editor input")
+	}
+	m.Update(key("esc"))
+	if m.input != nil || !m.noticeVisible() {
+		t.Fatal("deferred error must appear after editor closes")
+	}
+}
+
+func TestInlineErrorsDoNotQueueNotices(t *testing.T) {
+	m := splitModel(t)
+	m.setInlineError("logging time: offline")
+	if len(m.notices) != 0 || m.toast != nil || len(m.statusHistory) != 1 || m.statusLevel != statusError {
+		t.Fatal("inline error must enter history without a second modal")
+	}
+}
+
+func TestBackgroundErrorsRearmAfterRecovery(t *testing.T) {
+	m := splitModel(t)
+	failure := tasksMsg{err: errors.New("offline")}
+	m.Update(failure)
+	m.Update(failure)
+	if len(m.notices) != 1 || len(m.statusHistory) != 1 || m.statusHistory[0].count != 2 {
+		t.Fatal("repeated background failure must share a notice and history entry")
+	}
+	m.Update(key("enter"))
+	m.Update(failure)
+	if len(m.notices) != 0 || m.statusHistory[0].count != 3 {
+		t.Fatal("acknowledged failure reopened before recovery")
+	}
+	m.Update(tasksMsg{tasks: []asana.Task{openTask}})
+	m.Update(failure)
+	if len(m.notices) != 1 {
+		t.Fatal("a failure after recovery must require acknowledgment again")
+	}
+}
+
+func TestStatusHistoryBoundedSearchableAndSessionOnly(t *testing.T) {
+	m := splitModel(t)
+	m.Update(key("s"))
+	m.Update(key("n"))
+	if m.modal == nil || !strings.HasPrefix(m.modal.title, "Status history") || len(m.modal.items) != 0 {
+		t.Fatal("empty session history must open from Settings")
+	}
+	m.Update(key("esc"))
+	now := testToday
+	m.now = func() time.Time { return now }
+	m.setStatus(statusWarning, "offline")
+	now = now.Add(time.Second)
+	m.setStatus(statusWarning, "offline")
+	if len(m.statusHistory) != 1 || m.statusHistory[0].count != 2 || !m.statusHistory[0].at.Equal(now) {
+		t.Fatal("duplicate message must update timestamp and count")
+	}
+	for i := range 105 {
+		m.setStatus(statusInfo, fmt.Sprintf("message %d", i))
+	}
+	if len(m.statusHistory) != maxStatusHistory || m.statusHistory[0].text != "message 5" {
+		t.Fatal("history must retain only the latest 100 entries")
+	}
+	m.setStatus(statusWarning, "offline again")
+	m.openStatusHistory()
+	p := m.modal
+	if message := p.items[0].Value.(statusMessage); message.text != "offline again" || message.level != statusWarning {
+		t.Fatal("history must be newest first with severity")
+	}
+	p.input.SetValue("warning offline")
+	p.refilter()
+	if len(p.matches) != 1 {
+		t.Fatal("history must search severity and message")
+	}
+	if cmd := p.onPick(p.choose(p.matches[0])); cmd == nil || m.modal != p {
+		t.Fatal("selecting history must copy full text without replaying notifications")
+	}
+	fresh := splitModel(t)
+	if len(fresh.statusHistory) != 0 {
+		t.Fatal("history must not survive a new app session")
+	}
+}
+
+func TestStatusHistoryListUsesAvailableWidth(t *testing.T) {
+	m := splitModel(t)
+	m.setStatus(statusInfo, "Ticket saved successfully")
+	m.openStatusHistory()
+	p := m.modal
+	previewWidth := 0
+	p.preview = func(_ *pickItem, width, height int) string {
+		previewWidth = width
+		return "Preview"
+	}
+	for _, tc := range []struct{ width, preview int }{{40, 0}, {56, 29}, {80, 45}, {100, 57}, {140, 81}} {
+		previewWidth = 0
+		view := ansi.Strip(p.view(tc.width, 20, m.accentStyle))
+		if previewWidth != tc.preview {
+			t.Fatalf("width %d: preview width = %d, want %d", tc.width, previewWidth, tc.preview)
+		}
+		if tc.width == 140 && !strings.Contains(view, "Info: Ticket saved successfully") {
+			t.Fatal("wide history list must show more of the message")
+		}
+		for _, line := range strings.Split(view, "\n") {
+			if ansi.StringWidth(line) > tc.width {
+				t.Fatalf("history exceeds width %d: %q", tc.width, line)
+			}
+		}
+	}
+}
+
+func TestStatusHistoryRecordsFinalOperationMessage(t *testing.T) {
+	for _, tc := range []struct {
+		name, want string
+		run        func(*Model)
+	}{
+		{"completed ticket", "Completed Fix login", func(m *Model) {
+			m.Update(editDoneMsg{gid: openTask.GID, what: "complete Fix login", done: "Completed Fix login"})
+		}},
+		{"cleared branch", "branch cleared", func(m *Model) { m.saveBranch(openTask.GID, "") }},
+		{"reset columns", "columns reset to list.fields", func(m *Model) { m.storeColumns(nil, true) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := splitModel(t)
+			tc.run(m)
+			if len(m.statusHistory) != 1 || m.statusHistory[0].text != tc.want {
+				t.Fatalf("history = %+v, want only %q", m.statusHistory, tc.want)
+			}
+		})
 	}
 }

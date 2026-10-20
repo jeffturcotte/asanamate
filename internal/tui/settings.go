@@ -53,6 +53,7 @@ func (m *Model) openSettings(cursor int) {
 	}
 	items = append(items, pickItem{Label: "Build / edit actions", Key: "a", Value: func() tea.Cmd { m.modal = nil; m.openActionBuilder(); return nil }})
 	items = append(items, pickItem{Label: "List columns for this project", Key: "c", Value: m.openColumns})
+	items = append(items, pickItem{Label: "Status history", Key: "n", Value: func() tea.Cmd { m.openStatusHistory(); return nil }})
 	p := newPicker(pickValue(func(open func() tea.Cmd) tea.Cmd { return open() }), "Settings", items)
 	p.keySelect = true
 	p.cursor = cursor
@@ -66,6 +67,6 @@ func (m *Model) saveSetting(key string, value any) {
 		err = config.SaveSetting(path, key, value)
 	}
 	if err != nil {
-		m.status = "saving settings: " + err.Error()
+		m.setStatus(statusError, "saving settings: "+err.Error())
 	}
 }

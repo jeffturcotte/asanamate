@@ -1,0 +1,31 @@
+{
+  "name": "asana-sessions",
+  "version": "0.1.1",
+  "description": "Find, link, and resume Claude Code and Codex conversations by Asana ticket",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "bin": {
+    "asana-sessions": "bin/asana-sessions.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "plugins/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "RELEASING.md",
+    "npm-shrinkwrap.json"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "check": "node scripts/check-plugins.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.301"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

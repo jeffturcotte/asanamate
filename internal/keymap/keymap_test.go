@@ -126,3 +126,17 @@ func TestResolveRejectsCtrlC(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestYankPreservesLegacyCopyOverrides(t *testing.T) {
+	k, err := Resolve(map[string]map[string][]string{"main": {"copy_link": {"y"}, "copy_comment": {"Y"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if k.Name("main", "y") != "copy_link" || k.Name("main", "Y") != "copy_comment" {
+		t.Fatal("legacy overrides lost")
+	}
+	k = Default()
+	if k.Name("main", "y") != "yank" || k.Name("main", "Y") != "copy_selection" {
+		t.Fatal("yank defaults missing")
+	}
+}

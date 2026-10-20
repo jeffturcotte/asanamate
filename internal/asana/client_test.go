@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -323,19 +324,20 @@ func TestProjectFieldsReturnsNamesWithoutTaskValues(t *testing.T) {
 	}
 }
 
+// TestTaskGIDFromURL shares its cases with asana-sessions, so the two parsers
+// cannot drift apart.
 func TestTaskGIDFromURL(t *testing.T) {
-	for raw, want := range map[string]string{
-		"https://app.asana.com/0/7/42":                                   "42",
-		"https://app.asana.com/0/7/42/f":                                 "42",
-		"https://app.asana.com/1/652/project/1205/task/1218987517194396": "1218987517194396",
-		"https://app.asana.com/1/652/task/99?focus=true":                 "99",
-		"https://app.asana.com/0/my-apps":                                "",
-		"https://example.com/0/7/42":                                     "",
-		"https://app.asana.com/1/652/project/1205":                       "",
-		"not a url": "",
-	} {
-		if got := TaskGIDFromURL(raw); got != want {
-			t.Errorf("TaskGIDFromURL(%q) = %q, want %q", raw, got, want)
+	data, err := os.ReadFile("../../packages/asana-sessions/test/fixtures/task-urls.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases []struct{ URL, GID string }
+	if err := json.Unmarshal(data, &cases); err != nil || len(cases) == 0 {
+		t.Fatalf("fixtures: %v", err)
+	}
+	for _, tc := range cases {
+		if got := TaskGIDFromURL(tc.URL); got != tc.GID {
+			t.Errorf("TaskGIDFromURL(%q) = %q, want %q", tc.URL, got, tc.GID)
 		}
 	}
 }
